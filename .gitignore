@@ -1,0 +1,21 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Nix
+result
+result-*
+.direnv/
+.envrc
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+
+# Added by cargo
+
+/target
