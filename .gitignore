@@ -16,6 +16,9 @@ result-*
 *.swo
 
 
+# Coverage
+lcov.info
+
 # Added by cargo
 
 /target
