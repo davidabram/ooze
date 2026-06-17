@@ -1,0 +1,14 @@
+[
+  (if_statement)
+  (for_statement)
+  (for_in_statement)
+  (while_statement)
+  (do_statement)
+  (switch_case)
+  (switch_default)
+  (catch_clause)
+  (ternary_expression)
+] @branch
+
+(binary_expression
+  operator: ["&&" "||" "??"]) @branch

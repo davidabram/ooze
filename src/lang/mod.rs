@@ -5,48 +5,128 @@ use streaming_iterator::StreamingIterator;
 
 use crate::core::FunctionSpan;
 
-const RUST_FUNCTIONS_QUERY: &str = include_str!("../../queries/rust/functions.scm");
-const RUST_BRANCHES_QUERY: &str = include_str!("../../queries/rust/branches.scm");
+pub mod c;
+pub mod c_sharp;
+pub mod cpp;
+pub mod go;
+pub mod java;
+pub mod javascript;
+pub mod php;
+pub mod python;
+pub mod ruby;
+pub mod rust;
+pub mod typescript;
+
+#[cfg(test)]
+mod tests;
+
+pub trait Language {
+    fn name(&self) -> &'static str;
+    fn extensions(&self) -> &'static [&'static str];
+    fn tree_sitter_language(&self) -> tree_sitter::Language;
+    fn functions_query(&self) -> &'static str;
+    fn branches_query(&self) -> &'static str;
+}
+
+pub fn supported_languages() -> Vec<Box<dyn Language>> {
+    vec![
+        Box::new(javascript::JavaScript),
+        Box::new(typescript::TypeScript),
+        Box::new(python::Python),
+        Box::new(java::Java),
+        Box::new(c_sharp::CSharp),
+        Box::new(cpp::Cpp),
+        Box::new(c::C),
+        Box::new(go::Go),
+        Box::new(rust::Rust),
+        Box::new(ruby::Ruby),
+        Box::new(php::Php),
+    ]
+}
+
+struct Compiled {
+    language: Box<dyn Language>,
+    functions: tree_sitter::Query,
+    branches: tree_sitter::Query,
+}
 
 pub fn scan_directory(path: &Path) -> anyhow::Result<Vec<FunctionSpan>> {
+    let languages = supported_languages();
+    let mut compiled = Vec::with_capacity(languages.len());
+    for language in languages {
+        let ts_lang = language.tree_sitter_language();
+        let functions = tree_sitter::Query::new(&ts_lang, language.functions_query())
+            .with_context(|| format!("compiling {} function query", language.name()))?;
+        let branches = tree_sitter::Query::new(&ts_lang, language.branches_query())
+            .with_context(|| format!("compiling {} branch query", language.name()))?;
+        compiled.push(Compiled {
+            language,
+            functions,
+            branches,
+        });
+    }
+
     let mut spans = Vec::new();
     for result in ignore::WalkBuilder::new(path).build() {
         let entry = result?;
-        if !entry.file_type().map_or(false, |ft| ft.is_file()) {
+        if !entry.file_type().is_some_and(|ft| ft.is_file()) {
             continue;
         }
         let file_path = entry.path();
-        if file_path.extension().map_or(true, |ext| ext != "rs") {
+        let ext = match file_path.extension().and_then(|e| e.to_str()) {
+            Some(ext) => ext,
+            None => continue,
+        };
+        let Some(compiled) = compiled
+            .iter()
+            .find(|c| c.language.extensions().contains(&ext))
+        else {
             continue;
-        }
-        spans.extend(scan_file(file_path)?);
+        };
+        spans.extend(scan_file(
+            file_path,
+            compiled.language.as_ref(),
+            &compiled.functions,
+            &compiled.branches,
+        )?);
     }
     Ok(spans)
 }
 
-fn scan_file(path: &Path) -> anyhow::Result<Vec<FunctionSpan>> {
-    let source = std::fs::read_to_string(path)
-        .with_context(|| format!("reading {}", path.display()))?;
+fn scan_file(
+    path: &Path,
+    language: &dyn Language,
+    fn_query: &tree_sitter::Query,
+    branch_query: &tree_sitter::Query,
+) -> anyhow::Result<Vec<FunctionSpan>> {
+    let source =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let source_bytes = source.as_bytes();
 
-    let language: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let ts_lang = language.tree_sitter_language();
     let mut parser = tree_sitter::Parser::new();
     parser
-        .set_language(&language)
-        .with_context(|| "loading Rust tree-sitter grammar")?;
+        .set_language(&ts_lang)
+        .with_context(|| format!("loading {} tree-sitter grammar", language.name()))?;
     let tree = parser
         .parse(&source, None)
         .with_context(|| format!("parsing {}", path.display()))?;
 
-    let fn_query = tree_sitter::Query::new(&language, RUST_FUNCTIONS_QUERY)
-        .with_context(|| "compiling function query")?;
-    let branch_query = tree_sitter::Query::new(&language, RUST_BRANCHES_QUERY)
-        .with_context(|| "compiling branch query")?;
     let mut fn_cursor = tree_sitter::QueryCursor::new();
     let mut branch_cursor = tree_sitter::QueryCursor::new();
 
-    let mut spans = Vec::new();
-    let mut matches = fn_cursor.matches(&fn_query, tree.root_node(), source_bytes);
+    // First pass: collect every function definition (named and anonymous) and its
+    // byte range. Anonymous functions (closures, lambdas, arrow functions) get a
+    // synthetic name derived from their start line so they are no longer dropped.
+    struct Func<'a> {
+        name: Option<String>,
+        node: tree_sitter::Node<'a>,
+        start: usize,
+        end: usize,
+    }
+
+    let mut funcs: Vec<Func> = Vec::new();
+    let mut matches = fn_cursor.matches(fn_query, tree.root_node(), source_bytes);
     while let Some(m) = matches.next() {
         let mut name: Option<String> = None;
         let mut def_node: Option<tree_sitter::Node> = None;
@@ -65,21 +145,54 @@ fn scan_file(path: &Path) -> anyhow::Result<Vec<FunctionSpan>> {
                 _ => {}
             }
         }
-        if let (Some(name), Some(def_node)) = (name, def_node) {
-            let branch_count =
-                count_branches(&branch_query, &mut branch_cursor, def_node, source_bytes);
-            let cyclomatic = 1 + branch_count;
-            spans.push(FunctionSpan {
-                file: path.to_path_buf(),
-                language: "rust".to_string(),
+        if let Some(node) = def_node {
+            funcs.push(Func {
                 name,
-                start_line: def_node.start_position().row + 1,
-                end_line: def_node.end_position().row + 1,
-                start_byte: def_node.start_byte(),
-                end_byte: def_node.end_byte(),
-                cyclomatic,
+                node,
+                start: node.start_byte(),
+                end: node.end_byte(),
             });
         }
+    }
+
+    // All function ranges, used to identify branches that belong to a strictly
+    // nested function so they are not also charged to the enclosing function.
+    let all_ranges: Vec<(usize, usize)> = funcs.iter().map(|f| (f.start, f.end)).collect();
+
+    let mut spans = Vec::new();
+    for func in funcs {
+        // Ranges of functions strictly nested within this one.
+        let nested: Vec<(usize, usize)> = all_ranges
+            .iter()
+            .copied()
+            .filter(|(ns, ne)| {
+                *ns >= func.start && *ne <= func.end && !(*ns == func.start && *ne == func.end)
+            })
+            .collect();
+
+        let branch_count = count_branches(
+            branch_query,
+            &mut branch_cursor,
+            func.node,
+            source_bytes,
+            &nested,
+        );
+        let cyclomatic = 1 + branch_count;
+
+        let name = func
+            .name
+            .unwrap_or_else(|| format!("<anonymous>:{}", func.node.start_position().row + 1));
+
+        spans.push(FunctionSpan {
+            file: path.to_path_buf(),
+            language: language.name().to_string(),
+            name,
+            start_line: func.node.start_position().row + 1,
+            end_line: func.node.end_position().row + 1,
+            start_byte: func.start,
+            end_byte: func.end,
+            cyclomatic,
+        });
     }
     Ok(spans)
 }
@@ -89,11 +202,20 @@ fn count_branches(
     cursor: &mut tree_sitter::QueryCursor,
     node: tree_sitter::Node,
     source: &[u8],
+    nested: &[(usize, usize)],
 ) -> usize {
     let mut count = 0;
     let mut matches = cursor.matches(query, node, source);
-    while matches.next().is_some() {
-        count += 1;
+    while let Some(m) = matches.next() {
+        for capture in m.captures {
+            if query.capture_names()[capture.index as usize] == "branch" {
+                let bs = capture.node.start_byte();
+                if !nested.iter().any(|(ns, ne)| bs >= *ns && bs < *ne) {
+                    count += 1;
+                }
+                break;
+            }
+        }
     }
     count
 }
