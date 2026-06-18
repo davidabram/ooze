@@ -1,7 +1,9 @@
-use crate::core::{AppliedMutation, MutationCandidate};
+use crate::core::{AppliedMutation, MutantOutcome, MutantStatus, MutationCandidate};
 use anyhow::{Context, Result, bail};
 use similar::{ChangeTag, TextDiff};
 use std::path::Path;
+use std::process::Command;
+use std::time::Instant;
 use tempfile::TempDir;
 use walkdir::WalkDir;
 
@@ -77,6 +79,43 @@ impl CowWorkspace {
             candidate: candidate.clone(),
             workspace_file,
             diff,
+        })
+    }
+
+    pub fn run_probe(
+        &self,
+        applied: AppliedMutation,
+        probe: &[String],
+    ) -> Result<MutantOutcome> {
+        if probe.is_empty() {
+            bail!("probe command is empty");
+        }
+
+        let started = Instant::now();
+
+        let output = Command::new(&probe[0])
+            .args(&probe[1..])
+            .current_dir(self.path())
+            .output()
+            .with_context(|| format!("running probe command {:?}", probe))?;
+
+        let duration_ms = started.elapsed().as_millis();
+        let exit_code = output.status.code();
+
+        let status = if output.status.success() {
+            MutantStatus::Survived
+        } else {
+            MutantStatus::Killed
+        };
+
+        Ok(MutantOutcome {
+            candidate: applied.candidate,
+            status,
+            exit_code,
+            duration_ms,
+            diff: applied.diff,
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         })
     }
 }

@@ -7,6 +7,7 @@ mod report;
 
 use std::path::PathBuf;
 
+use anyhow::Context;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -49,6 +50,17 @@ enum Commands {
         #[arg(long)]
         id: String,
     },
+    #[command(about = "Apply a mutation in a workspace, run a probe, and classify the result")]
+    TestMutant {
+        #[arg(long, default_value = ".")]
+        path: PathBuf,
+
+        #[arg(long)]
+        id: String,
+
+        #[arg(last = true)]
+        probe: Vec<String>,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -83,6 +95,24 @@ fn main() -> anyhow::Result<()> {
             let applied = workspace.apply_mutation(&repo_root, &candidate)?;
 
             println!("{}", applied.diff);
+        }
+        Commands::TestMutant { path, id, probe } => {
+            let functions = lang::scan_directory(&path)?;
+            let languages = lang::supported_languages();
+            let candidates = mutate::discover_mutants(&functions, &languages)?;
+
+            let Some(candidate) = candidates.into_iter().find(|c| c.id == id) else {
+                anyhow::bail!("no mutation candidate found with id {id:?}");
+            };
+
+            let repo_root = std::fs::canonicalize(&path)
+                .with_context(|| format!("canonicalizing {}", path.display()))?;
+
+            let workspace = runner::CowWorkspace::create_from_repo(&repo_root)?;
+            let applied = workspace.apply_mutation(&repo_root, &candidate)?;
+            let outcome = workspace.run_probe(applied, &probe)?;
+
+            println!("{}", serde_json::to_string_pretty(&outcome)?);
         }
         Commands::Crap {
             path,

@@ -2,6 +2,26 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MutantStatus {
+    Killed,
+    Survived,
+    Timeout,
+    Error,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MutantOutcome {
+    pub candidate: MutationCandidate,
+    pub status: MutantStatus,
+    pub exit_code: Option<i32>,
+    pub duration_ms: u128,
+    pub diff: String,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct AppliedMutation {
     pub candidate: MutationCandidate,
     pub workspace_file: PathBuf,
