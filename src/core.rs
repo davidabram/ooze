@@ -11,6 +11,51 @@ pub enum MutantStatus {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+pub struct MutationRunReport {
+    pub total: usize,
+    pub killed: usize,
+    pub survived: usize,
+    pub timeout: usize,
+    pub error: usize,
+    pub outcomes: Vec<MutantOutcome>,
+}
+
+impl MutationRunReport {
+    pub fn from_outcomes(outcomes: Vec<MutantOutcome>) -> Self {
+        let total = outcomes.len();
+
+        let killed = outcomes
+            .iter()
+            .filter(|o| matches!(o.status, MutantStatus::Killed))
+            .count();
+
+        let survived = outcomes
+            .iter()
+            .filter(|o| matches!(o.status, MutantStatus::Survived))
+            .count();
+
+        let timeout = outcomes
+            .iter()
+            .filter(|o| matches!(o.status, MutantStatus::Timeout))
+            .count();
+
+        let error = outcomes
+            .iter()
+            .filter(|o| matches!(o.status, MutantStatus::Error))
+            .count();
+
+        Self {
+            total,
+            killed,
+            survived,
+            timeout,
+            error,
+            outcomes,
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct MutantOutcome {
     pub candidate: MutationCandidate,
     pub status: MutantStatus,

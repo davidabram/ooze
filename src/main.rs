@@ -50,6 +50,20 @@ enum Commands {
         #[arg(long)]
         id: String,
     },
+    #[command(about = "Run a batch of mutations sequentially and produce a summary report")]
+    TestMutants {
+        #[arg(long, default_value = ".")]
+        path: PathBuf,
+
+        #[arg(long)]
+        limit: Option<usize>,
+
+        #[arg(long, default_value_t = 1)]
+        jobs: usize,
+
+        #[arg(last = true)]
+        probe: Vec<String>,
+    },
     #[command(about = "Apply a mutation in a workspace, run a probe, and classify the result")]
     TestMutant {
         #[arg(long, default_value = ".")]
@@ -95,6 +109,24 @@ fn main() -> anyhow::Result<()> {
             let applied = workspace.apply_mutation(&repo_root, &candidate)?;
 
             println!("{}", applied.diff);
+        }
+        Commands::TestMutants { path, limit, jobs, probe } => {
+            let functions = lang::scan_directory(&path)?;
+            let languages = lang::supported_languages();
+            let mut candidates = mutate::discover_mutants(&functions, &languages)?;
+
+            candidates.sort_by(|a, b| a.id.cmp(&b.id));
+
+            if let Some(limit) = limit {
+                candidates.truncate(limit);
+            }
+
+            let repo_root = std::fs::canonicalize(&path)
+                .with_context(|| format!("canonicalizing {}", path.display()))?;
+
+            let report = runner::run_mutants_parallel(&repo_root, candidates, &probe, jobs)?;
+
+            println!("{}", serde_json::to_string_pretty(&report)?);
         }
         Commands::TestMutant { path, id, probe } => {
             let functions = lang::scan_directory(&path)?;

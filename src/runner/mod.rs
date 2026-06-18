@@ -1,5 +1,8 @@
-use crate::core::{AppliedMutation, MutantOutcome, MutantStatus, MutationCandidate};
+use crate::core::{
+    AppliedMutation, MutantOutcome, MutantStatus, MutationCandidate, MutationRunReport,
+};
 use anyhow::{Context, Result, bail};
+use rayon::prelude::*;
 use similar::{ChangeTag, TextDiff};
 use std::path::Path;
 use std::process::Command;
@@ -118,6 +121,69 @@ impl CowWorkspace {
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
         })
     }
+}
+
+pub fn run_mutants_sequential(
+    repo_root: &Path,
+    candidates: Vec<MutationCandidate>,
+    probe: &[String],
+) -> Result<MutationRunReport> {
+    let mut outcomes = Vec::new();
+
+    for candidate in candidates {
+        let workspace = CowWorkspace::create_from_repo(repo_root)
+            .with_context(|| format!("creating workspace for {}", candidate.id))?;
+
+        let applied = workspace
+            .apply_mutation(repo_root, &candidate)
+            .with_context(|| format!("applying mutation {}", candidate.id))?;
+
+        let outcome = workspace
+            .run_probe(applied, probe)
+            .with_context(|| format!("running probe for {}", candidate.id))?;
+
+        outcomes.push(outcome);
+    }
+
+    Ok(MutationRunReport::from_outcomes(outcomes))
+}
+
+pub fn run_mutants_parallel(
+    repo_root: &Path,
+    candidates: Vec<MutationCandidate>,
+    probe: &[String],
+    jobs: usize,
+) -> Result<MutationRunReport> {
+    if jobs <= 1 {
+        return run_mutants_sequential(repo_root, candidates, probe);
+    }
+
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(jobs)
+        .build()
+        .context("building mutation worker pool")?;
+
+    let outcomes = pool.install(|| {
+        candidates
+            .into_par_iter()
+            .map(|candidate| {
+                let workspace = CowWorkspace::create_from_repo(repo_root)
+                    .with_context(|| format!("creating workspace for {}", candidate.id))?;
+
+                let applied = workspace
+                    .apply_mutation(repo_root, &candidate)
+                    .with_context(|| format!("applying mutation {}", candidate.id))?;
+
+                let outcome = workspace
+                    .run_probe(applied, probe)
+                    .with_context(|| format!("running probe for {}", candidate.id))?;
+
+                Ok::<_, anyhow::Error>(outcome)
+            })
+            .collect::<Result<Vec<_>>>()
+    })?;
+
+    Ok(MutationRunReport::from_outcomes(outcomes))
 }
 
 fn copy_repo(src: &Path, dst: &Path) -> Result<()> {
