@@ -117,10 +117,6 @@ provides no anonymous token for the operator.
 - `panic` / `todo` are abort expressions, NOT branches.
 - `assert` / `let_assert` are decision points (may fail).
 
-### HCL
-- Every `block` is treated as a function unit (HCL has no first-class
-  function declarations).  This is a best-effort approximation.
-
 ### Haskell
 - `list_comprehension` qualifies as a branch.
 - Boolean operators `&&`/`||` use inline `#match?` predicate on

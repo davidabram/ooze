@@ -15,7 +15,6 @@ pub mod erlang;
 pub mod gleam;
 pub mod go;
 pub mod haskell;
-pub mod hcl;
 pub mod java;
 pub mod javascript;
 pub mod julia;
@@ -60,7 +59,6 @@ pub fn supported_languages() -> Vec<Box<dyn Language>> {
         Box::new(gleam::Gleam),
         Box::new(go::Go),
         Box::new(haskell::Haskell),
-        Box::new(hcl::Hcl),
         Box::new(julia::Julia),
         Box::new(lua::Lua),
         Box::new(ocaml::Ocaml),
