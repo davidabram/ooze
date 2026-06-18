@@ -63,7 +63,7 @@ impl CowWorkspace {
         timeout: Option<Duration>,
         cargo_target_dir: Option<&Path>,
     ) -> Result<MutantOutcome> {
-        run_probe(self.path(), applied, probe, timeout, cargo_target_dir)
+        run_probe(self.path(), applied, probe, timeout, cargo_target_dir, &[])
     }
 }
 
@@ -128,6 +128,7 @@ pub fn run_probe(
     probe: &[String],
     timeout: Option<Duration>,
     cargo_target_dir: Option<&Path>,
+    extra_envs: &[(String, String)],
 ) -> Result<MutantOutcome> {
     if probe.is_empty() {
         bail!("probe command is empty");
@@ -144,6 +145,10 @@ pub fn run_probe(
     if let Some(dir) = cargo_target_dir {
         cmd.env("CARGO_TARGET_DIR", dir);
         cmd.env("CARGO_BUILD_JOBS", "1");
+    }
+
+    for (k, v) in extra_envs {
+        cmd.env(k, v);
     }
 
     let mut child = cmd
@@ -209,6 +214,8 @@ pub struct BatchConfig<'a> {
     pub backend: WorkspaceBackend,
     pub timeout: Option<Duration>,
     pub cargo_target_dir: Option<&'a Path>,
+    pub worker_target_dirs: Option<&'a [PathBuf]>,
+    pub probe_env_templates: &'a [(String, String)],
     pub runs_dir: &'a Path,
 }
 
@@ -262,12 +269,27 @@ fn try_run_one(
     let applied = apply_mutation(workspace.path(), repo_root, candidate)
         .with_context(|| format!("applying mutation {}", candidate.id))?;
 
+    let worker_idx = rayon::current_thread_index().unwrap_or(0);
+    let worker_dir: Option<PathBuf> = cfg.worker_target_dirs.and_then(|dirs| {
+        dirs.get(worker_idx).cloned().or_else(|| dirs.first().cloned())
+    });
+    let target_dir = worker_dir
+        .as_deref()
+        .or(cfg.cargo_target_dir);
+
+    let extra_envs: Vec<(String, String)> = cfg
+        .probe_env_templates
+        .iter()
+        .map(|(k, v)| (k.clone(), v.replace("{worker}", &worker_idx.to_string())))
+        .collect();
+
     run_probe(
         workspace.path(),
         applied,
         probe,
         cfg.timeout,
-        cfg.cargo_target_dir,
+        target_dir,
+        &extra_envs,
     )
     .with_context(|| format!("running probe for {}", candidate.id))
 }
@@ -334,6 +356,7 @@ pub fn warmup(
     workspace_path: &Path,
     probe: &[String],
     cargo_target_dir: Option<&Path>,
+    extra_envs: &[(String, String)],
 ) -> Result<std::process::ExitStatus> {
     if probe.is_empty() {
         bail!("warmup command is empty");
@@ -348,12 +371,48 @@ pub fn warmup(
         cmd.env("CARGO_TARGET_DIR", dir);
     }
 
+    for (k, v) in extra_envs {
+        cmd.env(k, v);
+    }
+
     cmd.status()
         .with_context(|| format!("running warmup command {:?}", probe))
 }
 
 pub fn default_cargo_target_dir(cache_dir: &Path) -> PathBuf {
     cache_dir.join("cargo-target")
+}
+
+pub fn warmup_workers(
+    workspace_path: &Path,
+    probe: &[String],
+    target_dirs: &[PathBuf],
+    jobs: usize,
+    probe_env_templates: &[(String, String)],
+) -> Result<()> {
+    if target_dirs.is_empty() {
+        return Ok(());
+    }
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(jobs.max(1))
+        .build()
+        .context("building warmup pool")?;
+    pool.install(|| {
+        target_dirs
+            .par_iter()
+            .enumerate()
+            .try_for_each(|(idx, dir)| -> Result<()> {
+                let extra_envs: Vec<(String, String)> = probe_env_templates
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.replace("{worker}", &idx.to_string())))
+                    .collect();
+                let status = warmup(workspace_path, probe, Some(dir), &extra_envs)?;
+                if !status.success() {
+                    bail!("warmup failed in {} with status {status}", dir.display());
+                }
+                Ok(())
+            })
+    })
 }
 
 fn copy_repo(src: &Path, dst: &Path) -> Result<()> {

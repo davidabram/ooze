@@ -17,8 +17,31 @@ const DEFAULT_EXCLUDES: &[&str] = &[
     ".git/**",
 ];
 
-fn resolve_excludes(user: &[String]) -> Vec<String> {
+fn read_gitignore_patterns(root: &std::path::Path) -> Vec<String> {
+    let path = root.join(".gitignore");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    text.lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(|l| l.trim_start_matches('/').to_string())
+        .collect()
+}
+
+fn parse_key_val(s: &str) -> Result<(String, String), String> {
+    let (k, v) = s
+        .split_once('=')
+        .ok_or_else(|| format!("expected KEY=VALUE, got {s:?}"))?;
+    if k.is_empty() {
+        return Err(format!("empty key in {s:?}"));
+    }
+    Ok((k.to_string(), v.to_string()))
+}
+
+fn resolve_excludes(root: &std::path::Path, user: &[String]) -> Vec<String> {
     let mut out: Vec<String> = DEFAULT_EXCLUDES.iter().map(|s| s.to_string()).collect();
+    out.extend(read_gitignore_patterns(root));
     out.extend(user.iter().cloned());
     out
 }
@@ -114,6 +137,9 @@ enum Commands {
         #[arg(long, help = "Disable the shared CARGO_TARGET_DIR for probes")]
         no_shared_target: bool,
 
+        #[arg(long, help = "Pre-build the probe in each worker target dir before running mutants")]
+        warmup: bool,
+
         #[arg(long, value_enum, default_value_t = WorkspaceBackendArg::Auto)]
         workspace_backend: WorkspaceBackendArg,
 
@@ -125,6 +151,9 @@ enum Commands {
 
         #[arg(long, value_delimiter = ',', help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git.")]
         exclude: Vec<String>,
+
+        #[arg(long = "probe-env", value_parser = parse_key_val, help = "KEY=VALUE env var to set on probe (and warmup). {worker} in VALUE expands to the worker index. Repeatable.")]
+        probe_env: Vec<(String, String)>,
 
         #[arg(last = true)]
         probe: Vec<String>,
@@ -163,7 +192,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Mutants { path, format, exclude } => {
-            let excludes = resolve_excludes(&exclude);
+            let excludes = resolve_excludes(&path, &exclude);
             let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
             let languages = lang::supported_languages();
             let candidates = mutate::discover_mutants(&functions, &languages)?;
@@ -196,13 +225,15 @@ fn main() -> anyhow::Result<()> {
             timeout_seconds,
             cargo_target_dir,
             no_shared_target,
+            warmup,
             workspace_backend,
             cache_dir,
             runs_dir,
             exclude,
+            probe_env,
             probe,
         } => {
-            let excludes = resolve_excludes(&exclude);
+            let excludes = resolve_excludes(&path, &exclude);
             let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
             let languages = lang::supported_languages();
             let candidates = mutate::discover_mutants(&functions, &languages)?;
@@ -242,25 +273,89 @@ fn main() -> anyhow::Result<()> {
                 format!("creating runs dir {}", runs_dir.display())
             })?;
 
-            let target_dir: Option<PathBuf> = if no_shared_target {
-                None
-            } else {
-                Some(
-                    cargo_target_dir
-                        .unwrap_or_else(|| runner::default_cargo_target_dir(&cache_dir)),
-                )
-            };
+            let (target_dir, worker_target_dirs): (Option<PathBuf>, Vec<PathBuf>) =
+                if no_shared_target {
+                    if jobs > 1 {
+                        let dirs: Vec<PathBuf> = (0..jobs)
+                            .map(|i| cache_dir.join(format!("cargo-target-job-{i}")))
+                            .collect();
+                        for d in &dirs {
+                            std::fs::create_dir_all(d).with_context(|| {
+                                format!("creating worker cargo target dir {}", d.display())
+                            })?;
+                        }
+                        (None, dirs)
+                    } else {
+                        (None, Vec::new())
+                    }
+                } else {
+                    let dir = cargo_target_dir
+                        .unwrap_or_else(|| runner::default_cargo_target_dir(&cache_dir));
+                    std::fs::create_dir_all(&dir).with_context(|| {
+                        format!("creating cargo target dir {}", dir.display())
+                    })?;
+                    (Some(dir), Vec::new())
+                };
 
-            if let Some(dir) = target_dir.as_ref() {
-                std::fs::create_dir_all(dir).with_context(|| {
-                    format!("creating cargo target dir {}", dir.display())
-                })?;
+            let num_workers = if !worker_target_dirs.is_empty() {
+                worker_target_dirs.len()
+            } else {
+                jobs.max(1)
+            };
+            for (_, v) in &probe_env {
+                if !v.contains("{worker}") {
+                    continue;
+                }
+                for i in 0..num_workers {
+                    let resolved = v.replace("{worker}", &i.to_string());
+                    let p = std::path::Path::new(&resolved);
+                    let looks_like_path = resolved.contains('/')
+                        || resolved.starts_with('.')
+                        || p.is_absolute();
+                    if looks_like_path {
+                        std::fs::create_dir_all(p).with_context(|| {
+                            format!("creating probe-env directory {}", p.display())
+                        })?;
+                    }
+                }
+            }
+
+            if warmup {
+                if !worker_target_dirs.is_empty() {
+                    eprintln!(
+                        "warming up {} worker target dirs in parallel...",
+                        worker_target_dirs.len()
+                    );
+                    runner::warmup_workers(
+                        &repo_root,
+                        &probe,
+                        &worker_target_dirs,
+                        jobs,
+                        &probe_env,
+                    )?;
+                } else if let Some(dir) = target_dir.as_deref() {
+                    eprintln!("warming up shared target dir...");
+                    let extra: Vec<(String, String)> = probe_env
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.replace("{worker}", "0")))
+                        .collect();
+                    let status = runner::warmup(&repo_root, &probe, Some(dir), &extra)?;
+                    if !status.success() {
+                        anyhow::bail!("warmup command failed with status {status}");
+                    }
+                }
             }
 
             let cfg = runner::BatchConfig {
                 backend: workspace_backend.resolve(),
                 timeout,
                 cargo_target_dir: target_dir.as_deref(),
+                worker_target_dirs: if worker_target_dirs.is_empty() {
+                    None
+                } else {
+                    Some(&worker_target_dirs)
+                },
+                probe_env_templates: &probe_env,
                 runs_dir: &runs_dir,
             };
 
@@ -287,7 +382,7 @@ fn main() -> anyhow::Result<()> {
                 repo_root.join(&cache_dir)
             };
             let target_dir = runner::default_cargo_target_dir(&cache_dir);
-            let status = runner::warmup(&repo_root, &probe, Some(&target_dir))?;
+            let status = runner::warmup(&repo_root, &probe, Some(&target_dir), &[])?;
             if !status.success() {
                 anyhow::bail!("warmup command failed with status {status}");
             }
