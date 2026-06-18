@@ -22,3 +22,5 @@ lcov.info
 # Added by cargo
 
 /target
+
+.ooze

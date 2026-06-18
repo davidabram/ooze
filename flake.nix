@@ -23,6 +23,7 @@
             rustToolchain
             pkg-config
             openssl
+            jq
           ];
 
           RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";

@@ -78,6 +78,13 @@ struct Compiled {
 }
 
 pub fn scan_directory(path: &Path) -> anyhow::Result<Vec<FunctionSpan>> {
+    scan_directory_with_excludes(path, &[])
+}
+
+pub fn scan_directory_with_excludes(
+    path: &Path,
+    excludes: &[String],
+) -> anyhow::Result<Vec<FunctionSpan>> {
     let languages = supported_languages();
     let mut compiled = Vec::with_capacity(languages.len());
     for language in languages {
@@ -93,8 +100,23 @@ pub fn scan_directory(path: &Path) -> anyhow::Result<Vec<FunctionSpan>> {
         });
     }
 
+    let mut builder = ignore::WalkBuilder::new(path);
+    if !excludes.is_empty() {
+        let mut overrides = ignore::overrides::OverrideBuilder::new(path);
+        for pat in excludes {
+            overrides
+                .add(&format!("!{pat}"))
+                .with_context(|| format!("compiling exclude pattern {pat:?}"))?;
+        }
+        builder.overrides(
+            overrides
+                .build()
+                .context("building exclude overrides")?,
+        );
+    }
+
     let mut spans = Vec::new();
-    for result in ignore::WalkBuilder::new(path).build() {
+    for result in builder.build() {
         let entry = result?;
         if !entry.file_type().is_some_and(|ft| ft.is_file()) {
             continue;

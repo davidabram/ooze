@@ -3,7 +3,6 @@ use crate::core::FunctionSpan;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::OnceLock;
-use streaming_iterator::StreamingIterator;
 
 fn spans() -> &'static [FunctionSpan] {
     static SPANS: OnceLock<Vec<FunctionSpan>> = OnceLock::new();

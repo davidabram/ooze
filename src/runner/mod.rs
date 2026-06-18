@@ -4,11 +4,34 @@ use crate::core::{
 use anyhow::{Context, Result, bail};
 use rayon::prelude::*;
 use similar::{ChangeTag, TextDiff};
-use std::path::Path;
-use std::process::Command;
-use std::time::Instant;
+use std::io::Read as _;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use walkdir::WalkDir;
+
+pub mod overlay;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkspaceBackend {
+    Copy,
+    Overlay,
+}
+
+pub enum Workspace {
+    Copy(CowWorkspace),
+    Overlay(overlay::OverlayWorkspace),
+}
+
+impl Workspace {
+    pub fn path(&self) -> &Path {
+        match self {
+            Workspace::Copy(w) => w.path(),
+            Workspace::Overlay(w) => w.path(),
+        }
+    }
+}
 
 pub struct CowWorkspace {
     root: TempDir,
@@ -30,120 +53,248 @@ impl CowWorkspace {
         repo_root: &Path,
         candidate: &MutationCandidate,
     ) -> Result<AppliedMutation> {
-        let relative_file = candidate
-            .file
-            .strip_prefix(repo_root)
-            .unwrap_or(&candidate.file);
-
-        let workspace_file = self.path().join(relative_file);
-
-        let original = std::fs::read_to_string(&workspace_file)
-            .with_context(|| format!("reading workspace file {}", workspace_file.display()))?;
-
-        let start = candidate.start_byte;
-        let end = candidate.end_byte;
-
-        if start > end || end > original.len() {
-            bail!(
-                "candidate byte range {}..{} is invalid for {}",
-                start,
-                end,
-                workspace_file.display()
-            );
-        }
-
-        let found = &original[start..end];
-        if found != candidate.original {
-            bail!(
-                "candidate original text mismatch in {}: expected {:?}, found {:?}",
-                workspace_file.display(),
-                candidate.original,
-                found
-            );
-        }
-
-        let mut mutated = String::with_capacity(
-            original.len() - (end - start) + candidate.replacement.len(),
-        );
-        mutated.push_str(&original[..start]);
-        mutated.push_str(&candidate.replacement);
-        mutated.push_str(&original[end..]);
-
-        std::fs::write(&workspace_file, &mutated)
-            .with_context(|| format!("writing workspace file {}", workspace_file.display()))?;
-
-        let diff = unified_diff(
-            &relative_file.to_string_lossy(),
-            &original,
-            &mutated,
-        );
-
-        Ok(AppliedMutation {
-            candidate: candidate.clone(),
-            workspace_file,
-            diff,
-        })
+        apply_mutation(self.path(), repo_root, candidate)
     }
 
     pub fn run_probe(
         &self,
         applied: AppliedMutation,
         probe: &[String],
+        timeout: Option<Duration>,
+        cargo_target_dir: Option<&Path>,
     ) -> Result<MutantOutcome> {
-        if probe.is_empty() {
-            bail!("probe command is empty");
+        run_probe(self.path(), applied, probe, timeout, cargo_target_dir)
+    }
+}
+
+pub fn apply_mutation(
+    workspace_path: &Path,
+    repo_root: &Path,
+    candidate: &MutationCandidate,
+) -> Result<AppliedMutation> {
+    let relative_file = candidate
+        .file
+        .strip_prefix(repo_root)
+        .unwrap_or(&candidate.file);
+
+    let workspace_file = workspace_path.join(relative_file);
+
+    let original = std::fs::read_to_string(&workspace_file)
+        .with_context(|| format!("reading workspace file {}", workspace_file.display()))?;
+
+    let start = candidate.start_byte;
+    let end = candidate.end_byte;
+
+    if start > end || end > original.len() {
+        bail!(
+            "candidate byte range {}..{} is invalid for {}",
+            start,
+            end,
+            workspace_file.display()
+        );
+    }
+
+    let found = &original[start..end];
+    if found != candidate.original {
+        bail!(
+            "candidate original text mismatch in {}: expected {:?}, found {:?}",
+            workspace_file.display(),
+            candidate.original,
+            found
+        );
+    }
+
+    let mut mutated =
+        String::with_capacity(original.len() - (end - start) + candidate.replacement.len());
+    mutated.push_str(&original[..start]);
+    mutated.push_str(&candidate.replacement);
+    mutated.push_str(&original[end..]);
+
+    std::fs::write(&workspace_file, &mutated)
+        .with_context(|| format!("writing workspace file {}", workspace_file.display()))?;
+
+    let diff = unified_diff(&relative_file.to_string_lossy(), &original, &mutated);
+
+    Ok(AppliedMutation {
+        candidate: candidate.clone(),
+        workspace_file,
+        diff,
+    })
+}
+
+pub fn run_probe(
+    workspace_path: &Path,
+    applied: AppliedMutation,
+    probe: &[String],
+    timeout: Option<Duration>,
+    cargo_target_dir: Option<&Path>,
+) -> Result<MutantOutcome> {
+    if probe.is_empty() {
+        bail!("probe command is empty");
+    }
+
+    let started = Instant::now();
+
+    let mut cmd = Command::new(&probe[0]);
+    cmd.args(&probe[1..])
+        .current_dir(workspace_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    if let Some(dir) = cargo_target_dir {
+        cmd.env("CARGO_TARGET_DIR", dir);
+        cmd.env("CARGO_BUILD_JOBS", "1");
+    }
+
+    let mut child = cmd
+        .spawn()
+        .with_context(|| format!("spawning probe command {:?}", probe))?;
+
+    let mut timed_out = false;
+
+    let status = loop {
+        match child.try_wait().context("polling probe child")? {
+            Some(s) => break Some(s),
+            None => {
+                if let Some(limit) = timeout {
+                    if started.elapsed() >= limit {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        timed_out = true;
+                        break None;
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
         }
+    };
 
-        let started = Instant::now();
+    let duration_ms = started.elapsed().as_millis();
 
-        let output = Command::new(&probe[0])
-            .args(&probe[1..])
-            .current_dir(self.path())
-            .output()
-            .with_context(|| format!("running probe command {:?}", probe))?;
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    if let Some(mut s) = child.stdout.take() {
+        let _ = s.read_to_string(&mut stdout);
+    }
+    if let Some(mut s) = child.stderr.take() {
+        let _ = s.read_to_string(&mut stderr);
+    }
 
-        let duration_ms = started.elapsed().as_millis();
-        let exit_code = output.status.code();
-
-        let status = if output.status.success() {
+    let (mutant_status, exit_code) = if timed_out {
+        (MutantStatus::Timeout, None)
+    } else {
+        let s = status.expect("status set when not timed out");
+        let code = s.code();
+        let mutant_status = if s.success() {
             MutantStatus::Survived
         } else {
             MutantStatus::Killed
         };
+        (mutant_status, code)
+    };
 
-        Ok(MutantOutcome {
-            candidate: applied.candidate,
-            status,
-            exit_code,
-            duration_ms,
-            diff: applied.diff,
-            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-        })
+    Ok(MutantOutcome {
+        candidate: applied.candidate,
+        status: mutant_status,
+        exit_code,
+        duration_ms,
+        diff: applied.diff,
+        stdout,
+        stderr,
+    })
+}
+
+#[derive(Clone)]
+pub struct BatchConfig<'a> {
+    pub backend: WorkspaceBackend,
+    pub timeout: Option<Duration>,
+    pub cargo_target_dir: Option<&'a Path>,
+    pub runs_dir: &'a Path,
+}
+
+fn create_workspace(
+    backend: WorkspaceBackend,
+    repo_root: &Path,
+    runs_dir: &Path,
+    run_id: &str,
+) -> Result<Workspace> {
+    match backend {
+        WorkspaceBackend::Copy => {
+            CowWorkspace::create_from_repo(repo_root).map(Workspace::Copy)
+        }
+        WorkspaceBackend::Overlay => {
+            overlay::OverlayWorkspace::create(repo_root, runs_dir, run_id).map(Workspace::Overlay)
+        }
     }
+}
+
+fn run_one(
+    repo_root: &Path,
+    candidate: MutationCandidate,
+    probe: &[String],
+    cfg: &BatchConfig<'_>,
+    run_id: &str,
+) -> MutantOutcome {
+    match try_run_one(repo_root, &candidate, probe, cfg, run_id) {
+        Ok(outcome) => outcome,
+        Err(err) => MutantOutcome {
+            candidate,
+            status: MutantStatus::Error,
+            exit_code: None,
+            duration_ms: 0,
+            diff: String::new(),
+            stdout: String::new(),
+            stderr: format!("{err:#}"),
+        },
+    }
+}
+
+fn try_run_one(
+    repo_root: &Path,
+    candidate: &MutationCandidate,
+    probe: &[String],
+    cfg: &BatchConfig<'_>,
+    run_id: &str,
+) -> Result<MutantOutcome> {
+    let workspace = create_workspace(cfg.backend, repo_root, cfg.runs_dir, run_id)
+        .with_context(|| format!("creating workspace for {}", candidate.id))?;
+
+    let applied = apply_mutation(workspace.path(), repo_root, candidate)
+        .with_context(|| format!("applying mutation {}", candidate.id))?;
+
+    run_probe(
+        workspace.path(),
+        applied,
+        probe,
+        cfg.timeout,
+        cfg.cargo_target_dir,
+    )
+    .with_context(|| format!("running probe for {}", candidate.id))
+}
+
+fn run_id_for(idx: usize, candidate: &MutationCandidate) -> String {
+    let safe: String = candidate
+        .id
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    format!("mutant-{:05}-{}", idx, safe)
 }
 
 pub fn run_mutants_sequential(
     repo_root: &Path,
     candidates: Vec<MutationCandidate>,
     probe: &[String],
+    cfg: BatchConfig<'_>,
 ) -> Result<MutationRunReport> {
-    let mut outcomes = Vec::new();
-
-    for candidate in candidates {
-        let workspace = CowWorkspace::create_from_repo(repo_root)
-            .with_context(|| format!("creating workspace for {}", candidate.id))?;
-
-        let applied = workspace
-            .apply_mutation(repo_root, &candidate)
-            .with_context(|| format!("applying mutation {}", candidate.id))?;
-
-        let outcome = workspace
-            .run_probe(applied, probe)
-            .with_context(|| format!("running probe for {}", candidate.id))?;
-
-        outcomes.push(outcome);
-    }
+    let outcomes = candidates
+        .into_iter()
+        .enumerate()
+        .map(|(i, candidate)| {
+            let id = run_id_for(i, &candidate);
+            run_one(repo_root, candidate, probe, &cfg, &id)
+        })
+        .collect();
 
     Ok(MutationRunReport::from_outcomes(outcomes))
 }
@@ -153,9 +304,10 @@ pub fn run_mutants_parallel(
     candidates: Vec<MutationCandidate>,
     probe: &[String],
     jobs: usize,
+    cfg: BatchConfig<'_>,
 ) -> Result<MutationRunReport> {
     if jobs <= 1 {
-        return run_mutants_sequential(repo_root, candidates, probe);
+        return run_mutants_sequential(repo_root, candidates, probe, cfg);
     }
 
     let pool = rayon::ThreadPoolBuilder::new()
@@ -163,27 +315,45 @@ pub fn run_mutants_parallel(
         .build()
         .context("building mutation worker pool")?;
 
+    let indexed: Vec<(usize, MutationCandidate)> = candidates.into_iter().enumerate().collect();
+
     let outcomes = pool.install(|| {
-        candidates
+        indexed
             .into_par_iter()
-            .map(|candidate| {
-                let workspace = CowWorkspace::create_from_repo(repo_root)
-                    .with_context(|| format!("creating workspace for {}", candidate.id))?;
-
-                let applied = workspace
-                    .apply_mutation(repo_root, &candidate)
-                    .with_context(|| format!("applying mutation {}", candidate.id))?;
-
-                let outcome = workspace
-                    .run_probe(applied, probe)
-                    .with_context(|| format!("running probe for {}", candidate.id))?;
-
-                Ok::<_, anyhow::Error>(outcome)
+            .map(|(i, candidate)| {
+                let id = run_id_for(i, &candidate);
+                run_one(repo_root, candidate, probe, &cfg, &id)
             })
-            .collect::<Result<Vec<_>>>()
-    })?;
+            .collect()
+    });
 
     Ok(MutationRunReport::from_outcomes(outcomes))
+}
+
+pub fn warmup(
+    workspace_path: &Path,
+    probe: &[String],
+    cargo_target_dir: Option<&Path>,
+) -> Result<std::process::ExitStatus> {
+    if probe.is_empty() {
+        bail!("warmup command is empty");
+    }
+
+    let mut cmd = Command::new(&probe[0]);
+    cmd.args(&probe[1..]).current_dir(workspace_path);
+
+    if let Some(dir) = cargo_target_dir {
+        std::fs::create_dir_all(dir)
+            .with_context(|| format!("creating cargo target dir {}", dir.display()))?;
+        cmd.env("CARGO_TARGET_DIR", dir);
+    }
+
+    cmd.status()
+        .with_context(|| format!("running warmup command {:?}", probe))
+}
+
+pub fn default_cargo_target_dir(cache_dir: &Path) -> PathBuf {
+    cache_dir.join("cargo-target")
 }
 
 fn copy_repo(src: &Path, dst: &Path) -> Result<()> {
@@ -232,7 +402,7 @@ fn should_skip(relative: &Path) -> bool {
 
     matches!(
         first.as_ref(),
-        ".git" | "target" | "node_modules" | ".direnv" | ".idea" | ".vscode"
+        ".git" | ".ooze" | "target" | "node_modules" | ".direnv" | ".idea" | ".vscode"
     )
 }
 
