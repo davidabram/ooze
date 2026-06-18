@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::Context;
 use streaming_iterator::StreamingIterator;
 
-use crate::core::FunctionSpan;
+use crate::core::{FunctionSpan, MutationOperator};
 
 pub mod bash;
 pub mod c;
@@ -39,6 +39,9 @@ pub trait Language {
     fn tree_sitter_language(&self) -> tree_sitter::Language;
     fn functions_query(&self) -> &'static str;
     fn branches_query(&self) -> &'static str;
+    fn mutation_operators(&self) -> &'static [MutationOperator] {
+        &[]
+    }
 }
 
 pub fn supported_languages() -> Vec<Box<dyn Language>> {
