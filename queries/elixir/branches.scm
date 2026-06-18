@@ -1,5 +1,4 @@
 [
-  (else_block)
   (catch_block)
   (rescue_block)
   (stab_clause)

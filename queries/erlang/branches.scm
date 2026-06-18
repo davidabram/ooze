@@ -10,3 +10,6 @@
   (receive_expr)
   (receive_after)
 ] @branch
+
+(binary_op_expr "andalso") @branch
+(binary_op_expr "orelse") @branch

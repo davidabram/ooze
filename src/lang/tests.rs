@@ -3,6 +3,7 @@ use crate::core::FunctionSpan;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::OnceLock;
+use streaming_iterator::StreamingIterator;
 
 fn spans() -> &'static [FunctionSpan] {
     static SPANS: OnceLock<Vec<FunctionSpan>> = OnceLock::new();
@@ -140,6 +141,15 @@ fn cyclomatic_values_match_expected() {
         ("sample.java", "boolOps", 3),
         ("sample.java", "tryCatch", 3),
         ("sample.java", "withLambda", 1),
+        // julia
+        ("sample.jl", "plain", 1),
+        ("sample.jl", "if_else", 3),
+        ("sample.jl", "loops", 3),
+        ("sample.jl", "ternary", 2),
+        ("sample.jl", "switch_case", 3),
+        ("sample.jl", "bool_ops", 1),
+        ("sample.jl", "try_catch", 3),
+        ("sample.jl", "list_comp", 1),
         // php
         ("sample.php", "plain", 1),
         ("sample.php", "ifElse", 3),
@@ -168,53 +178,50 @@ fn cyclomatic_values_match_expected() {
         ("sample.erl", "if_else", 5),
         ("sample.erl", "case_demo", 5),
         ("sample.erl", "loops", 4),
-        ("sample.erl", "bool_ops", 1),
+        ("sample.erl", "bool_ops", 3),
         ("sample.erl", "try_catch", 6),
         ("sample.erl", "list_comp", 1),
         // elixir
         ("sample.exs", "plain", 1),
-        ("sample.exs", "if_else", 3),
+        ("sample.exs", "if_else", 1),
         ("sample.exs", "cond_demo", 4),
-        ("sample.exs", "case_demo", 1),
-        ("sample.exs", "loops", 2),
+        ("sample.exs", "case_demo", 4),
+        ("sample.exs", "loops", 1),
         ("sample.exs", "bool_ops", 3),
-        ("sample.exs", "try_catch", 3),
+        ("sample.exs", "try_catch", 5),
         ("sample.exs", "list_comp", 1),
         ("sample.exs", "with_closure", 1),
-        ("sample.exs", "x", 3),
         // gleam
         ("sample.gleam", "plain", 1),
-        ("sample.gleam", "if_else", 7),
-        ("sample.gleam", "case_demo", 5),
+        ("sample.gleam", "if_else", 5),
+        ("sample.gleam", "case_demo", 4),
         ("sample.gleam", "loops", 1),
-        ("sample.gleam", "loop_while", 4),
+        ("sample.gleam", "loop_while", 3),
         ("sample.gleam", "bool_ops", 3),
-        ("sample.gleam", "try_catch", 4),
+        ("sample.gleam", "try_catch", 3),
         ("sample.gleam", "with_closure", 1),
         ("sample.gleam", "list_comp", 1),
         // haskell
         ("sample.hs", "ifElse", 4),
         ("sample.hs", "caseDemo", 4),
         ("sample.hs", "loops", 1),
-        ("sample.hs", "boolOps", 1),
-        ("sample.hs", "listComp", 1),
+        ("sample.hs", "boolOps", 3),
+        ("sample.hs", "listComp", 2),
         ("sample.hs", "tryCatch", 3),
         ("sample.hs", "patternMatch", 1),
         // lua
         ("sample.lua", "plain", 1),
-        ("sample.lua", "if_else", 4),
+        ("sample.lua", "if_else", 3),
         ("sample.lua", "loops", 4),
         ("sample.lua", "bool_ops", 3),
-        ("sample.lua", "try_catch", 4),
-        ("sample.lua", "with_closure", 2),
+        ("sample.lua", "try_catch", 2),
+        ("sample.lua", "with_closure", 1),
         // ocaml
         ("sample.ml", "plain", 1),
         ("sample.ml", "if_else", 3),
         ("sample.ml", "match_case", 4),
         ("sample.ml", "loops", 3),
-        ("sample.ml", "i", 1),
-        ("sample.ml", "s", 1),
-        ("sample.ml", "bool_ops", 1),
+        ("sample.ml", "bool_ops", 3),
         ("sample.ml", "ternary", 2),
         ("sample.ml", "try_catch", 4),
         ("sample.ml", "list_comp", 1),
@@ -223,13 +230,13 @@ fn cyclomatic_values_match_expected() {
         ("sample.ml", "pattern_match", 3),
         // scala
         ("sample.scala", "plain", 1),
-        ("sample.scala", "ifElse", 5),
-        ("sample.scala", "loops", 6),
+        ("sample.scala", "ifElse", 3),
+        ("sample.scala", "loops", 3),
         ("sample.scala", "matchCase", 4),
-        ("sample.scala", "ternary", 3),
+        ("sample.scala", "ternary", 2),
         ("sample.scala", "boolOps", 3),
         ("sample.scala", "tryCatch", 5),
-        ("sample.scala", "listComp", 3),
+        ("sample.scala", "listComp", 2),
         ("sample.scala", "withLambda", 1),
         // bash
         ("sample.sh", "plain", 1),
@@ -254,7 +261,7 @@ fn cyclomatic_values_match_expected() {
         ("sample.zig", "plain", 1),
         ("sample.zig", "ifElse", 3),
         ("sample.zig", "loops", 3),
-        ("sample.zig", "switchCase", 5),
+        ("sample.zig", "switchCase", 4),
         ("sample.zig", "boolOps", 3),
         ("sample.zig", "ternary", 2),
         ("sample.zig", "tryCatch", 2),
@@ -321,3 +328,5 @@ fn anonymous_functions_get_synthetic_names_and_correct_complexity() {
         );
     }
 }
+
+

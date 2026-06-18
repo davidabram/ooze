@@ -10,5 +10,5 @@
 ] @branch
 
 (infix_expression
-  operator: (operator_identifier) @_op) @branch
-(#match? @_op "^(&&|\\|\\|)$")
+  operator: (operator_identifier) @_op
+  (#match? @_op "^(&&|\\|\\|)$")) @branch

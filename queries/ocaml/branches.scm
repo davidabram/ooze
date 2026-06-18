@@ -6,4 +6,5 @@
   (try_expression)
 ] @branch
 
-(infix_expression operator: ["&&" "||"]) @branch
+(infix_expression operator: (and_operator)) @branch
+(infix_expression operator: (or_operator)) @branch
