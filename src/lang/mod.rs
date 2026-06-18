@@ -5,17 +5,30 @@ use streaming_iterator::StreamingIterator;
 
 use crate::core::FunctionSpan;
 
+pub mod bash;
 pub mod c;
 pub mod c_sharp;
 pub mod cpp;
+pub mod dart;
+pub mod elixir;
+pub mod erlang;
+pub mod gleam;
 pub mod go;
+pub mod haskell;
+pub mod hcl;
 pub mod java;
 pub mod javascript;
+pub mod julia;
+pub mod lua;
+pub mod ocaml;
 pub mod php;
 pub mod python;
 pub mod ruby;
 pub mod rust;
+pub mod scala;
+pub mod swift;
 pub mod typescript;
+pub mod zig;
 
 #[cfg(test)]
 mod tests;
@@ -30,6 +43,7 @@ pub trait Language {
 
 pub fn supported_languages() -> Vec<Box<dyn Language>> {
     vec![
+        Box::new(bash::Bash),
         Box::new(javascript::JavaScript),
         Box::new(typescript::TypeScript),
         Box::new(python::Python),
@@ -37,10 +51,22 @@ pub fn supported_languages() -> Vec<Box<dyn Language>> {
         Box::new(c_sharp::CSharp),
         Box::new(cpp::Cpp),
         Box::new(c::C),
+        Box::new(dart::Dart),
+        Box::new(elixir::Elixir),
+        Box::new(erlang::Erlang),
+        Box::new(gleam::Gleam),
         Box::new(go::Go),
+        Box::new(haskell::Haskell),
+        Box::new(hcl::Hcl),
+        Box::new(julia::Julia),
+        Box::new(lua::Lua),
+        Box::new(ocaml::Ocaml),
         Box::new(rust::Rust),
         Box::new(ruby::Ruby),
         Box::new(php::Php),
+        Box::new(scala::Scala),
+        Box::new(swift::Swift),
+        Box::new(zig::Zig),
     ]
 }
 
