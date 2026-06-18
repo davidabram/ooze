@@ -19,15 +19,14 @@ pub fn score_without_coverage(functions: Vec<FunctionSpan>) -> Vec<CrapEntry> {
     let mut entries: Vec<CrapEntry> = functions
         .into_iter()
         .map(|f| {
-            let coverage = 0.0;
             CrapEntry {
                 file: f.file,
                 language: f.language,
                 function: f.name,
                 line: f.start_line,
                 cyclomatic: f.cyclomatic,
-                coverage: None,
-                crap: score_crap(f.cyclomatic, coverage),
+                coverage: 0.0,
+                crap: score_crap(f.cyclomatic, 0.0),
             }
         })
         .collect();
@@ -49,9 +48,8 @@ pub fn score_with_coverage(
         .into_iter()
         .map(|f| {
             let coverage_pct = lookup_coverage(&f.file, &coverage)
-                .map(|file_cov| file_cov.coverage_in_span(f.start_line, f.end_line));
-
-            let coverage_for_score = coverage_pct.unwrap_or(0.0);
+                .map(|file_cov| file_cov.coverage_in_span(f.start_line, f.end_line))
+                .unwrap_or(0.0);
 
             CrapEntry {
                 file: f.file,
@@ -60,7 +58,7 @@ pub fn score_with_coverage(
                 line: f.start_line,
                 cyclomatic: f.cyclomatic,
                 coverage: coverage_pct,
-                crap: score_crap(f.cyclomatic, coverage_for_score),
+                crap: score_crap(f.cyclomatic, coverage_pct),
             }
         })
         .collect();

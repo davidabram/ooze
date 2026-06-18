@@ -20,7 +20,7 @@ pub struct CrapEntry {
     pub function: String,
     pub line: usize,
     pub cyclomatic: usize,
-    pub coverage: Option<f64>,
+    pub coverage: f64,
     pub crap: f64,
 }
 
