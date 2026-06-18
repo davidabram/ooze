@@ -17,7 +17,67 @@ const SWAP_BOOLEAN: MutationOperator = MutationOperator {
     },
 };
 
-const MUTATION_OPERATORS: &[MutationOperator] = &[SWAP_BOOLEAN];
+const NEGATE_EQUALITY: MutationOperator = MutationOperator {
+    name: OperatorName::NegateEquality,
+    query: include_str!("../../queries/rust/negate-equality.scm"),
+    replacement: |original| match original {
+        "==" => Some("!=".to_string()),
+        "!=" => Some("==".to_string()),
+        _ => None,
+    },
+    description: |original, replacement| {
+        format!("Negate equality {original} -> {replacement}")
+    },
+};
+
+const SWAP_COMPARISON: MutationOperator = MutationOperator {
+    name: OperatorName::SwapComparison,
+    query: include_str!("../../queries/rust/swap-comparison.scm"),
+    replacement: |original| match original {
+        ">" => Some("<".to_string()),
+        "<" => Some(">".to_string()),
+        ">=" => Some("<=".to_string()),
+        "<=" => Some(">=".to_string()),
+        _ => None,
+    },
+    description: |original, replacement| {
+        format!("Swap comparison {original} -> {replacement}")
+    },
+};
+
+const SWAP_LOGICAL: MutationOperator = MutationOperator {
+    name: OperatorName::SwapLogical,
+    query: include_str!("../../queries/rust/swap-logical.scm"),
+    replacement: |original| match original {
+        "&&" => Some("||".to_string()),
+        "||" => Some("&&".to_string()),
+        _ => None,
+    },
+    description: |original, replacement| {
+        format!("Swap logical {original} -> {replacement}")
+    },
+};
+
+const INTEGER_ZERO_ONE: MutationOperator = MutationOperator {
+    name: OperatorName::IntegerZeroOne,
+    query: include_str!("../../queries/rust/integer-zero-one.scm"),
+    replacement: |original| match original {
+        "0" => Some("1".to_string()),
+        "1" => Some("0".to_string()),
+        _ => None,
+    },
+    description: |original, replacement| {
+        format!("Replace integer {original} -> {replacement}")
+    },
+};
+
+const MUTATION_OPERATORS: &[MutationOperator] = &[
+    SWAP_BOOLEAN,
+    NEGATE_EQUALITY,
+    SWAP_COMPARISON,
+    SWAP_LOGICAL,
+    INTEGER_ZERO_ONE,
+];
 
 pub struct Rust;
 

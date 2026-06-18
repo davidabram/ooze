@@ -40,6 +40,10 @@ pub struct FileCoverage {
 #[serde(rename_all = "snake_case")]
 pub enum OperatorName {
     SwapBoolean,
+    NegateEquality,
+    SwapComparison,
+    SwapLogical,
+    IntegerZeroOne,
 }
 
 impl std::fmt::Display for OperatorName {
