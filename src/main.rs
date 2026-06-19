@@ -3,6 +3,7 @@ mod lang;
 mod crap;
 mod mutate;
 mod runner;
+mod skip;
 mod scheduler;
 mod report;
 
@@ -27,6 +28,13 @@ fn read_gitignore_patterns(root: &std::path::Path) -> Vec<String> {
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
         .map(|l| l.trim_start_matches('/').to_string())
         .collect()
+}
+
+fn parse_operator(s: &str) -> Result<core::OperatorName, String> {
+    core::OperatorName::parse(s).ok_or_else(|| {
+        let names: Vec<&str> = core::OperatorName::ALL.iter().map(|o| o.as_str()).collect();
+        format!("unknown operator {s:?}; known: {}", names.join(", "))
+    })
 }
 
 fn parse_key_val(s: &str) -> Result<(String, String), String> {
@@ -103,6 +111,43 @@ enum Commands {
         #[arg(long, value_delimiter = ',', help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git.")]
         exclude: Vec<String>,
     },
+    #[command(about = "List available mutation operators and their metadata")]
+    Operators {
+        #[arg(long, default_value = "json")]
+        format: String,
+    },
+    #[command(about = "Plan a mutation run without executing probes: shows selection, scores, and applied excludes")]
+    PlanMutants {
+        #[arg(long, default_value = ".")]
+        path: PathBuf,
+
+        #[arg(long)]
+        lcov: Option<PathBuf>,
+
+        #[arg(long, value_enum, default_value_t = scheduler::MutationStrategy::Discovery)]
+        strategy: scheduler::MutationStrategy,
+
+        #[arg(long)]
+        limit: Option<usize>,
+
+        #[arg(long, default_value = "json")]
+        format: String,
+
+        #[arg(long, value_delimiter = ',', help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git.")]
+        exclude: Vec<String>,
+
+        #[arg(long, value_delimiter = ',', value_parser = parse_operator, help = "Restrict to these operators (comma-separated).")]
+        operators: Vec<core::OperatorName>,
+
+        #[arg(long = "exclude-operators", value_delimiter = ',', value_parser = parse_operator, help = "Drop these operators (comma-separated).")]
+        exclude_operators: Vec<core::OperatorName>,
+
+        #[arg(long, help = "Disable static skip rules (test files, assertion/panic macros, generated files).")]
+        no_static_skips: bool,
+
+        #[arg(long, help = "Include the full list of skipped candidates in the output.")]
+        show_skipped: bool,
+    },
     #[command(about = "Apply a mutation in a copy-on-write workspace and print the diff")]
     ApplyMutant {
         #[arg(long, default_value = ".")]
@@ -149,11 +194,29 @@ enum Commands {
         #[arg(long, default_value = ".ooze/runs")]
         runs_dir: PathBuf,
 
+        #[arg(long, default_value = "json", help = "Report format: json or human")]
+        format: String,
+
         #[arg(long, value_delimiter = ',', help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git.")]
         exclude: Vec<String>,
 
         #[arg(long = "probe-env", value_parser = parse_key_val, help = "KEY=VALUE env var to set on probe (and warmup). {worker} in VALUE expands to the worker index. Repeatable.")]
         probe_env: Vec<(String, String)>,
+
+        #[arg(long, value_delimiter = ',', value_parser = parse_operator, help = "Restrict to these operators (comma-separated).")]
+        operators: Vec<core::OperatorName>,
+
+        #[arg(long = "exclude-operators", value_delimiter = ',', value_parser = parse_operator, help = "Drop these operators (comma-separated).")]
+        exclude_operators: Vec<core::OperatorName>,
+
+        #[arg(long, help = "Disable static skip rules (test files, assertion/panic macros, generated files).")]
+        no_static_skips: bool,
+
+        #[arg(long, default_value_t = 3, help = "Lines of source context around each survived mutant (0 disables).")]
+        context_lines: usize,
+
+        #[arg(long, help = "Run the probe once on unmodified code first; abort if it fails or times out.")]
+        preflight: bool,
 
         #[arg(last = true)]
         probe: Vec<String>,
@@ -200,6 +263,105 @@ fn main() -> anyhow::Result<()> {
                 println!("{}", serde_json::to_string_pretty(&candidates)?);
             }
         }
+        Commands::Operators { format } => {
+            let infos: Vec<_> = core::OperatorName::ALL.iter().map(|o| o.info()).collect();
+            if format == "json" {
+                println!("{}", serde_json::to_string_pretty(&infos)?);
+            } else {
+                for info in &infos {
+                    println!(
+                        "{:<18} [{}] default_enabled={}\n  {}\n  hint: {}\n",
+                        info.name, info.category, info.default_enabled, info.description, info.test_hint
+                    );
+                }
+            }
+        }
+        Commands::PlanMutants {
+            path,
+            lcov,
+            strategy,
+            limit,
+            format,
+            exclude,
+            operators,
+            exclude_operators,
+            no_static_skips,
+            show_skipped,
+        } => {
+            let excludes = resolve_excludes(&path, &exclude);
+            let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
+            let languages = lang::supported_languages();
+            let candidates = mutate::discover_mutants(&functions, &languages)?;
+            let filter = mutate::OperatorFilter::from_cli(&operators, &exclude_operators);
+            let candidates = filter.apply(candidates);
+            let total_candidates = candidates.len();
+            let (candidates, skipped_candidates) = if no_static_skips {
+                (candidates, Vec::new())
+            } else {
+                skip::partition(candidates)
+            };
+            let skipped_count = skipped_candidates.len();
+
+            let crap_entries = if let Some(lcov_path) = lcov.as_ref() {
+                let coverage = crap::coverage::parse_lcov(lcov_path)?;
+                crap::score_with_coverage(functions, coverage)
+            } else {
+                crap::score_without_coverage(functions)
+            };
+
+            let mut ordered = scheduler::order(strategy, candidates, &crap_entries);
+            if let Some(limit) = limit {
+                ordered.truncate(limit);
+            }
+
+            #[derive(serde::Serialize)]
+            struct PlannedCandidate {
+                #[serde(flatten)]
+                candidate: core::MutationCandidate,
+                #[serde(flatten)]
+                selection: scheduler::SelectionExplanation,
+            }
+
+            let planned: Vec<PlannedCandidate> = ordered
+                .into_iter()
+                .map(|c| {
+                    let selection = scheduler::explain(strategy, &c, &crap_entries);
+                    PlannedCandidate { candidate: c, selection }
+                })
+                .collect();
+
+            #[derive(serde::Serialize)]
+            struct Plan {
+                total_candidates: usize,
+                skipped: usize,
+                selected: usize,
+                strategy: String,
+                excluded_patterns: Vec<String>,
+                operator_filter: mutate::OperatorFilterReport,
+                candidates: Vec<PlannedCandidate>,
+                #[serde(skip_serializing_if = "Option::is_none")]
+                skipped_candidates: Option<Vec<skip::SkippedCandidate>>,
+            }
+
+            let plan = Plan {
+                total_candidates,
+                skipped: skipped_count,
+                selected: planned.len(),
+                strategy: format!("{strategy:?}").to_lowercase(),
+                excluded_patterns: excludes,
+                operator_filter: (&filter).into(),
+                candidates: planned,
+                skipped_candidates: if show_skipped {
+                    Some(skipped_candidates)
+                } else {
+                    None
+                },
+            };
+
+            if format == "json" {
+                println!("{}", serde_json::to_string_pretty(&plan)?);
+            }
+        }
         Commands::ApplyMutant { path, id } => {
             let repo_root = path;
 
@@ -229,14 +391,28 @@ fn main() -> anyhow::Result<()> {
             workspace_backend,
             cache_dir,
             runs_dir,
+            format,
             exclude,
             probe_env,
+            operators,
+            exclude_operators,
+            no_static_skips,
+            context_lines,
+            preflight,
             probe,
         } => {
             let excludes = resolve_excludes(&path, &exclude);
             let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
             let languages = lang::supported_languages();
             let candidates = mutate::discover_mutants(&functions, &languages)?;
+            let filter = mutate::OperatorFilter::from_cli(&operators, &exclude_operators);
+            let candidates = filter.apply(candidates);
+            let candidates = if no_static_skips {
+                candidates
+            } else {
+                let (kept, _) = skip::partition(candidates);
+                kept
+            };
 
             let crap_entries = if let Some(lcov_path) = lcov.as_ref() {
                 let coverage = crap::coverage::parse_lcov(lcov_path)?;
@@ -320,6 +496,64 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
+            if preflight {
+                let preflight_target_dir = target_dir
+                    .as_deref()
+                    .or_else(|| worker_target_dirs.first().map(|p| p.as_path()));
+                let preflight_envs: Vec<(String, String)> = probe_env
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.replace("{worker}", "0")))
+                    .collect();
+                let outcome = runner::preflight(
+                    &repo_root,
+                    &probe,
+                    timeout,
+                    preflight_target_dir,
+                    &preflight_envs,
+                )?;
+                if !outcome.success {
+                    #[derive(serde::Serialize)]
+                    struct PreflightFailure {
+                        error: &'static str,
+                        message: &'static str,
+                        exit_code: Option<i32>,
+                        duration_ms: u128,
+                        stdout: String,
+                        stderr: String,
+                    }
+                    let (err, msg) = if outcome.timed_out {
+                        (
+                            "preflight_timeout",
+                            "Probe timed out on unmodified code; mutation results would be invalid.",
+                        )
+                    } else {
+                        (
+                            "preflight_failed",
+                            "Probe failed on unmodified code; mutation results would be invalid.",
+                        )
+                    };
+                    let payload = PreflightFailure {
+                        error: err,
+                        message: msg,
+                        exit_code: outcome.exit_code,
+                        duration_ms: outcome.duration_ms,
+                        stdout: outcome.stdout,
+                        stderr: outcome.stderr,
+                    };
+                    if format == "human" {
+                        eprintln!("Preflight failed.\n");
+                        eprintln!("{}\n", msg);
+                        eprintln!("Command: {}", probe.join(" "));
+                        if let Some(code) = payload.exit_code {
+                            eprintln!("Exit code: {}", code);
+                        }
+                    } else {
+                        println!("{}", serde_json::to_string_pretty(&payload)?);
+                    }
+                    std::process::exit(2);
+                }
+            }
+
             if warmup {
                 if !worker_target_dirs.is_empty() {
                     eprintln!(
@@ -359,7 +593,7 @@ fn main() -> anyhow::Result<()> {
                 runs_dir: &runs_dir,
             };
 
-            let report = runner::run_mutants_parallel(
+            let raw_report = runner::run_mutants_parallel(
                 &repo_root,
                 candidates,
                 &probe,
@@ -367,7 +601,20 @@ fn main() -> anyhow::Result<()> {
                 cfg,
             )?;
 
-            println!("{}", serde_json::to_string_pretty(&report)?);
+            let enriched = report::enrich(raw_report, &crap_entries, &repo_root, context_lines);
+
+            match format.as_str() {
+                "human" => print!("{}", report::human(&enriched)),
+                "agent-tasks-json" => {
+                    let tasks = report::agent_tasks(&enriched);
+                    println!("{}", serde_json::to_string_pretty(&tasks)?);
+                }
+                "agent-tasks-markdown" => {
+                    let tasks = report::agent_tasks(&enriched);
+                    print!("{}", report::agent_tasks_markdown(&tasks));
+                }
+                _ => println!("{}", serde_json::to_string_pretty(&enriched)?),
+            }
         }
         Commands::Warmup {
             path,

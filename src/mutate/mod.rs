@@ -1,4 +1,83 @@
-use crate::core::MutationCandidate;
+use std::collections::BTreeSet;
+
+use crate::core::{MutationCandidate, OperatorName};
+
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperatorFilterMode {
+    RegistryDefaults,
+    Explicit,
+}
+
+#[derive(Debug, Clone)]
+pub struct OperatorFilter {
+    pub mode: OperatorFilterMode,
+    pub include: BTreeSet<OperatorName>,
+    pub exclude: BTreeSet<OperatorName>,
+}
+
+impl OperatorFilter {
+    pub fn from_cli(operators: &[OperatorName], exclude_operators: &[OperatorName]) -> Self {
+        let exclude: BTreeSet<OperatorName> = exclude_operators.iter().copied().collect();
+        if operators.is_empty() {
+            let include = OperatorName::ALL
+                .iter()
+                .copied()
+                .filter(|op| op.info().default_enabled)
+                .collect();
+            Self {
+                mode: OperatorFilterMode::RegistryDefaults,
+                include,
+                exclude,
+            }
+        } else {
+            Self {
+                mode: OperatorFilterMode::Explicit,
+                include: operators.iter().copied().collect(),
+                exclude,
+            }
+        }
+    }
+
+    pub fn allows(&self, op: OperatorName) -> bool {
+        if self.exclude.contains(&op) {
+            return false;
+        }
+        self.include.contains(&op)
+    }
+
+    pub fn apply(&self, candidates: Vec<MutationCandidate>) -> Vec<MutationCandidate> {
+        candidates
+            .into_iter()
+            .filter(|c| self.allows(c.operator))
+            .collect()
+    }
+
+    pub fn included_after_excludes(&self) -> Vec<OperatorName> {
+        self.include
+            .iter()
+            .copied()
+            .filter(|op| !self.exclude.contains(op))
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct OperatorFilterReport {
+    pub mode: OperatorFilterMode,
+    pub included: Vec<OperatorName>,
+    pub excluded: Vec<OperatorName>,
+}
+
+impl From<&OperatorFilter> for OperatorFilterReport {
+    fn from(f: &OperatorFilter) -> Self {
+        Self {
+            mode: f.mode,
+            included: f.included_after_excludes(),
+            excluded: f.exclude.iter().copied().collect(),
+        }
+    }
+}
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use streaming_iterator::StreamingIterator;

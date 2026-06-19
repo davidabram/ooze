@@ -352,6 +352,93 @@ pub fn run_mutants_parallel(
     Ok(MutationRunReport::from_outcomes(outcomes))
 }
 
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PreflightOutcome {
+    pub success: bool,
+    pub timed_out: bool,
+    pub exit_code: Option<i32>,
+    pub duration_ms: u128,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+pub fn preflight(
+    repo_root: &Path,
+    probe: &[String],
+    timeout: Option<Duration>,
+    cargo_target_dir: Option<&Path>,
+    extra_envs: &[(String, String)],
+) -> Result<PreflightOutcome> {
+    if probe.is_empty() {
+        bail!("preflight probe command is empty");
+    }
+
+    let started = Instant::now();
+
+    let mut cmd = Command::new(&probe[0]);
+    cmd.args(&probe[1..])
+        .current_dir(repo_root)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    if let Some(dir) = cargo_target_dir {
+        cmd.env("CARGO_TARGET_DIR", dir);
+        cmd.env("CARGO_BUILD_JOBS", "1");
+    }
+    for (k, v) in extra_envs {
+        cmd.env(k, v);
+    }
+
+    let mut child = cmd
+        .spawn()
+        .with_context(|| format!("spawning preflight probe {:?}", probe))?;
+
+    let mut timed_out = false;
+    let status = loop {
+        match child.try_wait().context("polling preflight child")? {
+            Some(s) => break Some(s),
+            None => {
+                if let Some(limit) = timeout {
+                    if started.elapsed() >= limit {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        timed_out = true;
+                        break None;
+                    }
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+    };
+
+    let duration_ms = started.elapsed().as_millis();
+
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    if let Some(mut s) = child.stdout.take() {
+        let _ = s.read_to_string(&mut stdout);
+    }
+    if let Some(mut s) = child.stderr.take() {
+        let _ = s.read_to_string(&mut stderr);
+    }
+
+    let (success, exit_code) = if timed_out {
+        (false, None)
+    } else {
+        let s = status.expect("status set when not timed out");
+        (s.success(), s.code())
+    };
+
+    Ok(PreflightOutcome {
+        success,
+        timed_out,
+        exit_code,
+        duration_ms,
+        stdout,
+        stderr,
+    })
+}
+
 pub fn warmup(
     workspace_path: &Path,
     probe: &[String],

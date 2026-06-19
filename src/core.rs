@@ -101,7 +101,7 @@ pub struct FileCoverage {
     pub lines: BTreeMap<u32, u64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OperatorName {
     SwapBoolean,
@@ -109,6 +109,79 @@ pub enum OperatorName {
     SwapComparison,
     SwapLogical,
     IntegerZeroOne,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MutationOperatorInfo {
+    pub name: &'static str,
+    pub category: &'static str,
+    pub default_enabled: bool,
+    pub description: &'static str,
+    pub test_hint: &'static str,
+}
+
+impl OperatorName {
+    pub const ALL: &'static [OperatorName] = &[
+        OperatorName::SwapComparison,
+        OperatorName::NegateEquality,
+        OperatorName::SwapLogical,
+        OperatorName::SwapBoolean,
+        OperatorName::IntegerZeroOne,
+    ];
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OperatorName::SwapBoolean => "swap_boolean",
+            OperatorName::NegateEquality => "negate_equality",
+            OperatorName::SwapComparison => "swap_comparison",
+            OperatorName::SwapLogical => "swap_logical",
+            OperatorName::IntegerZeroOne => "integer_zero_one",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<OperatorName> {
+        OperatorName::ALL.iter().copied().find(|op| op.as_str() == s)
+    }
+
+    pub fn info(&self) -> MutationOperatorInfo {
+        match self {
+            OperatorName::SwapComparison => MutationOperatorInfo {
+                name: self.as_str(),
+                category: "boundary",
+                default_enabled: true,
+                description: "Swap comparison operators such as < -> > or >= -> <=.",
+                test_hint: "Add boundary tests around the changed comparison.",
+            },
+            OperatorName::NegateEquality => MutationOperatorInfo {
+                name: self.as_str(),
+                category: "equality",
+                default_enabled: true,
+                description: "Replace == with != or != with ==.",
+                test_hint: "Add tests covering equal and non-equal inputs.",
+            },
+            OperatorName::SwapLogical => MutationOperatorInfo {
+                name: self.as_str(),
+                category: "boolean_logic",
+                default_enabled: true,
+                description: "Replace && with || or || with &&.",
+                test_hint: "Add truth-table style tests for both sides of the condition.",
+            },
+            OperatorName::SwapBoolean => MutationOperatorInfo {
+                name: self.as_str(),
+                category: "boolean_logic",
+                default_enabled: true,
+                description: "Flip boolean literals (true <-> false).",
+                test_hint: "Assert both the true and the false branch independently.",
+            },
+            OperatorName::IntegerZeroOne => MutationOperatorInfo {
+                name: self.as_str(),
+                category: "boundary",
+                default_enabled: false,
+                description: "Replace integer 0 with 1 or 1 with 0.",
+                test_hint: "Add empty / singleton / boundary count tests.",
+            },
+        }
+    }
 }
 
 impl std::fmt::Display for OperatorName {
