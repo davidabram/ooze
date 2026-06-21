@@ -929,3 +929,62 @@ pub fn human(report: &EnrichedRunReport) -> String {
 
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn make_task(file: &str, line: usize, operator: OperatorName, mutation: &str, priority: f64) -> AgentTask {
+        AgentTask {
+            id: format!("task-{}", priority),
+            file: PathBuf::from(file),
+            function: "test_fn".to_string(),
+            line,
+            operator,
+            mutation: mutation.to_string(),
+            focus: String::new(),
+            operator_hint: String::new(),
+            prompt: String::new(),
+            cyclomatic: None,
+            coverage: None,
+            crap: None,
+            priority_score: priority,
+            source_context: None,
+        }
+    }
+
+    #[test]
+    fn agent_tasks_markdown_dedup_keeps_higher_priority() {
+        // Two tasks with identical dedup key; second has higher priority_score.
+        let low = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 1.0);
+        let high = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 99.0);
+        let report = AgentTaskReport { tasks: vec![low, high] };
+        let md = agent_tasks_markdown(&report);
+        // The high-priority task's id contains "99" — it must appear in the output.
+        assert!(
+            md.contains("99"),
+            "dedup should keep the higher-priority task; got:\n{md}"
+        );
+    }
+
+    #[test]
+    fn agent_tasks_markdown_dedup_keeps_higher_priority_when_first_is_higher() {
+        // First task has higher priority_score; second is lower.
+        let high = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 99.0);
+        let low = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 1.0);
+        let report = AgentTaskReport { tasks: vec![high, low] };
+        let md = agent_tasks_markdown(&report);
+        assert!(
+            md.contains("99"),
+            "dedup should keep the higher-priority task; got:\n{md}"
+        );
+    }
+
+    #[test]
+    fn agent_tasks_markdown_empty_report() {
+        let report = AgentTaskReport { tasks: vec![] };
+        let md = agent_tasks_markdown(&report);
+        assert!(md.contains("No survived mutants"));
+    }
+}

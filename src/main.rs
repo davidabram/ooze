@@ -86,6 +86,29 @@ fn resolve_excludes(root: &std::path::Path, user: &[String]) -> Vec<String> {
     out
 }
 
+fn resolve_bool_flag(cli_flag: bool, config_value: Option<bool>) -> bool {
+    cli_flag || config_value == Some(true)
+}
+
+// Used when the config key is a positive "enabled" flag but the CLI exposes the negative
+// ("no_static_skips"): the flag is on when the CLI says so OR the config says disabled.
+fn resolve_disabled_flag(cli_flag: bool, config_enabled: Option<bool>) -> bool {
+    cli_flag || config_enabled == Some(false)
+}
+
+// Returns per-worker build-cache paths when jobs > 1; empty otherwise.
+fn per_worker_cache_dirs(jobs: usize, cache_dir: &std::path::Path) -> Vec<PathBuf> {
+    if jobs > 1 {
+        (0..jobs).map(|i| cache_dir.join(format!("build-cache-job-{i}"))).collect()
+    } else {
+        Vec::new()
+    }
+}
+
+fn looks_like_path(s: &str) -> bool {
+    s.contains('/') || s.starts_with('.') || std::path::Path::new(s).is_absolute()
+}
+
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum WorkspaceBackendArg {
     Copy,
@@ -486,9 +509,8 @@ fn main() -> anyhow::Result<()> {
             let jobs = jobs.or(cfg.runner.jobs).unwrap_or(1);
             let timeout_seconds = timeout_seconds.or(cfg.runner.timeout_seconds);
             let build_cache_dir = build_cache_dir.or(cfg.runner.build_cache_dir.clone());
-            let per_worker_cache =
-                per_worker_cache || cfg.runner.per_worker_cache == Some(true);
-            let warmup = warmup || cfg.runner.warmup == Some(true);
+            let per_worker_cache = resolve_bool_flag(per_worker_cache, cfg.runner.per_worker_cache);
+            let warmup = resolve_bool_flag(warmup, cfg.runner.warmup);
             let workspace_backend = match workspace_backend {
                 Some(w) => w,
                 None => match cfg.runner.workspace_backend.as_deref() {
@@ -506,12 +528,12 @@ fn main() -> anyhow::Result<()> {
                 .or(cfg.report.format.clone())
                 .unwrap_or_else(|| "json".to_string());
             let output = output.or(cfg.report.output.clone());
-            let no_static_skips = no_static_skips || cfg.mutation.static_skips == Some(false);
+            let no_static_skips = resolve_disabled_flag(no_static_skips, cfg.mutation.static_skips);
             let context_lines = context_lines.or(cfg.mutation.context_lines).unwrap_or(3);
-            let preflight = preflight || cfg.runner.preflight == Some(true);
+            let preflight = resolve_bool_flag(preflight, cfg.runner.preflight);
             let no_fail_on_survivors =
-                no_fail_on_survivors || cfg.report.fail_on_survivors == Some(false);
-            let allow_incomplete = allow_incomplete || cfg.report.allow_incomplete == Some(true);
+                resolve_disabled_flag(no_fail_on_survivors, cfg.report.fail_on_survivors);
+            let allow_incomplete = resolve_bool_flag(allow_incomplete, cfg.report.allow_incomplete);
             let lcov = lcov.or(cfg.mutation.lcov.clone());
 
             let mut exclude = exclude;
@@ -615,19 +637,13 @@ fn main() -> anyhow::Result<()> {
 
             let (target_dir, worker_build_cache_dirs): (Option<PathBuf>, Vec<PathBuf>) =
                 if per_worker_cache {
-                    if jobs > 1 {
-                        let dirs: Vec<PathBuf> = (0..jobs)
-                            .map(|i| cache_dir.join(format!("build-cache-job-{i}")))
-                            .collect();
-                        for d in &dirs {
-                            std::fs::create_dir_all(d).with_context(|| {
-                                format!("creating worker build cache dir {}", d.display())
-                            })?;
-                        }
-                        (None, dirs)
-                    } else {
-                        (None, Vec::new())
+                    let dirs = per_worker_cache_dirs(jobs, &cache_dir);
+                    for d in &dirs {
+                        std::fs::create_dir_all(d).with_context(|| {
+                            format!("creating worker build cache dir {}", d.display())
+                        })?;
                     }
+                    (None, dirs)
                 } else {
                     let dir = build_cache_dir
                         .unwrap_or_else(|| runner::default_build_cache_dir(&cache_dir));
@@ -649,10 +665,7 @@ fn main() -> anyhow::Result<()> {
                 for i in 0..num_workers {
                     let resolved = v.replace("{worker}", &i.to_string());
                     let p = std::path::Path::new(&resolved);
-                    let looks_like_path = resolved.contains('/')
-                        || resolved.starts_with('.')
-                        || p.is_absolute();
-                    if looks_like_path {
+                    if looks_like_path(&resolved) {
                         std::fs::create_dir_all(p).with_context(|| {
                             format!("creating probe-env directory {}", p.display())
                         })?;
@@ -889,4 +902,79 @@ fn main() -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_bool_flag_true_when_cli_set() {
+        assert!(resolve_bool_flag(true, None));
+        assert!(resolve_bool_flag(true, Some(false)));
+        assert!(resolve_bool_flag(true, Some(true)));
+    }
+
+    #[test]
+    fn resolve_bool_flag_true_when_config_enabled() {
+        assert!(resolve_bool_flag(false, Some(true)));
+    }
+
+    #[test]
+    fn resolve_bool_flag_false_when_neither() {
+        assert!(!resolve_bool_flag(false, None));
+        assert!(!resolve_bool_flag(false, Some(false)));
+    }
+
+    #[test]
+    fn resolve_disabled_flag_true_when_cli_set() {
+        assert!(resolve_disabled_flag(true, None));
+        assert!(resolve_disabled_flag(true, Some(true)));
+    }
+
+    #[test]
+    fn resolve_disabled_flag_true_when_config_disables() {
+        assert!(resolve_disabled_flag(false, Some(false)));
+    }
+
+    #[test]
+    fn resolve_disabled_flag_false_when_neither() {
+        assert!(!resolve_disabled_flag(false, None));
+        assert!(!resolve_disabled_flag(false, Some(true)));
+    }
+
+    #[test]
+    fn per_worker_cache_dirs_multiple_jobs_returns_numbered_dirs() {
+        let base = std::path::Path::new("/cache");
+        let dirs = per_worker_cache_dirs(2, base);
+        assert_eq!(dirs.len(), 2);
+        assert_eq!(dirs[0], base.join("build-cache-job-0"));
+        assert_eq!(dirs[1], base.join("build-cache-job-1"));
+    }
+
+    #[test]
+    fn per_worker_cache_dirs_single_job_returns_empty() {
+        let dirs = per_worker_cache_dirs(1, std::path::Path::new("/cache"));
+        assert!(dirs.is_empty());
+    }
+
+    #[test]
+    fn looks_like_path_slash_is_path() {
+        assert!(looks_like_path("dir/file"));
+    }
+
+    #[test]
+    fn looks_like_path_dot_prefix_is_path() {
+        assert!(looks_like_path(".hidden"));
+    }
+
+    #[test]
+    fn looks_like_path_absolute_is_path() {
+        assert!(looks_like_path("/absolute/path"));
+    }
+
+    #[test]
+    fn looks_like_path_plain_name_is_not_path() {
+        assert!(!looks_like_path("plain"));
+    }
 }
