@@ -17,6 +17,10 @@ const DEFAULT_EXCLUDES: &[&str] = &[
     "target/**",
     ".ooze/**",
     ".git/**",
+    "node_modules/**",
+    "vendor/**",
+    "__pycache__/**",
+    ".gradle/**",
 ];
 
 fn read_gitignore_patterns(root: &std::path::Path) -> Vec<String> {
@@ -46,6 +50,33 @@ fn parse_key_val(s: &str) -> Result<(String, String), String> {
         return Err(format!("empty key in {s:?}"));
     }
     Ok((k.to_string(), v.to_string()))
+}
+
+fn prompt_language() -> anyhow::Result<String> {
+    use std::io::{BufRead, Write};
+    eprintln!("Select a language preset:");
+    for (i, (key, label)) in config::LANGUAGES.iter().enumerate() {
+        eprintln!("  [{}] {} ({})", i + 1, label, key);
+    }
+    eprint!("Choice [1-{}]: ", config::LANGUAGES.len());
+    std::io::stderr().flush()?;
+    let mut input = String::new();
+    std::io::stdin()
+        .lock()
+        .read_line(&mut input)
+        .context("reading language choice from stdin")?;
+    let trimmed = input.trim();
+    if let Ok(n) = trimmed.parse::<usize>() {
+        return config::LANGUAGES
+            .get(n.wrapping_sub(1))
+            .map(|(k, _)| k.to_string())
+            .ok_or_else(|| anyhow::anyhow!("choice must be 1-{}", config::LANGUAGES.len()));
+    }
+    if config::LANGUAGES.iter().any(|(k, _)| *k == trimmed) {
+        return Ok(trimmed.to_string());
+    }
+    let known: Vec<&str> = config::LANGUAGES.iter().map(|(k, _)| *k).collect();
+    anyhow::bail!("unknown language {trimmed:?}; known: {}", known.join(", "))
 }
 
 fn resolve_excludes(root: &std::path::Path, user: &[String]) -> Vec<String> {
@@ -190,11 +221,11 @@ enum Commands {
         #[arg(long)]
         timeout_seconds: Option<u64>,
 
-        #[arg(long, help = "Shared CARGO_TARGET_DIR for probe runs (default: <cache_dir>/cargo-target)")]
-        cargo_target_dir: Option<PathBuf>,
+        #[arg(long, help = "Shared build cache dir for probe runs (default: <cache_dir>/build-cache). Reference it as {build_cache} in --probe-env.")]
+        build_cache_dir: Option<PathBuf>,
 
-        #[arg(long, help = "Disable the shared CARGO_TARGET_DIR for probes")]
-        no_shared_target: bool,
+        #[arg(long, help = "Give each worker its own build-cache-job-{i} dir instead of a shared one")]
+        per_worker_cache: bool,
 
         #[arg(long, help = "Pre-build the probe in each worker target dir before running mutants")]
         warmup: bool,
@@ -251,8 +282,11 @@ enum Commands {
 
         #[arg(long, help = "Overwrite an existing config file")]
         force: bool,
+
+        #[arg(long, help = "Language preset: rust, go, python, node, java-gradle, java-maven, ruby. Prompted interactively if omitted.")]
+        language: Option<String>,
     },
-    #[command(about = "Warm up the shared Cargo cache before running mutants")]
+    #[command(about = "Warm up the shared build cache before running mutants")]
     Warmup {
         #[arg(long, default_value = ".")]
         path: PathBuf,
@@ -417,8 +451,8 @@ fn main() -> anyhow::Result<()> {
             limit,
             jobs,
             timeout_seconds,
-            cargo_target_dir,
-            no_shared_target,
+            build_cache_dir,
+            per_worker_cache,
             warmup,
             workspace_backend,
             cache_dir,
@@ -451,9 +485,9 @@ fn main() -> anyhow::Result<()> {
             let limit = limit.or(cfg.mutation.limit);
             let jobs = jobs.or(cfg.runner.jobs).unwrap_or(1);
             let timeout_seconds = timeout_seconds.or(cfg.runner.timeout_seconds);
-            let cargo_target_dir = cargo_target_dir.or(cfg.runner.cargo_target_dir.clone());
-            let no_shared_target =
-                no_shared_target || cfg.runner.shared_target == Some(false);
+            let build_cache_dir = build_cache_dir.or(cfg.runner.build_cache_dir.clone());
+            let per_worker_cache =
+                per_worker_cache || cfg.runner.per_worker_cache == Some(true);
             let warmup = warmup || cfg.runner.warmup == Some(true);
             let workspace_backend = match workspace_backend {
                 Some(w) => w,
@@ -579,15 +613,15 @@ fn main() -> anyhow::Result<()> {
                 format!("creating runs dir {}", runs_dir.display())
             })?;
 
-            let (target_dir, worker_target_dirs): (Option<PathBuf>, Vec<PathBuf>) =
-                if no_shared_target {
+            let (target_dir, worker_build_cache_dirs): (Option<PathBuf>, Vec<PathBuf>) =
+                if per_worker_cache {
                     if jobs > 1 {
                         let dirs: Vec<PathBuf> = (0..jobs)
-                            .map(|i| cache_dir.join(format!("cargo-target-job-{i}")))
+                            .map(|i| cache_dir.join(format!("build-cache-job-{i}")))
                             .collect();
                         for d in &dirs {
                             std::fs::create_dir_all(d).with_context(|| {
-                                format!("creating worker cargo target dir {}", d.display())
+                                format!("creating worker build cache dir {}", d.display())
                             })?;
                         }
                         (None, dirs)
@@ -595,16 +629,16 @@ fn main() -> anyhow::Result<()> {
                         (None, Vec::new())
                     }
                 } else {
-                    let dir = cargo_target_dir
-                        .unwrap_or_else(|| runner::default_cargo_target_dir(&cache_dir));
+                    let dir = build_cache_dir
+                        .unwrap_or_else(|| runner::default_build_cache_dir(&cache_dir));
                     std::fs::create_dir_all(&dir).with_context(|| {
-                        format!("creating cargo target dir {}", dir.display())
+                        format!("creating build cache dir {}", dir.display())
                     })?;
                     (Some(dir), Vec::new())
                 };
 
-            let num_workers = if !worker_target_dirs.is_empty() {
-                worker_target_dirs.len()
+            let num_workers = if !worker_build_cache_dirs.is_empty() {
+                worker_build_cache_dirs.len()
             } else {
                 jobs.max(1)
             };
@@ -627,18 +661,25 @@ fn main() -> anyhow::Result<()> {
             }
 
             if preflight {
-                let preflight_target_dir = target_dir
+                let preflight_build_cache = target_dir
                     .as_deref()
-                    .or_else(|| worker_target_dirs.first().map(|p| p.as_path()));
+                    .or_else(|| worker_build_cache_dirs.first().map(|p| p.as_path()));
                 let preflight_envs: Vec<(String, String)> = probe_env
                     .iter()
-                    .map(|(k, v)| (k.clone(), v.replace("{worker}", "0")))
+                    .map(|(k, v)| {
+                        let v = v.replace("{worker}", "0");
+                        let v = if let Some(dir) = preflight_build_cache {
+                            v.replace("{build_cache}", &dir.to_string_lossy())
+                        } else {
+                            v
+                        };
+                        (k.clone(), v)
+                    })
                     .collect();
                 let outcome = runner::preflight(
                     &repo_root,
                     &probe,
                     timeout,
-                    preflight_target_dir,
                     &preflight_envs,
                 )?;
                 if !outcome.success {
@@ -680,28 +721,32 @@ fn main() -> anyhow::Result<()> {
                     } else {
                         println!("{}", serde_json::to_string_pretty(&payload)?);
                     }
-                    std::process::exit(2);
+                    std::process::exit(report::OozeExitCode::PreflightFailed.code());
                 }
             }
 
             if warmup {
-                if !worker_target_dirs.is_empty() {
+                if !worker_build_cache_dirs.is_empty() {
                     eprintln!(
-                        "warming up {} worker target dirs in parallel...",
-                        worker_target_dirs.len()
+                        "warming up {} worker build cache dirs in parallel...",
+                        worker_build_cache_dirs.len()
                     );
                     runner::warmup_workers(
                         &repo_root,
                         &probe,
-                        &worker_target_dirs,
+                        &worker_build_cache_dirs,
                         jobs,
                         &probe_env,
                     )?;
                 } else if let Some(dir) = target_dir.as_deref() {
-                    eprintln!("warming up shared target dir...");
+                    eprintln!("warming up shared build cache dir...");
                     let extra: Vec<(String, String)> = probe_env
                         .iter()
-                        .map(|(k, v)| (k.clone(), v.replace("{worker}", "0")))
+                        .map(|(k, v)| {
+                            let v = v.replace("{worker}", "0");
+                            let v = v.replace("{build_cache}", &dir.to_string_lossy());
+                            (k.clone(), v)
+                        })
                         .collect();
                     let status = runner::warmup(&repo_root, &probe, Some(dir), &extra)?;
                     if !status.success() {
@@ -713,11 +758,11 @@ fn main() -> anyhow::Result<()> {
             let cfg = runner::BatchConfig {
                 backend: workspace_backend.resolve(),
                 timeout,
-                cargo_target_dir: target_dir.as_deref(),
-                worker_target_dirs: if worker_target_dirs.is_empty() {
+                build_cache_dir: target_dir.as_deref(),
+                worker_build_cache_dirs: if worker_build_cache_dirs.is_empty() {
                     None
                 } else {
-                    Some(&worker_target_dirs)
+                    Some(&worker_build_cache_dirs)
                 },
                 probe_env_templates: &probe_env,
                 runs_dir: &runs_dir,
@@ -783,7 +828,7 @@ fn main() -> anyhow::Result<()> {
             } else {
                 repo_root.join(&cache_dir)
             };
-            let target_dir = runner::default_cargo_target_dir(&cache_dir);
+            let target_dir = runner::default_build_cache_dir(&cache_dir);
             let status = runner::warmup(&repo_root, &probe, Some(&target_dir), &[])?;
             if !status.success() {
                 anyhow::bail!("warmup command failed with status {status}");
@@ -803,20 +848,28 @@ fn main() -> anyhow::Result<()> {
 
             let workspace = runner::CowWorkspace::create_from_repo(&repo_root)?;
             let applied = workspace.apply_mutation(&repo_root, &candidate)?;
-            let outcome = workspace.run_probe(applied, &probe, None, None)?;
+            let outcome = workspace.run_probe(applied, &probe, None)?;
 
             println!("{}", serde_json::to_string_pretty(&outcome)?);
         }
-        Commands::InitConfig { path, force } => {
+        Commands::InitConfig { path, force, language } => {
             if path.exists() && !force {
                 anyhow::bail!(
                     "{} already exists; pass --force to overwrite",
                     path.display()
                 );
             }
-            std::fs::write(&path, config::INIT_CONFIG_TEMPLATE)
+            let lang = match language {
+                Some(l) => l,
+                None => prompt_language()?,
+            };
+            let template = config::template_for_language(&lang).ok_or_else(|| {
+                let known: Vec<&str> = config::LANGUAGES.iter().map(|(k, _)| *k).collect();
+                anyhow::anyhow!("unknown language {lang:?}; known: {}", known.join(", "))
+            })?;
+            std::fs::write(&path, template)
                 .with_context(|| format!("writing {}", path.display()))?;
-            eprintln!("wrote {}", path.display());
+            eprintln!("wrote {} ({})", path.display(), lang);
         }
         Commands::Crap {
             path,

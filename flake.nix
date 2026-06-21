@@ -12,7 +12,14 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         overlays = [ (import rust-overlay) ];
-        pkgs = import nixpkgs { inherit system overlays; };
+        pkgs = import nixpkgs {
+          inherit system overlays;
+          config = {
+            allowUnfreePredicate = pkg: builtins.elem (nixpkgs.lib.getName pkg) [
+              "claude-code"
+            ];
+          };
+        };
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "rust-src" "rust-analyzer" "llvm-tools-preview" ];
         };
@@ -24,6 +31,7 @@
             pkg-config
             openssl
             jq
+            claude-code
           ];
 
           RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";

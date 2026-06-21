@@ -14,7 +14,12 @@ pub struct AgentTask {
     pub operator: OperatorName,
     pub mutation: String,
     pub focus: String,
+    pub operator_hint: String,
     pub prompt: String,
+    pub cyclomatic: Option<usize>,
+    pub coverage: Option<f64>,
+    pub crap: Option<f64>,
+    pub priority_score: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_context: Option<SourceContext>,
 }
@@ -25,6 +30,12 @@ pub struct AgentTaskReport {
 }
 
 pub fn agent_tasks(report: &EnrichedRunReport) -> AgentTaskReport {
+    let func_index: HashMap<(&PathBuf, &String), &FunctionMutationSummary> = report
+        .functions
+        .iter()
+        .map(|f| ((&f.file, &f.function), f))
+        .collect();
+
     let mut tasks = Vec::new();
     for o in &report.outcomes {
         if !matches!(o.outcome.status, MutantStatus::Survived) {
@@ -33,6 +44,9 @@ pub fn agent_tasks(report: &EnrichedRunReport) -> AgentTaskReport {
         let Some(suggestion) = &o.test_suggestion else {
             continue;
         };
+        let func_info = func_index
+            .get(&(&o.outcome.candidate.file, &o.outcome.candidate.function))
+            .copied();
         tasks.push(AgentTask {
             id: format!("test-task-{:03}", tasks.len() + 1),
             file: o.outcome.candidate.file.clone(),
@@ -44,7 +58,12 @@ pub fn agent_tasks(report: &EnrichedRunReport) -> AgentTaskReport {
                 o.outcome.candidate.original, o.outcome.candidate.replacement
             ),
             focus: suggestion.focus.clone(),
+            operator_hint: suggestion.operator_hint.clone(),
             prompt: suggestion.prompt.clone(),
+            cyclomatic: func_info.and_then(|f| f.cyclomatic),
+            coverage: func_info.and_then(|f| f.coverage),
+            crap: func_info.and_then(|f| f.crap),
+            priority_score: func_info.map(|f| f.priority_score).unwrap_or(0.0),
             source_context: o.source_context.clone(),
         });
     }
@@ -57,7 +76,9 @@ pub enum OozeExitCode {
     SurvivorsFound = 1,
     PreflightFailed = 2,
     InfrastructureProblem = 3,
+    #[allow(dead_code)]
     UsageError = 4,
+    #[allow(dead_code)]
     InternalError = 5,
 }
 
@@ -286,26 +307,222 @@ pub fn github_annotations(report: &EnrichedRunReport) -> String {
 }
 
 pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fmt::Write;
+
     let mut out = String::new();
     let _ = writeln!(out, "# Mutation Testing Tasks\n");
+
     if report.tasks.is_empty() {
         out.push_str("No survived mutants. Nothing to write.\n");
         return out;
     }
+
+    // Deduplicate by (file, line, operator, mutation) — keep highest priority_score per site
+    type DedupeKey = (String, usize, String, String);
+    let mut best_idx: BTreeMap<DedupeKey, usize> = BTreeMap::new();
+    let mut dup_counts: BTreeMap<DedupeKey, usize> = BTreeMap::new();
+
     for (i, t) in report.tasks.iter().enumerate() {
-        let _ = writeln!(out, "## {}. `{}`\n", i + 1, t.function);
-        let _ = writeln!(out, "File: `{}:{}`  ", t.file.display(), t.line);
-        let _ = writeln!(out, "Operator: `{}`  ", t.operator.as_str());
-        let _ = writeln!(out, "Mutation: `{}`  ", t.mutation);
-        let _ = writeln!(out, "Focus: {}\n", t.focus);
-        let _ = writeln!(out, "{}\n", t.prompt);
-        if let Some(ctx) = &t.source_context {
-            out.push_str("```text\n");
-            out.push_str(&ctx.snippet);
-            out.push_str("```\n\n");
+        let key: DedupeKey = (
+            t.file.to_string_lossy().into_owned(),
+            t.line,
+            t.operator.as_str().to_string(),
+            t.mutation.clone(),
+        );
+        *dup_counts.entry(key.clone()).or_insert(0) += 1;
+        best_idx
+            .entry(key)
+            .and_modify(|j| {
+                if report.tasks[i].priority_score > report.tasks[*j].priority_score {
+                    *j = i;
+                }
+            })
+            .or_insert(i);
+    }
+
+    let mut deduped: Vec<(&AgentTask, usize)> = best_idx
+        .iter()
+        .map(|(k, &idx)| (&report.tasks[idx], *dup_counts.get(k).unwrap_or(&1)))
+        .collect();
+    deduped.sort_by(|(a, _), (b, _)| {
+        b.priority_score
+            .partial_cmp(&a.priority_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let raw_count = report.tasks.len();
+    let unique_mutations = deduped.len();
+
+    // Unique locations = distinct (file, line) pairs across raw tasks
+    let unique_locations: BTreeSet<(String, usize)> = report
+        .tasks
+        .iter()
+        .map(|t| (t.file.to_string_lossy().into_owned(), t.line))
+        .collect();
+    let unique_location_count = unique_locations.len();
+
+    let mut file_counts: BTreeMap<String, usize> = BTreeMap::new();
+    for t in &report.tasks {
+        *file_counts.entry(t.file.to_string_lossy().into_owned()).or_insert(0) += 1;
+    }
+    let mut file_list: Vec<(String, usize)> = file_counts.into_iter().collect();
+    file_list.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+
+    // --- Summary ---
+    let _ = writeln!(out, "## Summary\n");
+    let _ = writeln!(out, "- Raw mutations: {}", raw_count);
+    let _ = writeln!(out, "- Unique mutation records after dedupe: {}", unique_mutations);
+    if unique_location_count < unique_mutations {
+        let _ = writeln!(
+            out,
+            "- Unique source locations: {} (lines with multiple operators)",
+            unique_location_count
+        );
+    }
+    if raw_count > unique_mutations {
+        let _ = writeln!(out, "- Duplicates removed: {}", raw_count - unique_mutations);
+    }
+    let _ = writeln!(out, "- Files affected: {}\n", file_list.len());
+    out.push_str("Most affected files:\n\n");
+    for (file, count) in file_list.iter().take(5) {
+        let _ = writeln!(out, "- `{}` ({} mutations)", file, count);
+    }
+    out.push('\n');
+
+    // --- Targets: emit function metrics once, sorted by priority desc ---
+    let mut seen_funcs: BTreeMap<(String, String), bool> = BTreeMap::new();
+    let mut targets: Vec<&AgentTask> = Vec::new();
+    for (t, _) in &deduped {
+        let key = (t.file.to_string_lossy().into_owned(), t.function.clone());
+        if seen_funcs.insert(key, true).is_none() {
+            targets.push(t);
         }
     }
+    // deduped is already sorted by priority_score desc, so targets preserves that order
+    let _ = writeln!(out, "## Target{}\n", if targets.len() == 1 { "" } else { "s" });
+    for t in &targets {
+        let crap = t.crap.map(|v| format!("{:.1}", v)).unwrap_or_else(|| "n/a".into());
+        let cc = t.cyclomatic.map(|v| v.to_string()).unwrap_or_else(|| "n/a".into());
+        let cov = t.coverage.map(|v| format!("{:.1}%", v)).unwrap_or_else(|| "n/a".into());
+        let _ = writeln!(out, "### `{}::{}`\n", t.file.display(), t.function);
+        let _ = writeln!(
+            out,
+            "CRAP: **{crap}** | CC: **{cc}** | Coverage: **{cov}** | Priority: **{:.1}**\n",
+            t.priority_score
+        );
+    }
+
+    // Split into priority thirds (deduped is sorted desc by priority_score)
+    let n = deduped.len();
+    let high_end = (n / 3).max(1).min(n);
+    let med_end = (n * 2 / 3).max(high_end + 1).min(n);
+    let high = &deduped[..high_end];
+    let medium = &deduped[high_end..med_end];
+    let low = &deduped[med_end..];
+
+    let single_target = targets.len() == 1;
+
+    let sections: [(&str, &[(&AgentTask, usize)]); 3] =
+        [("High", high), ("Medium", medium), ("Low", low)];
+
+    for (label, bucket) in sections {
+        if bucket.is_empty() {
+            continue;
+        }
+
+        let _ = writeln!(out, "## {label} Priority\n");
+
+        // Group by file → function
+        let mut by_file: BTreeMap<String, BTreeMap<String, Vec<(&AgentTask, usize)>>> =
+            BTreeMap::new();
+        for &(t, dup) in bucket.iter() {
+            by_file
+                .entry(t.file.to_string_lossy().into_owned())
+                .or_default()
+                .entry(t.function.clone())
+                .or_default()
+                .push((t, dup));
+        }
+
+        let mut high_snippets: Vec<(usize, Vec<(&AgentTask, usize)>)> = Vec::new();
+
+        for (file, funcs) in &by_file {
+            if !single_target {
+                let _ = writeln!(out, "### `{file}`\n");
+            }
+
+            for (func, func_tasks) in funcs {
+                if !single_target {
+                    let _ = writeln!(out, "#### `{func}`\n");
+                }
+
+                // Group mutations by line so same-location operators merge into one table row
+                let mut by_line: BTreeMap<usize, Vec<(&AgentTask, usize)>> = BTreeMap::new();
+                for &(t, dup) in func_tasks.iter() {
+                    by_line.entry(t.line).or_default().push((t, dup));
+                }
+
+                let _ = writeln!(out, "| Line | Mutation(s) | Operator hint |");
+                let _ = writeln!(out, "|-----:|-------------|---------------|");
+                for (line, line_tasks) in &by_line {
+                    let mutations: Vec<String> = line_tasks
+                        .iter()
+                        .map(|(t, dup)| {
+                            if *dup > 1 {
+                                format!("`{}` (+{})", t.mutation, dup - 1)
+                            } else {
+                                format!("`{}`", t.mutation)
+                            }
+                        })
+                        .collect();
+                    let hints: Vec<&str> = {
+                        let mut seen: BTreeSet<&str> = BTreeSet::new();
+                        line_tasks
+                            .iter()
+                            .filter_map(|(t, _)| {
+                                let h = t.operator_hint.as_str();
+                                seen.insert(h).then_some(h)
+                            })
+                            .collect()
+                    };
+                    let _ = writeln!(
+                        out,
+                        "| {} | {} | {} |",
+                        line,
+                        mutations.join(", "),
+                        hints.join(" "),
+                    );
+
+                    if label == "High" {
+                        high_snippets.push((*line, line_tasks.clone()));
+                    }
+                }
+                out.push('\n');
+            }
+        }
+
+        // Code context only for High priority, collected above to keep tables uninterrupted
+        if label == "High" && !high_snippets.is_empty() {
+            let _ = writeln!(out, "### Context\n");
+            for (line, line_tasks) in &high_snippets {
+                if let Some(ctx) =
+                    line_tasks.iter().find_map(|(t, _)| t.source_context.as_ref())
+                {
+                    let mutations: Vec<&str> =
+                        line_tasks.iter().map(|(t, _)| t.mutation.as_str()).collect();
+                    let _ = writeln!(out, "**Line {}** — {}\n", line, mutations.join(", "));
+                    out.push_str("```text\n");
+                    out.push_str(&ctx.snippet);
+                    out.push_str("```\n\n");
+                    for (t, _) in line_tasks {
+                        let _ = writeln!(out, "> {}\n", t.prompt);
+                    }
+                }
+            }
+        }
+    }
+
     out
 }
 

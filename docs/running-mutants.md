@@ -20,16 +20,16 @@ the verdict:
 | `--workspace-backend`  | `copy` (portable), `overlay` (Linux, faster; needs root), `auto`.    |
 | `--exclude`            | Extra glob excludes, comma-separated. Defaults + `.gitignore` apply. |
 | `--warmup`             | Pre-build the probe in each worker dir before running mutants.       |
-| `--no-shared-target`   | Give each worker its own cargo target dir (avoids cargo lock churn). |
-| `--probe-env KEY=VAL`  | Set env vars on probe + warmup. `{worker}` expands to worker index.  |
+| `--per-worker-cache`   | Give each worker its own build cache dir (avoids build lock churn).  |
+| `--probe-env KEY=VAL`  | Set env vars on probe + warmup. `{worker}` → worker index, `{build_cache}` → build cache path. |
 
 Everything after `--` is the probe command line.
 
 ## Rust (cargo)
 
-Per-worker cargo target dirs are first-class. Use `--no-shared-target` so each
-worker gets `.ooze/cache/cargo-target-job-{i}` and incremental builds are
-reused mutant-to-mutant.
+Use `--per-worker-cache` so each worker gets its own `.ooze/cache/build-cache-job-{i}`
+and incremental builds are reused mutant-to-mutant. Wire `CARGO_TARGET_DIR` to
+that dir via `--probe-env` so cargo actually uses it:
 
 ```bash
 sudo ./target/release/ooze test-mutants \
@@ -39,8 +39,9 @@ sudo ./target/release/ooze test-mutants \
   --limit 10 \
   --jobs 4 \
   --timeout-seconds 180 \
-  --no-shared-target \
+  --per-worker-cache \
   --warmup \
+  --probe-env CARGO_TARGET_DIR={build_cache} \
   --exclude "tests/fixtures/**,examples/**" \
   -- cargo test
 ```
@@ -130,5 +131,6 @@ Python doesn't have a heavy build cache, but pytest's collection cache and
 3. Add `--warmup` so the first mutant per worker isn't a cold build.
 4. Pick `--jobs` based on cores and how heavy your probe is.
 
-The `{worker}` token is the only template ooze substitutes; everything else is
-passed through verbatim to the probe (and to warmup).
+Two tokens are expanded in `--probe-env` values:
+- `{worker}` — the worker index (0-based).
+- `{build_cache}` — the path to the worker's build cache dir (set by `--per-worker-cache` or `--build-cache-dir`).

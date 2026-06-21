@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use anyhow::Context;
 
 pub use schema::OozeConfig;
-pub use template::INIT_CONFIG_TEMPLATE;
+pub use template::{LANGUAGES, template_for_language};
 
 pub const DEFAULT_CONFIG_NAME: &str = "ooze.toml";
 

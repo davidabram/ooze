@@ -17,7 +17,7 @@ pub struct SkippedCandidate {
     pub skip_reason: String,
 }
 
-const ASSERT_MACROS: &[&str] = &[
+const RUST_ASSERT_MACROS: &[&str] = &[
     "assert",
     "assert_eq",
     "assert_ne",
@@ -27,7 +27,7 @@ const ASSERT_MACROS: &[&str] = &[
     "matches",
 ];
 
-const PANIC_MACROS: &[&str] = &["panic", "unreachable", "todo", "unimplemented"];
+const RUST_PANIC_MACROS: &[&str] = &["panic", "unreachable", "todo", "unimplemented"];
 
 struct FileContext {
     is_test: bool,
@@ -42,23 +42,30 @@ struct MacroRange {
 }
 
 fn is_test_path(path: &Path) -> bool {
-    let mut has_tests_segment = false;
     for c in path.components() {
-        if c.as_os_str() == "tests" {
-            has_tests_segment = true;
-            break;
+        let seg = c.as_os_str().to_string_lossy();
+        if matches!(seg.as_ref(), "tests" | "__tests__" | "spec" | "specs") {
+            return true;
         }
-    }
-    if has_tests_segment {
-        return true;
     }
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return false;
     };
-    name == "tests.rs"
-        || name.ends_with("_test.rs")
-        || name.ends_with("_tests.rs")
-        || name.starts_with("test_")
+    // Extract stem (e.g. "foo.test" from "foo.test.ts", "foo_test" from "foo_test.go")
+    let stem = std::path::Path::new(name)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(name);
+    stem == "tests"
+        || stem.ends_with("_test")
+        || stem.ends_with("_tests")
+        || stem.ends_with("_spec")
+        || stem.ends_with("_specs")
+        || stem.ends_with(".test")
+        || stem.ends_with(".spec")
+        || stem.starts_with("test_")
+        || stem.starts_with("spec_")
+        || name == "conftest.py"
 }
 
 fn detect_generated(source: &str) -> bool {
@@ -247,13 +254,13 @@ fn classify(candidate: &MutationCandidate, ctx: &FileContext) -> Option<Candidat
         .min_by_key(|m| m.inner_end - m.inner_start);
 
     if let Some(m) = inside {
-        if ASSERT_MACROS.iter().any(|n| *n == m.name) {
+        if RUST_ASSERT_MACROS.iter().any(|n| *n == m.name) {
             return Some(CandidateSkip {
                 rule: "assertion_macro",
                 reason: format!("Candidate is inside {}! argument", m.name),
             });
         }
-        if PANIC_MACROS.iter().any(|n| *n == m.name) {
+        if RUST_PANIC_MACROS.iter().any(|n| *n == m.name) {
             return Some(CandidateSkip {
                 rule: "panic_macro",
                 reason: format!("Candidate is inside {}! argument", m.name),

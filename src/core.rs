@@ -10,6 +10,17 @@ pub enum MutantStatus {
     Error,
 }
 
+impl std::fmt::Display for MutantStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MutantStatus::Killed => write!(f, "killed"),
+            MutantStatus::Survived => write!(f, "survived"),
+            MutantStatus::Timeout => write!(f, "timeout"),
+            MutantStatus::Error => write!(f, "error"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MutationRunReport {
     pub total: usize,

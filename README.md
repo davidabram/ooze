@@ -34,7 +34,7 @@ cargo build --release
 | `apply-mutant`  | Apply one mutation in a workspace and print the diff.       |
 | `test-mutant`   | Apply one mutation, run a probe, classify the outcome.      |
 | `test-mutants`  | Run a batch in parallel and emit a summary report.          |
-| `warmup`        | Pre-build the probe in the shared cargo target dir.         |
+| `warmup`        | Pre-build the probe in the shared build cache dir.          |
 
 Everything after `--` on `test-mutant(s)` is the probe command.
 
@@ -45,14 +45,15 @@ Everything after `--` on `test-mutant(s)` is the probe command.
   --path . \
   --jobs 4 \
   --timeout-seconds 180 \
-  --no-shared-target \
+  --per-worker-cache \
   --warmup \
+  --probe-env CARGO_TARGET_DIR={build_cache} \
   -- cargo test
 ```
 
-- `--no-shared-target` gives each worker its own `cargo-target-job-{i}` so
+- `--per-worker-cache` gives each worker its own `build-cache-job-{i}` so
   parallel runs reuse incremental builds instead of fighting over one
-  `target/`.
+  build directory.
 - `--warmup` pre-builds the probe in each worker dir; first mutant per worker
   isn't a cold compile. Doubles as a baseline check (warmup fails → batch
   aborts).
@@ -65,7 +66,8 @@ sudo ./target/release/ooze test-mutants \
   --strategy actionable \
   --workspace-backend overlay \
   --jobs 4 --timeout-seconds 180 \
-  --no-shared-target --warmup \
+  --per-worker-cache --warmup \
+  --probe-env CARGO_TARGET_DIR={build_cache} \
   -- cargo test
 ```
 
@@ -102,8 +104,8 @@ Full per-language recipes in [docs/running-mutants.md](docs/running-mutants.md).
 | `--exclude`            | Extra globs. Defaults + `.gitignore` always apply.                   |
 | `--lcov`               | Feed coverage into candidate ordering.                               |
 | `--warmup`             | Pre-build probe per worker.                                          |
-| `--no-shared-target`   | Per-worker `cargo-target-job-{i}` dirs.                              |
-| `--probe-env KEY=VAL`  | Env vars on probe + warmup; `{worker}` substitutes worker index.     |
+| `--per-worker-cache`   | Per-worker `build-cache-job-{i}` dirs.                               |
+| `--probe-env KEY=VAL`  | Env vars on probe + warmup. `{worker}` → worker index, `{build_cache}` → build cache path. |
 | `--cache-dir`          | Where caches live (default `.ooze/cache`).                           |
 | `--runs-dir`           | Where workspaces live (default `.ooze/runs`).                        |
 
@@ -112,7 +114,7 @@ Full per-language recipes in [docs/running-mutants.md](docs/running-mutants.md).
 `test-mutants` writes a JSON report to stdout:
 
 ```bash
-./target/release/ooze test-mutants --path . -- cargo test > report.json
+./target/release/ooze test-mutants --path . -- <your-test-command> > report.json
 jq '.summary' report.json
 jq '.outcomes[] | select(.status == "survived")' report.json
 ```
@@ -121,7 +123,7 @@ Verdicts: `killed`, `survived`, `timeout`, `error`.
 
 ## Defaults
 
-- Always excluded: `target/**`, `.ooze/**`, `.git/**`.
+- Always excluded: `target/**`, `.ooze/**`, `.git/**`, `node_modules/**`, `vendor/**`, `__pycache__/**`, `.gradle/**`.
 - `.gitignore` entries are merged into excludes automatically.
 - Workspaces under `.ooze/runs/`, caches under `.ooze/cache/`.
 

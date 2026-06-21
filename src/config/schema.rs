@@ -42,11 +42,11 @@ pub struct RunnerConfigToml {
     pub jobs: Option<usize>,
     pub timeout_seconds: Option<u64>,
     pub preflight: Option<bool>,
-    pub shared_target: Option<bool>,
+    pub per_worker_cache: Option<bool>,
     pub warmup: Option<bool>,
     pub cache_dir: Option<PathBuf>,
     pub runs_dir: Option<PathBuf>,
-    pub cargo_target_dir: Option<PathBuf>,
+    pub build_cache_dir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, Default)]

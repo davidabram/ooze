@@ -40,8 +40,9 @@ survived mutants, but the job stays green.
       --limit 50 \
       --jobs 2 \
       --timeout-seconds 120 \
-      --no-shared-target \
+      --per-worker-cache \
       --warmup \
+      --probe-env CARGO_TARGET_DIR={build_cache} \
       --format github-annotations \
       --no-fail-on-survivors \
       -- cargo test --jobs 1
@@ -65,16 +66,17 @@ red check.
       --limit 50 \
       --jobs 2 \
       --timeout-seconds 120 \
-      --no-shared-target \
+      --per-worker-cache \
       --warmup \
+      --probe-env CARGO_TARGET_DIR={build_cache} \
       --format github-annotations \
       -- cargo test --jobs 1
 ```
 
-### Caching the cargo target dir
+### Caching the build cache dir
 
-Per-worker target dirs live under `.ooze/cache/cargo-target-job-{0..jobs-1}`.
-Cache them between runs:
+Per-worker build cache dirs live under `.ooze/cache/build-cache-job-{0..jobs-1}`.
+Cache them between runs to turn cold builds into warm cache hits:
 
 ```yaml
 - uses: actions/cache@v4
@@ -97,7 +99,8 @@ machine-readable report:
   run: |
     ./target/release/ooze test-mutants \
       --path . --preflight --strategy actionable --limit 50 \
-      --jobs 2 --timeout-seconds 120 --no-shared-target --warmup \
+      --jobs 2 --timeout-seconds 120 --per-worker-cache --warmup \
+      --probe-env CARGO_TARGET_DIR={build_cache} \
       --format json --no-fail-on-survivors \
       -- cargo test --jobs 1 > ooze-report.json
 
@@ -116,7 +119,8 @@ machine-readable report:
   run: |
     ./target/release/ooze test-mutants \
       --path . --preflight --strategy actionable --limit 30 \
-      --jobs 2 --timeout-seconds 120 --no-shared-target --warmup \
+      --jobs 2 --timeout-seconds 120 --per-worker-cache --warmup \
+      --probe-env CARGO_TARGET_DIR={build_cache} \
       --format agent-tasks-markdown --no-fail-on-survivors \
       -- cargo test --jobs 1 > ooze-tasks.md
 
@@ -151,8 +155,9 @@ steps:
         --limit 50 \
         --jobs 2 \
         --timeout-seconds 120 \
-        --no-shared-target \
+        --per-worker-cache \
         --warmup \
+        --probe-env CARGO_TARGET_DIR={build_cache} \
         --format sarif \
         --output ooze.sarif \
         --no-fail-on-survivors \
@@ -202,7 +207,8 @@ mutation_testing:
     - cargo build --release --bin ooze
     - ./target/release/ooze test-mutants
         --path . --preflight --strategy actionable --limit 50
-        --jobs 2 --timeout-seconds 120 --no-shared-target --warmup
+        --jobs 2 --timeout-seconds 120 --per-worker-cache --warmup
+        --probe-env CARGO_TARGET_DIR={build_cache}
         --format json
         -- cargo test --jobs 1 | tee ooze-report.json
   artifacts:
@@ -221,7 +227,7 @@ mutation_testing:
 - `--strategy actionable` — run the most informative mutants first.
 - `--limit N` — bound wall time. Tune so the job finishes in a budget you'd accept on every PR.
 - `--timeout-seconds T` — kill stuck probes. Set to ~2x your slowest test.
-- `--jobs J` + `--no-shared-target` + `--warmup` — parallelism without cargo file-lock thrash and without cold-start cost.
+- `--jobs J` + `--per-worker-cache` + `--warmup` — parallelism without build lock contention and without cold-start cost.
 - `--lcov lcov.info` — if you already collect coverage, feed it in; the scheduler ranks better and CRAP scores become meaningful.
 
 ## Tuning loop

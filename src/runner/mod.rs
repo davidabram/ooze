@@ -7,6 +7,7 @@ use similar::{ChangeTag, TextDiff};
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use walkdir::WalkDir;
@@ -61,9 +62,8 @@ impl CowWorkspace {
         applied: AppliedMutation,
         probe: &[String],
         timeout: Option<Duration>,
-        cargo_target_dir: Option<&Path>,
     ) -> Result<MutantOutcome> {
-        run_probe(self.path(), applied, probe, timeout, cargo_target_dir, &[])
+        run_probe(self.path(), applied, probe, timeout, &[])
     }
 }
 
@@ -127,7 +127,6 @@ pub fn run_probe(
     applied: AppliedMutation,
     probe: &[String],
     timeout: Option<Duration>,
-    cargo_target_dir: Option<&Path>,
     extra_envs: &[(String, String)],
 ) -> Result<MutantOutcome> {
     if probe.is_empty() {
@@ -141,11 +140,6 @@ pub fn run_probe(
         .current_dir(workspace_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-
-    if let Some(dir) = cargo_target_dir {
-        cmd.env("CARGO_TARGET_DIR", dir);
-        cmd.env("CARGO_BUILD_JOBS", "1");
-    }
 
     for (k, v) in extra_envs {
         cmd.env(k, v);
@@ -213,8 +207,8 @@ pub fn run_probe(
 pub struct BatchConfig<'a> {
     pub backend: WorkspaceBackend,
     pub timeout: Option<Duration>,
-    pub cargo_target_dir: Option<&'a Path>,
-    pub worker_target_dirs: Option<&'a [PathBuf]>,
+    pub build_cache_dir: Option<&'a Path>,
+    pub worker_build_cache_dirs: Option<&'a [PathBuf]>,
     pub probe_env_templates: &'a [(String, String)],
     pub runs_dir: &'a Path,
 }
@@ -270,17 +264,23 @@ fn try_run_one(
         .with_context(|| format!("applying mutation {}", candidate.id))?;
 
     let worker_idx = rayon::current_thread_index().unwrap_or(0);
-    let worker_dir: Option<PathBuf> = cfg.worker_target_dirs.and_then(|dirs| {
+    let worker_build_cache: Option<PathBuf> = cfg.worker_build_cache_dirs.and_then(|dirs| {
         dirs.get(worker_idx).cloned().or_else(|| dirs.first().cloned())
     });
-    let target_dir = worker_dir
-        .as_deref()
-        .or(cfg.cargo_target_dir);
+    let build_cache_dir = worker_build_cache.as_deref().or(cfg.build_cache_dir);
 
     let extra_envs: Vec<(String, String)> = cfg
         .probe_env_templates
         .iter()
-        .map(|(k, v)| (k.clone(), v.replace("{worker}", &worker_idx.to_string())))
+        .map(|(k, v)| {
+            let v = v.replace("{worker}", &worker_idx.to_string());
+            let v = if let Some(dir) = build_cache_dir {
+                v.replace("{build_cache}", &dir.to_string_lossy())
+            } else {
+                v
+            };
+            (k.clone(), v)
+        })
         .collect();
 
     run_probe(
@@ -288,7 +288,6 @@ fn try_run_one(
         applied,
         probe,
         cfg.timeout,
-        target_dir,
         &extra_envs,
     )
     .with_context(|| format!("running probe for {}", candidate.id))
@@ -309,12 +308,18 @@ pub fn run_mutants_sequential(
     probe: &[String],
     cfg: BatchConfig<'_>,
 ) -> Result<MutationRunReport> {
+    let total = candidates.len();
+    let done = AtomicUsize::new(0);
+
     let outcomes = candidates
         .into_iter()
         .enumerate()
         .map(|(i, candidate)| {
             let id = run_id_for(i, &candidate);
-            run_one(repo_root, candidate, probe, &cfg, &id)
+            let outcome = run_one(repo_root, candidate, probe, &cfg, &id);
+            let n = done.fetch_add(1, Ordering::Relaxed) + 1;
+            eprintln!("[{n}/{total}] {} {}", outcome.status, outcome.candidate.id);
+            outcome
         })
         .collect();
 
@@ -332,6 +337,9 @@ pub fn run_mutants_parallel(
         return run_mutants_sequential(repo_root, candidates, probe, cfg);
     }
 
+    let total = candidates.len();
+    let done = AtomicUsize::new(0);
+
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(jobs)
         .build()
@@ -344,7 +352,10 @@ pub fn run_mutants_parallel(
             .into_par_iter()
             .map(|(i, candidate)| {
                 let id = run_id_for(i, &candidate);
-                run_one(repo_root, candidate, probe, &cfg, &id)
+                let outcome = run_one(repo_root, candidate, probe, &cfg, &id);
+                let n = done.fetch_add(1, Ordering::Relaxed) + 1;
+                eprintln!("[{n}/{total}] {} {}", outcome.status, outcome.candidate.id);
+                outcome
             })
             .collect()
     });
@@ -366,7 +377,6 @@ pub fn preflight(
     repo_root: &Path,
     probe: &[String],
     timeout: Option<Duration>,
-    cargo_target_dir: Option<&Path>,
     extra_envs: &[(String, String)],
 ) -> Result<PreflightOutcome> {
     if probe.is_empty() {
@@ -381,10 +391,6 @@ pub fn preflight(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    if let Some(dir) = cargo_target_dir {
-        cmd.env("CARGO_TARGET_DIR", dir);
-        cmd.env("CARGO_BUILD_JOBS", "1");
-    }
     for (k, v) in extra_envs {
         cmd.env(k, v);
     }
@@ -442,7 +448,7 @@ pub fn preflight(
 pub fn warmup(
     workspace_path: &Path,
     probe: &[String],
-    cargo_target_dir: Option<&Path>,
+    build_cache_dir: Option<&Path>,
     extra_envs: &[(String, String)],
 ) -> Result<std::process::ExitStatus> {
     if probe.is_empty() {
@@ -452,10 +458,9 @@ pub fn warmup(
     let mut cmd = Command::new(&probe[0]);
     cmd.args(&probe[1..]).current_dir(workspace_path);
 
-    if let Some(dir) = cargo_target_dir {
+    if let Some(dir) = build_cache_dir {
         std::fs::create_dir_all(dir)
-            .with_context(|| format!("creating cargo target dir {}", dir.display()))?;
-        cmd.env("CARGO_TARGET_DIR", dir);
+            .with_context(|| format!("creating build cache dir {}", dir.display()))?;
     }
 
     for (k, v) in extra_envs {
@@ -466,8 +471,8 @@ pub fn warmup(
         .with_context(|| format!("running warmup command {:?}", probe))
 }
 
-pub fn default_cargo_target_dir(cache_dir: &Path) -> PathBuf {
-    cache_dir.join("cargo-target")
+pub fn default_build_cache_dir(cache_dir: &Path) -> PathBuf {
+    cache_dir.join("build-cache")
 }
 
 pub fn warmup_workers(
@@ -491,7 +496,11 @@ pub fn warmup_workers(
             .try_for_each(|(idx, dir)| -> Result<()> {
                 let extra_envs: Vec<(String, String)> = probe_env_templates
                     .iter()
-                    .map(|(k, v)| (k.clone(), v.replace("{worker}", &idx.to_string())))
+                    .map(|(k, v)| {
+                        let v = v.replace("{worker}", &idx.to_string());
+                        let v = v.replace("{build_cache}", &dir.to_string_lossy());
+                        (k.clone(), v)
+                    })
                     .collect();
                 let status = warmup(workspace_path, probe, Some(dir), &extra_envs)?;
                 if !status.success() {
@@ -548,7 +557,16 @@ fn should_skip(relative: &Path) -> bool {
 
     matches!(
         first.as_ref(),
-        ".git" | ".ooze" | "target" | "node_modules" | ".direnv" | ".idea" | ".vscode"
+        ".git"
+            | ".ooze"
+            | "target"
+            | "node_modules"
+            | "vendor"
+            | "__pycache__"
+            | ".gradle"
+            | ".direnv"
+            | ".idea"
+            | ".vscode"
     )
 }
 
