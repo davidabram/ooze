@@ -561,6 +561,18 @@ fn main() -> anyhow::Result<()> {
                         );
                     }
                 }
+                if let Some(cats) = cfg.mutation.categories.as_ref() {
+                    for s in cats {
+                        let cat = core::OperatorCategory::parse(s).ok_or_else(|| {
+                            anyhow::anyhow!("unknown category {s:?} in [mutation].categories")
+                        })?;
+                        for op in cat.operators() {
+                            if !operators.contains(&op) {
+                                operators.push(op);
+                            }
+                        }
+                    }
+                }
             }
 
             let mut exclude_operators = exclude_operators;
@@ -573,6 +585,18 @@ fn main() -> anyhow::Result<()> {
                             )
                         })?,
                     );
+                }
+                for s in &cfg.mutation.exclude_categories {
+                    let cat = core::OperatorCategory::parse(s).ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "unknown category {s:?} in [mutation].exclude_categories"
+                        )
+                    })?;
+                    for op in cat.operators() {
+                        if !exclude_operators.contains(&op) {
+                            exclude_operators.push(op);
+                        }
+                    }
                 }
             }
 

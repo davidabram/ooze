@@ -29,6 +29,9 @@ pub struct MutationConfigToml {
     pub operators: Option<Vec<String>>,
     #[serde(default)]
     pub exclude_operators: Vec<String>,
+    pub categories: Option<Vec<String>>,
+    #[serde(default)]
+    pub exclude_categories: Vec<String>,
     pub static_skips: Option<bool>,
     pub context_lines: Option<usize>,
     pub lcov: Option<PathBuf>,

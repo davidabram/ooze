@@ -122,10 +122,99 @@ pub enum OperatorName {
     IntegerZeroOne,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperatorCategory {
+    BooleanLiteral,
+    Equality,
+    Comparison,
+    Logical,
+    NumericLiteral,
+    Arithmetic,
+    Assignment,
+    Conditional,
+    Statement,
+    Collection,
+    Object,
+    String,
+    Regex,
+    Method,
+    Nullability,
+    ErrorHandling,
+    PatternMatching,
+    RangeBoundary,
+    ReturnValue,
+}
+
+impl OperatorCategory {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            OperatorCategory::BooleanLiteral => "boolean_literal",
+            OperatorCategory::Equality => "equality",
+            OperatorCategory::Comparison => "comparison",
+            OperatorCategory::Logical => "logical",
+            OperatorCategory::NumericLiteral => "numeric_literal",
+            OperatorCategory::Arithmetic => "arithmetic",
+            OperatorCategory::Assignment => "assignment",
+            OperatorCategory::Conditional => "conditional",
+            OperatorCategory::Statement => "statement",
+            OperatorCategory::Collection => "collection",
+            OperatorCategory::Object => "object",
+            OperatorCategory::String => "string",
+            OperatorCategory::Regex => "regex",
+            OperatorCategory::Method => "method",
+            OperatorCategory::Nullability => "nullability",
+            OperatorCategory::ErrorHandling => "error_handling",
+            OperatorCategory::PatternMatching => "pattern_matching",
+            OperatorCategory::RangeBoundary => "range_boundary",
+            OperatorCategory::ReturnValue => "return_value",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<OperatorCategory> {
+        match s {
+            "boolean_literal" => Some(OperatorCategory::BooleanLiteral),
+            "equality" => Some(OperatorCategory::Equality),
+            "comparison" => Some(OperatorCategory::Comparison),
+            "logical" => Some(OperatorCategory::Logical),
+            "numeric_literal" => Some(OperatorCategory::NumericLiteral),
+            "arithmetic" => Some(OperatorCategory::Arithmetic),
+            "assignment" => Some(OperatorCategory::Assignment),
+            "conditional" => Some(OperatorCategory::Conditional),
+            "statement" => Some(OperatorCategory::Statement),
+            "collection" => Some(OperatorCategory::Collection),
+            "object" => Some(OperatorCategory::Object),
+            "string" => Some(OperatorCategory::String),
+            "regex" => Some(OperatorCategory::Regex),
+            "method" => Some(OperatorCategory::Method),
+            "nullability" => Some(OperatorCategory::Nullability),
+            "error_handling" => Some(OperatorCategory::ErrorHandling),
+            "pattern_matching" => Some(OperatorCategory::PatternMatching),
+            "range_boundary" => Some(OperatorCategory::RangeBoundary),
+            "return_value" => Some(OperatorCategory::ReturnValue),
+            _ => None,
+        }
+    }
+
+    pub fn operators(self) -> Vec<OperatorName> {
+        OperatorName::ALL
+            .iter()
+            .copied()
+            .filter(|op| op.info().category == self)
+            .collect()
+    }
+}
+
+impl std::fmt::Display for OperatorCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MutationOperatorInfo {
     pub name: &'static str,
-    pub category: &'static str,
+    pub category: OperatorCategory,
     pub default_enabled: bool,
     pub description: &'static str,
     pub test_hint: &'static str,
@@ -158,36 +247,36 @@ impl OperatorName {
         match self {
             OperatorName::SwapComparison => MutationOperatorInfo {
                 name: self.as_str(),
-                category: "boundary",
+                category: OperatorCategory::Comparison,
                 default_enabled: true,
                 description: "Swap comparison operators such as < -> > or >= -> <=.",
                 test_hint: "Add boundary tests around the changed comparison.",
             },
             OperatorName::NegateEquality => MutationOperatorInfo {
                 name: self.as_str(),
-                category: "equality",
+                category: OperatorCategory::Equality,
                 default_enabled: true,
                 description: "Replace == with != or != with ==.",
                 test_hint: "Add tests covering equal and non-equal inputs.",
             },
             OperatorName::SwapLogical => MutationOperatorInfo {
                 name: self.as_str(),
-                category: "boolean_logic",
+                category: OperatorCategory::Logical,
                 default_enabled: true,
                 description: "Replace && with || or || with &&.",
                 test_hint: "Add truth-table style tests for both sides of the condition.",
             },
             OperatorName::SwapBoolean => MutationOperatorInfo {
                 name: self.as_str(),
-                category: "boolean_logic",
+                category: OperatorCategory::BooleanLiteral,
                 default_enabled: true,
                 description: "Flip boolean literals (true <-> false).",
                 test_hint: "Assert both the true and the false branch independently.",
             },
             OperatorName::IntegerZeroOne => MutationOperatorInfo {
                 name: self.as_str(),
-                category: "boundary",
-                default_enabled: false,
+                category: OperatorCategory::NumericLiteral,
+                default_enabled: true,
                 description: "Replace integer 0 with 1 or 1 with 0.",
                 test_hint: "Add empty / singleton / boundary count tests.",
             },
