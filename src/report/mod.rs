@@ -51,6 +51,240 @@ pub fn agent_tasks(report: &EnrichedRunReport) -> AgentTaskReport {
     AgentTaskReport { tasks }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OozeExitCode {
+    Success = 0,
+    SurvivorsFound = 1,
+    PreflightFailed = 2,
+    InfrastructureProblem = 3,
+    UsageError = 4,
+    InternalError = 5,
+}
+
+impl OozeExitCode {
+    pub fn code(self) -> i32 {
+        self as i32
+    }
+}
+
+pub fn exit_code_for_report(
+    report: &EnrichedRunReport,
+    no_fail_on_survivors: bool,
+    allow_incomplete: bool,
+) -> OozeExitCode {
+    if (report.timeout > 0 || report.error > 0) && !allow_incomplete {
+        return OozeExitCode::InfrastructureProblem;
+    }
+    if report.survived > 0 && !no_fail_on_survivors {
+        return OozeExitCode::SurvivorsFound;
+    }
+    OozeExitCode::Success
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SarifLog {
+    pub version: String,
+    #[serde(rename = "$schema")]
+    pub schema: String,
+    pub runs: Vec<SarifRun>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SarifRun {
+    pub tool: SarifTool,
+    pub results: Vec<SarifResult>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SarifTool {
+    pub driver: SarifDriver,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SarifDriver {
+    pub name: String,
+    pub information_uri: String,
+    pub rules: Vec<SarifRule>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SarifRule {
+    pub id: String,
+    pub name: String,
+    pub short_description: SarifMessage,
+    pub full_description: SarifMessage,
+    pub help: SarifMessage,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SarifResult {
+    pub rule_id: String,
+    pub level: String,
+    pub message: SarifMessage,
+    pub locations: Vec<SarifLocation>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SarifMessage {
+    pub text: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SarifLocation {
+    pub physical_location: SarifPhysicalLocation,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SarifPhysicalLocation {
+    pub artifact_location: SarifArtifactLocation,
+    pub region: SarifRegion,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SarifArtifactLocation {
+    pub uri: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SarifRegion {
+    pub start_line: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_column: Option<usize>,
+}
+
+pub fn sarif(report: &EnrichedRunReport) -> SarifLog {
+    let mut rules: std::collections::BTreeMap<String, SarifRule> = std::collections::BTreeMap::new();
+    let mut results = Vec::new();
+
+    for o in &report.outcomes {
+        if !matches!(o.outcome.status, MutantStatus::Survived) {
+            continue;
+        }
+        let c = &o.outcome.candidate;
+        let op = c.operator.as_str();
+        let rule_id = format!("ooze.survived_mutant.{op}");
+
+        rules.entry(rule_id.clone()).or_insert_with(|| SarifRule {
+            id: rule_id.clone(),
+            name: format!("Survived mutant: {op}"),
+            short_description: SarifMessage {
+                text: format!("{op} mutant survived"),
+            },
+            full_description: SarifMessage {
+                text: "A mutation survived the test suite, suggesting missing behavioral coverage."
+                    .to_string(),
+            },
+            help: SarifMessage {
+                text: o
+                    .test_suggestion
+                    .as_ref()
+                    .map(|s| s.operator_hint.clone())
+                    .unwrap_or_else(|| {
+                        "Add a test that distinguishes the original behavior from the mutant."
+                            .to_string()
+                    }),
+            },
+        });
+
+        let text = o
+            .test_suggestion
+            .as_ref()
+            .map(|s| s.prompt.clone())
+            .unwrap_or_else(|| {
+                format!(
+                    "Survived mutant in `{}`: `{}` -> `{}`.",
+                    c.function, c.original, c.replacement
+                )
+            });
+
+        let uri = c
+            .file
+            .to_string_lossy()
+            .trim_start_matches("./")
+            .to_string();
+
+        results.push(SarifResult {
+            rule_id,
+            level: "warning".to_string(),
+            message: SarifMessage { text },
+            locations: vec![SarifLocation {
+                physical_location: SarifPhysicalLocation {
+                    artifact_location: SarifArtifactLocation { uri },
+                    region: SarifRegion {
+                        start_line: c.line,
+                        start_column: Some(c.column + 1),
+                    },
+                },
+            }],
+        });
+    }
+
+    SarifLog {
+        version: "2.1.0".to_string(),
+        schema: "https://json.schemastore.org/sarif-2.1.0.json".to_string(),
+        runs: vec![SarifRun {
+            tool: SarifTool {
+                driver: SarifDriver {
+                    name: "ooze".to_string(),
+                    information_uri: "https://github.com/crocoder-dev/ooze".to_string(),
+                    rules: rules.into_values().collect(),
+                },
+            },
+            results,
+        }],
+    }
+}
+
+fn escape_github_annotation_value(value: &str) -> String {
+    value
+        .replace('%', "%25")
+        .replace('\r', "%0D")
+        .replace('\n', "%0A")
+        .replace(':', "%3A")
+        .replace(',', "%2C")
+}
+
+pub fn github_annotations(report: &EnrichedRunReport) -> String {
+    use std::fmt::Write;
+    let mut out = String::new();
+    for o in &report.outcomes {
+        if !matches!(o.outcome.status, MutantStatus::Survived) {
+            continue;
+        }
+        let c = &o.outcome.candidate;
+        let title = escape_github_annotation_value("Ooze survived mutant");
+        let file = escape_github_annotation_value(c.file.to_string_lossy().as_ref());
+        let body = match &o.test_suggestion {
+            Some(s) => format!(
+                "{} {} -> {} survived in {}. {}",
+                c.operator, c.original, c.replacement, c.function, s.prompt
+            ),
+            None => format!(
+                "{} {} -> {} survived in {}",
+                c.operator, c.original, c.replacement, c.function
+            ),
+        };
+        let message = escape_github_annotation_value(&body);
+        let _ = writeln!(
+            out,
+            "::warning file={},line={},title={}::{}",
+            file, c.line, title, message
+        );
+    }
+    out
+}
+
 pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
     use std::fmt::Write;
     let mut out = String::new();

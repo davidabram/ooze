@@ -6,6 +6,7 @@ mod runner;
 mod skip;
 mod scheduler;
 mod report;
+mod config;
 
 use std::path::PathBuf;
 
@@ -84,6 +85,16 @@ struct Cli {
     command: Commands,
 }
 
+fn parse_strategy_str(s: &str) -> anyhow::Result<scheduler::MutationStrategy> {
+    <scheduler::MutationStrategy as ValueEnum>::from_str(s, true)
+        .map_err(|e| anyhow::anyhow!("invalid strategy {s:?}: {e}"))
+}
+
+fn parse_workspace_backend_str(s: &str) -> anyhow::Result<WorkspaceBackendArg> {
+    <WorkspaceBackendArg as ValueEnum>::from_str(s, true)
+        .map_err(|e| anyhow::anyhow!("invalid workspace_backend {s:?}: {e}"))
+}
+
 #[derive(Subcommand)]
 enum Commands {
     #[command(about = "Scan source files and extract function spans")]
@@ -158,20 +169,23 @@ enum Commands {
     },
     #[command(about = "Run a batch of mutations sequentially and produce a summary report")]
     TestMutants {
+        #[arg(long, help = "Path to ooze.toml config (default: ./ooze.toml if present).")]
+        config: Option<PathBuf>,
+
         #[arg(long, default_value = ".")]
         path: PathBuf,
 
         #[arg(long)]
         lcov: Option<PathBuf>,
 
-        #[arg(long, value_enum, default_value_t = scheduler::MutationStrategy::Discovery)]
-        strategy: scheduler::MutationStrategy,
+        #[arg(long, value_enum)]
+        strategy: Option<scheduler::MutationStrategy>,
 
         #[arg(long)]
         limit: Option<usize>,
 
-        #[arg(long, default_value_t = 1)]
-        jobs: usize,
+        #[arg(long)]
+        jobs: Option<usize>,
 
         #[arg(long)]
         timeout_seconds: Option<u64>,
@@ -185,17 +199,20 @@ enum Commands {
         #[arg(long, help = "Pre-build the probe in each worker target dir before running mutants")]
         warmup: bool,
 
-        #[arg(long, value_enum, default_value_t = WorkspaceBackendArg::Auto)]
-        workspace_backend: WorkspaceBackendArg,
+        #[arg(long, value_enum)]
+        workspace_backend: Option<WorkspaceBackendArg>,
 
-        #[arg(long, default_value = ".ooze/cache")]
-        cache_dir: PathBuf,
+        #[arg(long)]
+        cache_dir: Option<PathBuf>,
 
-        #[arg(long, default_value = ".ooze/runs")]
-        runs_dir: PathBuf,
+        #[arg(long)]
+        runs_dir: Option<PathBuf>,
 
-        #[arg(long, default_value = "json", help = "Report format: json or human")]
-        format: String,
+        #[arg(long, help = "Report format: json, human, agent-tasks-json, agent-tasks-markdown, github-annotations, sarif")]
+        format: Option<String>,
+
+        #[arg(long, help = "Write report to a file instead of stdout.")]
+        output: Option<PathBuf>,
 
         #[arg(long, value_delimiter = ',', help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git.")]
         exclude: Vec<String>,
@@ -212,14 +229,28 @@ enum Commands {
         #[arg(long, help = "Disable static skip rules (test files, assertion/panic macros, generated files).")]
         no_static_skips: bool,
 
-        #[arg(long, default_value_t = 3, help = "Lines of source context around each survived mutant (0 disables).")]
-        context_lines: usize,
+        #[arg(long, help = "Lines of source context around each survived mutant (0 disables).")]
+        context_lines: Option<usize>,
 
         #[arg(long, help = "Run the probe once on unmodified code first; abort if it fails or times out.")]
         preflight: bool,
 
+        #[arg(long, help = "Exit 0 even if survivors are found (timeouts/errors still surface).")]
+        no_fail_on_survivors: bool,
+
+        #[arg(long, help = "Treat timeout/error outcomes as non-fatal for exit code purposes.")]
+        allow_incomplete: bool,
+
         #[arg(last = true)]
         probe: Vec<String>,
+    },
+    #[command(about = "Write a starter ooze.toml in the current directory")]
+    InitConfig {
+        #[arg(long, default_value = "ooze.toml")]
+        path: PathBuf,
+
+        #[arg(long, help = "Overwrite an existing config file")]
+        force: bool,
     },
     #[command(about = "Warm up the shared Cargo cache before running mutants")]
     Warmup {
@@ -379,6 +410,7 @@ fn main() -> anyhow::Result<()> {
             println!("{}", applied.diff);
         }
         Commands::TestMutants {
+            config: config_path,
             path,
             lcov,
             strategy,
@@ -392,6 +424,7 @@ fn main() -> anyhow::Result<()> {
             cache_dir,
             runs_dir,
             format,
+            output,
             exclude,
             probe_env,
             operators,
@@ -399,8 +432,105 @@ fn main() -> anyhow::Result<()> {
             no_static_skips,
             context_lines,
             preflight,
+            no_fail_on_survivors,
+            allow_incomplete,
             probe,
         } => {
+            let (cfg, cfg_loaded_from) = config::load_config(config_path.as_deref())?;
+            if let Some(p) = &cfg_loaded_from {
+                eprintln!("ooze: loaded config from {}", p.display());
+            }
+
+            let strategy = match strategy {
+                Some(s) => s,
+                None => match cfg.mutation.strategy.as_deref() {
+                    Some(s) => parse_strategy_str(s)?,
+                    None => scheduler::MutationStrategy::Discovery,
+                },
+            };
+            let limit = limit.or(cfg.mutation.limit);
+            let jobs = jobs.or(cfg.runner.jobs).unwrap_or(1);
+            let timeout_seconds = timeout_seconds.or(cfg.runner.timeout_seconds);
+            let cargo_target_dir = cargo_target_dir.or(cfg.runner.cargo_target_dir.clone());
+            let no_shared_target =
+                no_shared_target || cfg.runner.shared_target == Some(false);
+            let warmup = warmup || cfg.runner.warmup == Some(true);
+            let workspace_backend = match workspace_backend {
+                Some(w) => w,
+                None => match cfg.runner.workspace_backend.as_deref() {
+                    Some(s) => parse_workspace_backend_str(s)?,
+                    None => WorkspaceBackendArg::Auto,
+                },
+            };
+            let cache_dir = cache_dir
+                .or(cfg.runner.cache_dir.clone())
+                .unwrap_or_else(|| PathBuf::from(".ooze/cache"));
+            let runs_dir = runs_dir
+                .or(cfg.runner.runs_dir.clone())
+                .unwrap_or_else(|| PathBuf::from(".ooze/runs"));
+            let format = format
+                .or(cfg.report.format.clone())
+                .unwrap_or_else(|| "json".to_string());
+            let output = output.or(cfg.report.output.clone());
+            let no_static_skips = no_static_skips || cfg.mutation.static_skips == Some(false);
+            let context_lines = context_lines.or(cfg.mutation.context_lines).unwrap_or(3);
+            let preflight = preflight || cfg.runner.preflight == Some(true);
+            let no_fail_on_survivors =
+                no_fail_on_survivors || cfg.report.fail_on_survivors == Some(false);
+            let allow_incomplete = allow_incomplete || cfg.report.allow_incomplete == Some(true);
+            let lcov = lcov.or(cfg.mutation.lcov.clone());
+
+            let mut exclude = exclude;
+            if exclude.is_empty() {
+                exclude.extend(cfg.scope.exclude.iter().cloned());
+            }
+
+            let mut probe_env = probe_env;
+            if probe_env.is_empty() {
+                for entry in &cfg.probe.env {
+                    probe_env.push(parse_key_val(entry).map_err(|e| anyhow::anyhow!(e))?);
+                }
+            }
+
+            let mut operators = operators;
+            if operators.is_empty() {
+                if let Some(ops) = cfg.mutation.operators.as_ref() {
+                    for s in ops {
+                        operators.push(
+                            core::OperatorName::parse(s).ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "unknown operator {s:?} in [mutation].operators"
+                                )
+                            })?,
+                        );
+                    }
+                }
+            }
+
+            let mut exclude_operators = exclude_operators;
+            if exclude_operators.is_empty() {
+                for s in &cfg.mutation.exclude_operators {
+                    exclude_operators.push(
+                        core::OperatorName::parse(s).ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "unknown operator {s:?} in [mutation].exclude_operators"
+                            )
+                        })?,
+                    );
+                }
+            }
+
+            let mut probe = probe;
+            if probe.is_empty() {
+                if let Some(cmd) = cfg.probe.command.as_ref() {
+                    probe = cmd.clone();
+                } else {
+                    anyhow::bail!(
+                        "missing probe command; pass one after `--` or set [probe].command in ooze.toml"
+                    );
+                }
+            }
+
             let excludes = resolve_excludes(&path, &exclude);
             let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
             let languages = lang::supported_languages();
@@ -603,18 +733,43 @@ fn main() -> anyhow::Result<()> {
 
             let enriched = report::enrich(raw_report, &crap_entries, &repo_root, context_lines);
 
-            match format.as_str() {
-                "human" => print!("{}", report::human(&enriched)),
+            let text = match format.as_str() {
+                "human" => report::human(&enriched),
                 "agent-tasks-json" => {
                     let tasks = report::agent_tasks(&enriched);
-                    println!("{}", serde_json::to_string_pretty(&tasks)?);
+                    let mut s = serde_json::to_string_pretty(&tasks)?;
+                    s.push('\n');
+                    s
                 }
                 "agent-tasks-markdown" => {
                     let tasks = report::agent_tasks(&enriched);
-                    print!("{}", report::agent_tasks_markdown(&tasks));
+                    report::agent_tasks_markdown(&tasks)
                 }
-                _ => println!("{}", serde_json::to_string_pretty(&enriched)?),
+                "github-annotations" => report::github_annotations(&enriched),
+                "sarif" => {
+                    let log = report::sarif(&enriched);
+                    let mut s = serde_json::to_string_pretty(&log)?;
+                    s.push('\n');
+                    s
+                }
+                _ => {
+                    let mut s = serde_json::to_string_pretty(&enriched)?;
+                    s.push('\n');
+                    s
+                }
+            };
+            match output.as_deref() {
+                Some(path) => std::fs::write(path, &text)
+                    .with_context(|| format!("writing report to {}", path.display()))?,
+                None => print!("{}", text),
             }
+
+            let exit = report::exit_code_for_report(
+                &enriched,
+                no_fail_on_survivors,
+                allow_incomplete,
+            );
+            std::process::exit(exit.code());
         }
         Commands::Warmup {
             path,
@@ -651,6 +806,17 @@ fn main() -> anyhow::Result<()> {
             let outcome = workspace.run_probe(applied, &probe, None, None)?;
 
             println!("{}", serde_json::to_string_pretty(&outcome)?);
+        }
+        Commands::InitConfig { path, force } => {
+            if path.exists() && !force {
+                anyhow::bail!(
+                    "{} already exists; pass --force to overwrite",
+                    path.display()
+                );
+            }
+            std::fs::write(&path, config::INIT_CONFIG_TEMPLATE)
+                .with_context(|| format!("writing {}", path.display()))?;
+            eprintln!("wrote {}", path.display());
         }
         Commands::Crap {
             path,
