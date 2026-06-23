@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ooze — Repository Specification Sheet</title>
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --panel: #ffffff;
+    --ink: #1c2330;
+    --ink-soft: #4a5568;
+    --muted: #6b7686;
+    --line: #e1e6ec;
+    --accent: #2f6f5e;
+    --accent-soft: #e6f1ed;
+    --accent-ink: #1d4d40;
+    --warn-bg: #fff6e6;
+    --warn-line: #e8b339;
+    --warn-ink: #7a5300;
+    --unknown-bg: #f0eefb;
+    --unknown-line: #8d7ad6;
+    --unknown-ink: #4b3b8f;
+    --note-bg: #e9f1fb;
+    --note-line: #4f8ad6;
+    --note-ink: #234e85;
+    --code-bg: #f3f4f6;
+    --shadow: 0 1px 2px rgba(20,30,50,.05), 0 4px 14px rgba(20,30,50,.06);
+    --radius: 12px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.6;
+    font-size: 16px;
+  }
+  a { color: var(--accent); }
+  .layout { display: grid; grid-template-columns: 290px 1fr; align-items: start; }
+
+  /* Sidebar */
+  aside {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    padding: 22px 18px 60px;
+  }
+  aside .brand { font-weight: 700; font-size: 1.25rem; letter-spacing: -.01em; }
+  aside .brand small { display:block; font-weight: 500; color: var(--muted); font-size: .72rem; margin-top: 4px; letter-spacing: .02em; text-transform: uppercase; }
+  nav ol { list-style: none; counter-reset: s; margin: 18px 0 0; padding: 0; }
+  nav li { counter-increment: s; }
+  nav a {
+    display: block;
+    padding: 5px 10px 5px 34px;
+    margin: 1px 0;
+    border-radius: 7px;
+    color: var(--ink-soft);
+    text-decoration: none;
+    font-size: .86rem;
+    position: relative;
+  }
+  nav a::before {
+    content: counter(s);
+    position: absolute; left: 8px; top: 5px;
+    width: 20px; text-align: right;
+    color: var(--muted); font-size: .72rem; font-variant-numeric: tabular-nums;
+  }
+  nav a:hover { background: var(--accent-soft); color: var(--accent-ink); }
+
+  /* Main */
+  main { padding: 40px 48px 120px; max-width: 980px; }
+  header.page {
+    background: linear-gradient(135deg, #2f6f5e, #214b56);
+    color: #fff; border-radius: var(--radius); padding: 32px 34px; box-shadow: var(--shadow);
+  }
+  header.page h1 { margin: 0 0 6px; font-size: 2.1rem; letter-spacing: -.02em; }
+  header.page p { margin: 0; color: #d8eee7; max-width: 70ch; }
+  header.page .tags { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+  header.page .tags span {
+    background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.22);
+    padding: 3px 10px; border-radius: 999px; font-size: .76rem; font-family: var(--mono);
+  }
+
+  section { margin-top: 46px; scroll-margin-top: 16px; }
+  section > h2 {
+    font-size: 1.4rem; letter-spacing: -.01em; margin: 0 0 4px;
+    padding-bottom: 8px; border-bottom: 2px solid var(--accent-soft);
+  }
+  section > h2 .num { color: var(--accent); font-family: var(--mono); font-size: .9rem; margin-right: 8px; }
+  h3 { font-size: 1.08rem; margin: 26px 0 8px; }
+  p { color: var(--ink-soft); }
+
+  code {
+    font-family: var(--mono); font-size: .86em;
+    background: var(--code-bg); padding: 1px 5px; border-radius: 5px; color: #b34;
+  }
+  pre {
+    background: #1d2430; color: #e6edf3; padding: 16px 18px; border-radius: 10px;
+    overflow-x: auto; font-family: var(--mono); font-size: .82rem; line-height: 1.5;
+  }
+  pre code { background: none; color: inherit; padding: 0; }
+
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: .88rem; background: var(--panel); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #eef2f1; color: var(--ink); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  td code { white-space: nowrap; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin: 16px 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .card h4 { margin: 0 0 6px; font-size: .98rem; color: var(--accent-ink); }
+  .card p { margin: 0; font-size: .85rem; }
+
+  .callout { border-radius: 10px; padding: 13px 16px 13px 16px; margin: 16px 0; border-left: 4px solid; font-size: .9rem; }
+  .callout p { margin: 0; color: inherit; }
+  .callout .label { font-weight: 700; font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 3px; }
+  .warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+  .unknown { background: var(--unknown-bg); border-color: var(--unknown-line); color: var(--unknown-ink); }
+  .note { background: var(--note-bg); border-color: var(--note-line); color: var(--note-ink); }
+  .conv { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
+
+  .diagram { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; margin: 16px 0; box-shadow: var(--shadow); overflow-x: auto; }
+  .diagram figcaption { margin-top: 8px; font-size: .8rem; color: var(--muted); text-align: center; }
+  .mermaid { display: flex; justify-content: center; }
+
+  .pill { display:inline-block; font-family: var(--mono); font-size: .72rem; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); border: 1px solid #cfe3db; }
+  .tag-unknown { background: var(--unknown-bg); color: var(--unknown-ink); border-color: #d6cdf3; }
+  ul.tight li, ol.tight li { margin: 3px 0; }
+  footer.page { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: .82rem; }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--line); }
+    main { padding: 24px; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <div class="brand">ooze<small>Repository Spec Sheet</small></div>
+    <nav>
+      <ol>
+        <li><a href="#summary">Title &amp; summary</a></li>
+        <li><a href="#purpose">Project purpose</a></li>
+        <li><a href="#scope">Scope of this repo</a></li>
+        <li><a href="#not-cover">What it does not cover</a></li>
+        <li><a href="#overview">System overview</a></li>
+        <li><a href="#glossary">Concepts &amp; glossary</a></li>
+        <li><a href="#actors">Actors &amp; responsibilities</a></li>
+        <li><a href="#structure">Repository structure</a></li>
+        <li><a href="#context-dir">Context directory summary</a></li>
+        <li><a href="#architecture">Architecture overview</a></li>
+        <li><a href="#runtime">Runtime flow</a></li>
+        <li><a href="#dev-workflow">Development workflow</a></li>
+        <li><a href="#planning">Planning workflow</a></li>
+        <li><a href="#task-exec">Task execution workflow</a></li>
+        <li><a href="#validation">Validation workflow</a></li>
+        <li><a href="#review">Human review checkpoints</a></li>
+        <li><a href="#agent-instr">Agent working instructions</a></li>
+        <li><a href="#team-instr">Team working instructions</a></li>
+        <li><a href="#io">Inputs &amp; outputs</a></li>
+        <li><a href="#required">Required artifacts</a></li>
+        <li><a href="#optional">Optional artifacts</a></li>
+        <li><a href="#config">Configuration &amp; environment</a></li>
+        <li><a href="#quality">Testing &amp; quality gates</a></li>
+        <li><a href="#errors">Error handling &amp; failures</a></li>
+        <li><a href="#security">Security &amp; privacy</a></li>
+        <li><a href="#observability">Observability</a></li>
+        <li><a href="#release">Deployment / release</a></li>
+        <li><a href="#constraints">Known constraints</a></li>
+        <li><a href="#risks">Known risks</a></li>
+        <li><a href="#open">Open questions</a></li>
+        <li><a href="#anti">Anti-patterns</a></li>
+        <li><a href="#onboarding">Onboarding checklist</a></li>
+        <li><a href="#final">Final summary</a></li>
+        <li><a href="#not-prescribe">Not prescribed</a></li>
+      </ol>
+    </nav>
+  </aside>
+
+  <main>
+    <header class="page" id="summary">
+      <h1>ooze — Repository Specification</h1>
+      <p>Multi-language mutation-testing CLI. It scans a repository, generates semantic
+      source mutations, runs your existing test suite against each one in an isolated
+      workspace, and reports which mutations your tests failed to catch (the
+      <em>survivors</em>). Surviving mutants flag code paths your tests don't truly exercise.</p>
+      <div class="tags">
+        <span>Rust • edition 2024</span>
+        <span>v0.1.0</span>
+        <span>CLI binary: ooze</span>
+        <span>23 languages</span>
+        <span>tree-sitter</span>
+      </div>
+    </header>
+
+    <div class="callout note">
+      <span class="label">How this document was produced</span>
+      <p>This spec is derived strictly from the repository itself — <code>README.md</code>,
+      <code>docs/</code>, <code>Cargo.toml</code>, <code>ooze.example.toml</code>, and the
+      <code>src/</code> tree (notably <code>main.rs</code>, <code>core.rs</code>,
+      <code>scheduler.rs</code>, <code>runner/</code>, <code>report/</code>,
+      <code>config/</code>, <code>skip/</code>, <code>doctor.rs</code>). Statements that
+      could not be confirmed from the repository are explicitly marked
+      <span class="pill tag-unknown">Unknown from current context</span> or
+      <strong>Needs confirmation</strong>.</p>
+    </div>
+
+    <section id="purpose">
+      <h2><span class="num">01</span>Project purpose</h2>
+      <p>ooze exists to measure <strong>test-suite effectiveness</strong> beyond line
+      coverage. Line coverage tells you a line ran; mutation testing tells you whether a
+      test would <em>fail</em> if that line were subtly wrong. ooze introduces small,
+      behavior-changing edits ("mutants") into source code and re-runs the project's own
+      test command (the "probe") against each one:</p>
+      <div class="cards">
+        <div class="card"><h4>Killed</h4><p>A test failed — the suite caught the mutation. Good.</p></div>
+        <div class="card"><h4>Survived</h4><p>Tests still passed — a gap in the suite. Actionable signal.</p></div>
+        <div class="card"><h4>Timeout</h4><p>Probe exceeded the per-mutant wall-clock cap.</p></div>
+        <div class="card"><h4>Error</h4><p>The probe could not run / infrastructure failure.</p></div>
+      </div>
+      <p>It is explicitly designed to be <strong>CI-friendly</strong>: deterministic exit
+      codes, multiple machine-readable report formats (JSON, SARIF, GitHub annotations,
+      agent task lists), and a <code>--changed-only</code> mode for fast PR runs.</p>
+    </section>
+
+    <section id="scope">
+      <h2><span class="num">02</span>Scope of this repository</h2>
+      <p>This repository is the <strong>entire ooze tool</strong>: a single Rust crate
+      producing one binary. Its responsibilities:</p>
+      <ul class="tight">
+        <li>Discover functions across 23 languages via tree-sitter grammars (<code>src/lang/</code>, <code>queries/</code>).</li>
+        <li>Compute cyclomatic complexity and CRAP scores, optionally fused with LCOV coverage (<code>src/crap/</code>).</li>
+        <li>Generate semantic mutation candidates from per-language operator implementations (<code>src/mutate/</code>).</li>
+        <li>Statically skip equivalent / non-meaningful candidates (<code>src/skip/</code>).</li>
+        <li>Order candidates by strategy and optional coverage signal (<code>src/scheduler.rs</code>).</li>
+        <li>Materialize isolated per-worker workspaces (copy or overlayfs) and run the probe in parallel (<code>src/runner/</code>).</li>
+        <li>Classify outcomes and emit reports in several formats (<code>src/report/</code>).</li>
+        <li>Load and merge configuration from <code>ooze.toml</code> + CLI flags (<code>src/config/</code>).</li>
+        <li>Diagnose preconditions (<code>src/doctor.rs</code>).</li>
+      </ul>
+    </section>
+
+    <section id="not-cover">
+      <h2><span class="num">03</span>What this repository does not cover</h2>
+      <ul class="tight">
+        <li><strong>It does not run or manage your test framework.</strong> You supply the probe command after <code>--</code>; ooze only executes it and reads its exit status.</li>
+        <li><strong>It does not collect coverage.</strong> LCOV is consumed as input (<code>--lcov</code>); generating it is out of scope.</li>
+        <li><strong>It is not a linter or formatter.</strong> Mutations are throwaway, applied only inside disposable workspaces — source on disk is never modified by a run.</li>
+        <li><strong>It ships no GitHub/GitLab pipeline of its own</strong> — <code>docs/ci.md</code> provides recommended snippets, but no <code>.github/</code> workflow exists in the repo (see <a href="#release">§27</a>).</li>
+        <li>Languages on the backlog are not yet mutated — see <code>docs/deferred-languages.md</code>.</li>
+      </ul>
+    </section>
+
+    <section id="overview">
+      <h2><span class="num">04</span>System overview</h2>
+      <p>ooze is a stateless command-line program. Each invocation reads source files (and
+      optionally a config and an LCOV file), runs a pipeline, and writes a report to stdout
+      or a file. The only persistent state on disk is the cache and run scratch directories
+      under <code>.ooze/</code>.</p>
+      <figure class="diagram">
+        <div class="mermaid">
+flowchart LR
+  SRC[(Source repo<br/>any of 23 langs)] --> SCAN[Discovery<br/>tree-sitter]
+  CFG[/ooze.toml + CLI flags/] --> PIPE
+  LCOV[/LCOV coverage<br/>optional/] --> SCORE
+  SCAN --> SCORE[CRAP scoring]
+  SCAN --> MUT[Mutation discovery]
+  MUT --> SKIP[Static skips]
+  SKIP --> SCHED[Scheduler<br/>strategy order]
+  SCORE --> SCHED
+  SCHED --> PIPE[Parallel runner]
+  PIPE --> WS[[Isolated workspaces<br/>copy / overlay]]
+  WS --> PROBE{{Probe = your test cmd}}
+  PROBE --> CLASS[Classify: killed / survived / timeout / error]
+  CLASS --> REP[/Report: json · human · sarif ·<br/>github-annotations · agent-tasks/]
+        </div>
+        <figcaption>High-level data flow of a <code>test-mutants</code> run.</figcaption>
+      </figure>
+    </section>
+
+    <section id="glossary">
+      <h2><span class="num">05</span>Core concepts and glossary</h2>
+      <table>
+        <thead><tr><th>Term</th><th>Meaning (as used in this repo)</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Mutant / candidate</strong></td><td>A single semantic edit at a known byte range (<code>MutationCandidate</code> in <code>core.rs</code>). Carries id, file, language, operator, original/replacement text.</td></tr>
+          <tr><td><strong>Operator</strong></td><td>A language-agnostic mutation idea (<code>OperatorName</code>), e.g. <code>negate_equality</code>. Nine exist today.</td></tr>
+          <tr><td><strong>Implementation</strong></td><td>One language's realization of an operator (<code>MutatorImpl</code>), id like <code>rust.negate_equality</code>, defined in <code>src/mutate/registry.rs</code>.</td></tr>
+          <tr><td><strong>Probe</strong></td><td>The user-supplied test command (everything after <code>--</code>, or <code>[probe].command</code>). Its exit status decides killed vs survived.</td></tr>
+          <tr><td><strong>Preflight</strong></td><td>One probe run on unmodified code to confirm the baseline is green before mutating.</td></tr>
+          <tr><td><strong>Warmup</strong></td><td>Pre-building the probe in each worker's build cache so the first mutant isn't a cold compile.</td></tr>
+          <tr><td><strong>Workspace</strong></td><td>An isolated copy (or overlayfs mount) of the repo where one mutant is applied and probed.</td></tr>
+          <tr><td><strong>CRAP</strong></td><td>Change Risk Anti-Patterns score: combines cyclomatic complexity and coverage to flag risky functions (<code>src/crap/</code>).</td></tr>
+          <tr><td><strong>Strategy</strong></td><td>Candidate ordering: <code>discovery</code>, <code>actionable</code>, <code>highest_crap</code> (<code>scheduler.rs</code>).</td></tr>
+          <tr><td><strong>Verdict / status</strong></td><td><code>killed</code>, <code>survived</code>, <code>timeout</code>, <code>error</code> (<code>MutantStatus</code>).</td></tr>
+          <tr><td><strong>Static skip</strong></td><td>A rule that drops candidates unlikely to be meaningful (test files, generated files, assert/panic macro internals).</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="actors">
+      <h2><span class="num">06</span>Main actors and responsibilities</h2>
+      <table>
+        <thead><tr><th>Actor</th><th>Responsibility</th></tr></thead>
+        <tbody>
+          <tr><td>Developer (local)</td><td>Runs ooze on a branch to find gaps before opening a PR; addresses survivors by writing tests.</td></tr>
+          <tr><td>CI pipeline</td><td>Runs <code>test-mutants</code> on PRs (often <code>--changed-only</code>), publishes annotations/SARIF, gates on exit code.</td></tr>
+          <tr><td>AI coding agent</td><td>Consumes <code>agent-tasks-json</code> / <code>agent-tasks-markdown</code> to write missing tests; may also extend operators/grammars (see <a href="#agent-instr">§17</a>).</td></tr>
+          <tr><td>Tech lead / maintainer</td><td>Tunes strategy, limits, and the survivor gate; decides rollout vs enforcement phase.</td></tr>
+          <tr><td>The probe (your test cmd)</td><td>External process whose exit code is the ground truth for each mutant.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="structure">
+      <h2><span class="num">07</span>Repository structure</h2>
+      <pre><code>ooze/
+├── Cargo.toml            Crate manifest; deps + clippy lint config (pedantic)
+├── Cargo.lock
+├── ooze.example.toml     Canonical config example
+├── README.md             User-facing overview, commands, quick starts
+├── flake.nix / flake.lock  Nix dev shell (rust toolchain, jq, llvm-cov)
+├── .envrc                direnv hook
+├── lcov.info             Checked-in coverage sample for this repo
+├── docs/
+│   ├── running-mutants.md       Per-language probe recipes
+│   ├── ci.md                    CI integration + exit codes
+│   ├── config.md               ooze.toml reference
+│   ├── cyclomatic-conventions.md  How CC is counted per language
+│   ├── deferred-languages.md   Backlog grammars
+│   └── spec.html               (this document)
+├── queries/&lt;lang&gt;/       tree-sitter queries: functions.scm, branches.scm,
+│                          plus Rust operator queries (negate-equality.scm, …)
+├── src/
+│   ├── main.rs           CLI (clap), flag/config merge, command dispatch
+│   ├── core.rs           Shared types: Language, OperatorName/Category, candidates, outcomes
+│   ├── lang/             Per-language GrammarDef + discovery (mod.rs + 23 modules)
+│   ├── mutate/           Operator registry + mutant discovery (mod.rs, registry.rs)
+│   ├── crap/             Cyclomatic + coverage → CRAP (mod.rs, coverage.rs)
+│   ├── skip/             Static skip rules
+│   ├── scheduler.rs      Strategy ordering + selection explanations
+│   ├── runner/           Workspaces + parallel probe execution (mod.rs, overlay.rs)
+│   ├── report/           Enrichment + all output formats
+│   ├── config/           ooze.toml schema, loader, init templates
+│   └── doctor.rs         Precondition diagnostics
+├── tests/
+│   ├── cli.rs            Integration tests driving the built binary
+│   └── fixtures/         Sample sources per language + lcov fixture
+└── .ooze/                Runtime caches/runs (gitignored scratch)</code></pre>
+    </section>
+
+    <section id="context-dir">
+      <h2><span class="num">08</span>Context directory summary</h2>
+      <div class="callout unknown">
+        <span class="label">Unknown from current context</span>
+        <p>This repository has <strong>no <code>context/</code> directory</strong> and no
+        other Shared Context Engineering (SCE) context artifacts (no <code>context/</code>,
+        no <code>plans/</code>, <code>tasks/</code>, <code>validation/</code>, or
+        <code>handover/</code> conventions were found). The SCE conventions assumed by the
+        generating prompt are <strong>not present</strong> here.</p>
+      </div>
+      <p>The closest equivalent to a "context" surface is the <strong><code>docs/</code></strong>
+      directory plus <code>README.md</code> and <code>ooze.example.toml</code>. Treat those
+      as the durable, human-maintained context for the project:</p>
+      <table>
+        <thead><tr><th>File</th><th>Role as context</th></tr></thead>
+        <tbody>
+          <tr><td><code>README.md</code></td><td>Authoritative command/flag reference and quick starts.</td></tr>
+          <tr><td><code>docs/config.md</code></td><td>Config schema and section semantics; mirrors <code>src/config/schema.rs</code>.</td></tr>
+          <tr><td><code>docs/ci.md</code></td><td>Exit-code contract and CI integration patterns.</td></tr>
+          <tr><td><code>docs/running-mutants.md</code></td><td>Per-language probe + cache recipes.</td></tr>
+          <tr><td><code>docs/cyclomatic-conventions.md</code></td><td>Per-language cyclomatic-complexity counting rules.</td></tr>
+          <tr><td><code>docs/deferred-languages.md</code></td><td>Backlog of languages not yet wired up.</td></tr>
+          <tr><td><code>.claude/settings.local.json</code></td><td>Local Claude Code permission allow-list (agent tooling, not project context).</td></tr>
+        </tbody>
+      </table>
+      <div class="callout conv">
+        <span class="label">Convention</span>
+        <p>Because there is no <code>context/</code> directory, keep <code>docs/</code> and the
+        inline doc-comments in <code>src/core.rs</code> / module headers in sync with code.
+        Several modules carry deliberate explanatory comments (e.g. why clippy lints are
+        allowed, why <code>Language</code> serializes the legacy string) — those are the
+        project's "context" and should be updated alongside behavior changes.</p>
+      </div>
+    </section>
+
+    <section id="architecture">
+      <h2><span class="num">09</span>Architecture overview</h2>
+      <p>The crate is organized as a pipeline of mostly-pure stages wired together in
+      <code>main.rs</code>. <code>core.rs</code> holds the shared vocabulary; every other
+      module depends on it and on little else.</p>
+      <figure class="diagram">
+        <div class="mermaid">
+flowchart TD
+  MAIN[main.rs<br/>clap CLI + config merge] --> CONFIG[config/<br/>schema · loader · templates]
+  MAIN --> LANG[lang/<br/>GrammarDef · discovery]
+  LANG --> QUERIES[(queries/&lt;lang&gt;/*.scm)]
+  LANG --> MUTATE[mutate/<br/>registry + discover_mutants]
+  MUTATE --> CORE[core.rs<br/>shared types]
+  MUTATE --> SKIP[skip/<br/>static skip rules]
+  LANG --> CRAP[crap/<br/>cyclomatic + coverage]
+  CRAP --> SCHED[scheduler.rs<br/>order + explain]
+  SKIP --> SCHED
+  SCHED --> RUNNER[runner/<br/>workspaces + parallel probe]
+  RUNNER --> OVERLAY[runner/overlay.rs<br/>overlayfs backend]
+  RUNNER --> REPORT[report/<br/>enrich + formats]
+  MAIN --> DOCTOR[doctor.rs<br/>preconditions]
+  CORE -.shared.- LANG
+  CORE -.shared.- CRAP
+  CORE -.shared.- RUNNER
+  CORE -.shared.- REPORT
+        </div>
+        <figcaption>Module dependency map. <code>core.rs</code> is the shared type hub.</figcaption>
+      </figure>
+      <h3>Key architectural decisions (observed in code)</h3>
+      <ul class="tight">
+        <li><strong>Operators are decoupled from grammars.</strong> <code>lang/</code> only parses/discovers; mutation logic lives in <code>mutate/registry.rs</code> keyed by <code>Language</code> (per the doc-comment in <code>lang/mod.rs</code>).</li>
+        <li><strong>Semantic operator vs per-language implementation</strong> split: one <code>OperatorName</code> can have many <code>MutatorImpl</code> rows; filters work at the semantic level so they apply across all languages.</li>
+        <li><strong>Two workspace backends</strong>: full <code>copy</code> (portable) and <code>overlay</code> (overlayfs, Linux + root, no full copy per mutant), with <code>auto</code> selecting overlay when available.</li>
+        <li><strong>Parallelism via rayon</strong>; each worker gets its own build cache (<code>--per-worker-cache</code>) to avoid build-lock contention.</li>
+        <li><strong>Deterministic exit-code contract</strong> centralized in <code>report::OozeExitCode</code>.</li>
+        <li><strong>Strict config</strong>: <code>deny_unknown_fields</code> — typos fail loudly. CLI flags always override config.</li>
+        <li><strong>Tree-sitter byte ranges</strong> are the unit of edit; <code>apply_mutation</code> verifies the original text still matches before mutating, guarding against stale candidates.</li>
+      </ul>
+    </section>
+
+    <section id="runtime">
+      <h2><span class="num">10</span>Runtime flow</h2>
+      <figure class="diagram">
+        <div class="mermaid">
+sequenceDiagram
+  participant U as User / CI
+  participant O as ooze (main)
+  participant C as config
+  participant D as discovery+mutate+skip
+  participant S as scheduler
+  participant R as runner (workers)
+  participant P as probe (test cmd)
+  participant Rep as report
+  U->>O: ooze test-mutants --path . -- &lt;probe&gt;
+  O->>C: load ooze.toml, merge CLI flags
+  O->>D: scan files, discover candidates, apply static skips
+  O->>D: (optional) --changed-only filter vs git BASE
+  O->>S: order(strategy, candidates, crap)
+  opt preflight
+    O->>P: run probe on clean code
+    P-->>O: must be green (else exit 2)
+  end
+  opt warmup
+    O->>R: pre-build probe in each worker cache
+  end
+  loop each candidate (parallel, N jobs)
+    O->>R: create workspace, apply mutation
+    R->>P: run probe with timeout + probe-env
+    P-->>R: exit status / timeout
+    R-->>O: MutantOutcome (killed/survived/timeout/error)
+  end
+  O->>Rep: enrich + format
+  Rep-->>U: report (stdout/file) + exit code
+        </div>
+        <figcaption>End-to-end sequence of a <code>test-mutants</code> invocation.</figcaption>
+      </figure>
+      <figure class="diagram">
+        <div class="mermaid">
+stateDiagram-v2
+  [*] --> Discovered
+  Discovered --> Skipped: static skip rule matches
+  Discovered --> Scheduled: kept
+  Scheduled --> Applied: workspace created, edit written
+  Applied --> Probed: probe runs
+  Probed --> Killed: probe failed (test caught it)
+  Probed --> Survived: probe passed (gap!)
+  Probed --> Timeout: exceeded --timeout-seconds
+  Probed --> Error: probe could not run
+  Killed --> [*]
+  Survived --> [*]
+  Timeout --> [*]
+  Error --> [*]
+  Skipped --> [*]
+        </div>
+        <figcaption>Lifecycle of a single mutation candidate.</figcaption>
+      </figure>
+    </section>
+
+    <section id="dev-workflow">
+      <h2><span class="num">11</span>Development workflow</h2>
+      <p>The repo uses a Nix flake dev shell (<code>flake.nix</code>) wired through direnv
+      (<code>.envrc</code>). It provisions a stable Rust toolchain (with
+      <code>rust-src</code>, <code>rust-analyzer</code>, <code>llvm-tools-preview</code>),
+      <code>jq</code>, and <code>llvm-cov</code>/<code>llvm-profdata</code> for coverage.</p>
+      <pre><code># enter dev shell (automatic with direnv; otherwise)
+nix develop
+
+# build + test
+cargo build --release          # binary: ./target/release/ooze
+cargo test                     # unit tests + tests/cli.rs integration tests
+cargo clippy                   # pedantic lints (warn) per Cargo.toml
+
+# dogfood ooze on itself
+./target/release/ooze test-mutants --path . --strategy actionable \
+  --per-worker-cache --warmup --probe-env CARGO_TARGET_DIR={build_cache} \
+  -- cargo test</code></pre>
+      <div class="callout conv">
+        <span class="label">Convention</span>
+        <p>ooze is dogfooded on itself: <code>lcov.info</code> is checked in and the Rust
+        probe recipe is the canonical example throughout the README and <code>docs/</code>.
+        New mutation operators/grammars should be exercised against
+        <code>tests/fixtures/lang/sample.&lt;ext&gt;</code>.</p>
+      </div>
+    </section>
+
+    <section id="planning">
+      <h2><span class="num">12</span>Planning workflow</h2>
+      <div class="callout unknown">
+        <span class="label">Unknown from current context</span>
+        <p>No formal planning artifacts (plan files, ADRs, RFC templates) exist in the repo.
+        Git history is the only record of intent. The guidance below is the de-facto pattern
+        inferred from structure and docs, not a documented process — <strong>Needs confirmation</strong>.</p>
+      </div>
+      <p>In practice, planning a change in this codebase means deciding which pipeline stage
+      it touches and how it threads through the shared types:</p>
+      <ol class="tight">
+        <li><strong>Locate the stage</strong> (grammar, operator, scheduler, runner, report, config).</li>
+        <li><strong>Check the shared contract</strong> in <code>core.rs</code> — does the change add an <code>OperatorName</code>, a <code>Language</code>, a report field?</li>
+        <li><strong>Use <code>plan-mutants</code></strong> to preview selection/scoring effects without running probes — this is the built-in "dry run" for behavior changes.</li>
+        <li><strong>Update <code>docs/</code></strong> in lockstep (config.md mirrors schema.rs; README mirrors the CLI).</li>
+      </ol>
+      <p>The <code>plan-mutants</code> command is itself the closest thing to a "planning
+      workflow" the tool offers to its <em>users</em>: it shows total candidates, skipped
+      count, applied excludes, the operator filter, and per-candidate selection scores and
+      reasons — before any probe runs.</p>
+    </section>
+
+    <section id="task-exec">
+      <h2><span class="num">13</span>Task execution workflow</h2>
+      <p>A concrete code task typically follows the stage it lives in. Two common ones:</p>
+      <h3>Adding a mutation operator (one language)</h3>
+      <ol class="tight">
+        <li>Add an <code>OperatorName</code> variant + <code>OperatorInfo</code> (category, default_enabled, description, test_hint) in <code>core.rs</code>; register in <code>OperatorName::ALL</code>.</li>
+        <li>Add a tree-sitter query under <code>queries/&lt;lang&gt;/</code> (see existing Rust operator queries).</li>
+        <li>Add a <code>MutatorImpl</code> row (query + <code>replacement</code> + <code>description</code>) in <code>src/mutate/registry.rs</code>, id <code>&lt;lang&gt;.&lt;operator&gt;</code>.</li>
+        <li>Add a fixture case in <code>tests/fixtures/lang/sample.&lt;ext&gt;</code> and assert via <code>mutants</code>/<code>plan-mutants</code>.</li>
+      </ol>
+      <h3>Adding a language for discovery</h3>
+      <ol class="tight">
+        <li>Add the <code>tree-sitter-&lt;lang&gt;</code> dependency in <code>Cargo.toml</code>.</li>
+        <li>Add a <code>Language</code> variant in <code>core.rs</code> (with <code>as_str</code>/<code>parse</code>).</li>
+        <li>Add <code>src/lang/&lt;lang&gt;.rs</code> with a <code>GrammarDef</code> and <code>queries/&lt;lang&gt;/functions.scm</code> + <code>branches.scm</code>.</li>
+        <li>Register the module in <code>src/lang/mod.rs</code> and add a fixture sample.</li>
+      </ol>
+    </section>
+
+    <section id="validation">
+      <h2><span class="num">14</span>Validation workflow</h2>
+      <table>
+        <thead><tr><th>Gate</th><th>Command</th><th>Pass criterion</th></tr></thead>
+        <tbody>
+          <tr><td>Build</td><td><code>cargo build --release</code></td><td>compiles clean</td></tr>
+          <tr><td>Lints</td><td><code>cargo clippy</code></td><td>no warnings beyond the explicitly-allowed pedantic exceptions in <code>Cargo.toml</code></td></tr>
+          <tr><td>Tests</td><td><code>cargo test</code></td><td>unit tests + <code>tests/cli.rs</code> integration tests pass</td></tr>
+          <tr><td>Self-mutation</td><td><code>ooze test-mutants … -- cargo test</code></td><td>no new survivors in changed code</td></tr>
+          <tr><td>Doctor</td><td><code>ooze doctor --path .</code></td><td>no failing checks (exit 0)</td></tr>
+        </tbody>
+      </table>
+      <div class="callout warn">
+        <span class="label">Important</span>
+        <p>For mutation runs, always pass <code>--preflight</code> in validation: it runs the
+        probe on unmodified code first and aborts with exit code 2 if the baseline is broken,
+        preventing meaningless "all survived" reports.</p>
+      </div>
+    </section>
+
+    <section id="review">
+      <h2><span class="num">15</span>Human review checkpoints</h2>
+      <ul class="tight">
+        <li><strong>New operator semantics</strong> — does the mutation produce a genuinely different behavior (not an equivalent mutant)? Review the <code>replacement</code> fn and skip rules.</li>
+        <li><strong>Exit-code / report-format changes</strong> — these are an external contract for CI; verify against <code>docs/ci.md</code>.</li>
+        <li><strong>Config schema changes</strong> — <code>deny_unknown_fields</code> means additions must update <code>docs/config.md</code> and <code>ooze.example.toml</code> together.</li>
+        <li><strong>Workspace/runner changes</strong> — isolation and cleanup correctness; overlayfs requires root and is Linux-only.</li>
+        <li><strong>Default-on operators</strong> — flipping <code>default_enabled</code> changes everyone's run; needs explicit sign-off.</li>
+      </ul>
+    </section>
+
+    <section id="agent-instr">
+      <h2><span class="num">16</span>Agent working instructions</h2>
+      <figure class="diagram">
+        <div class="mermaid">
+flowchart TD
+  A[Task arrives] --> B{Read context first}
+  B --> B1[README.md + docs/*]
+  B --> B2[core.rs shared types]
+  B --> B3[module-level doc comments]
+  B1 --> C{What stage?}
+  B2 --> C
+  B3 --> C
+  C -->|grammar| L[lang/ + queries/]
+  C -->|operator| M[mutate/registry.rs + core.rs]
+  C -->|ordering| S[scheduler.rs]
+  C -->|isolation| R[runner/]
+  C -->|output| RP[report/]
+  C -->|config| CF[config/ + docs/config.md + example.toml]
+  L --> V[Add/extend fixture in tests/fixtures]
+  M --> V
+  S --> V
+  R --> V
+  RP --> V
+  CF --> V
+  V --> G[cargo build + clippy + test]
+  G --> H{Green?}
+  H -->|no| C
+  H -->|yes| D[Update docs in lockstep]
+  D --> E[Summarize change + commands run]
+        </div>
+        <figcaption>Recommended flow for an AI agent modifying this codebase.</figcaption>
+      </figure>
+      <div class="callout conv">
+        <span class="label">Convention for agents</span>
+        <p>Before editing, read the relevant module's leading doc-comment — they encode
+        non-obvious decisions (why operators left <code>lang/</code>, why <code>Language</code>
+        keeps a legacy serialized string, why specific clippy lints are allowed). Honor those
+        rather than "fixing" them. Never modify source outside the intended stage to silence a
+        clippy warning; the allowed exceptions are deliberate and centralized in
+        <code>Cargo.toml</code>.</p>
+      </div>
+      <p>When the task is "address survivors" rather than "change ooze," run
+      <code>ooze test-mutants --format agent-tasks-json</code> (or markdown) and use each
+      task's file/line/operator/test-hint to write a targeted test — do not weaken the mutant
+      or the probe.</p>
+    </section>
+
+    <section id="team-instr">
+      <h2><span class="num">17</span>Team working instructions</h2>
+      <ul class="tight">
+        <li>Develop inside the Nix dev shell so toolchain and coverage tools match.</li>
+        <li>Keep <code>README.md</code>, <code>docs/config.md</code>, and <code>ooze.example.toml</code> consistent with <code>src/config/schema.rs</code> — they are tested-by-reading, not by CI.</li>
+        <li>Add a fixture for every new operator/language; integration tests in <code>tests/cli.rs</code> drive the real binary.</li>
+        <li>Treat exit codes and report formats as a public contract; bump behavior deliberately.</li>
+        <li>Prefer extending the registry over special-casing in <code>main.rs</code>.</li>
+      </ul>
+    </section>
+
+    <section id="io">
+      <h2><span class="num">18</span>Inputs and outputs</h2>
+      <table>
+        <thead><tr><th>Direction</th><th>Item</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Input</td><td>Source tree (<code>--path</code>)</td><td>Scanned via tree-sitter; defaults + <code>.gitignore</code> excluded.</td></tr>
+          <tr><td>Input</td><td><code>ooze.toml</code> (optional)</td><td>Auto-loaded from repo root; CLI flags override.</td></tr>
+          <tr><td>Input</td><td>LCOV file (<code>--lcov</code>)</td><td>Feeds CRAP scoring and <code>actionable</code> ordering.</td></tr>
+          <tr><td>Input</td><td>Probe command (after <code>--</code>)</td><td>Your test command; required unless <code>[probe].command</code> is set.</td></tr>
+          <tr><td>Input</td><td>Git ref (<code>--changed-only BASE</code>)</td><td>Restricts mutants to changed files (diff + uncommitted + untracked).</td></tr>
+          <tr><td>Output</td><td>Report (stdout or <code>--output</code>)</td><td>Formats: <code>json</code>, <code>human</code>, <code>agent-tasks-json</code>, <code>agent-tasks-markdown</code>, <code>github-annotations</code>, <code>sarif</code>.</td></tr>
+          <tr><td>Output</td><td>Exit code</td><td>Deterministic; drives CI pass/fail (see <a href="#errors">§24</a>).</td></tr>
+          <tr><td>Output</td><td>Progress (stderr)</td><td>Per-mutant lines; auto-disabled in CI / non-TTY.</td></tr>
+          <tr><td>Side effect</td><td><code>.ooze/cache</code>, <code>.ooze/runs</code></td><td>Build caches and per-run workspaces (scratch).</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="required">
+      <h2><span class="num">19</span>Required artifacts</h2>
+      <table>
+        <thead><tr><th>Artifact</th><th>Why required</th></tr></thead>
+        <tbody>
+          <tr><td>A runnable test command (probe)</td><td>Without it ooze has no killed/survived signal.</td></tr>
+          <tr><td>A parseable source tree in a supported language</td><td>Discovery yields the candidates.</td></tr>
+          <tr><td><code>Cargo.toml</code> / <code>Cargo.lock</code></td><td>Build the ooze binary itself.</td></tr>
+          <tr><td><code>queries/&lt;lang&gt;/functions.scm</code> + <code>branches.scm</code></td><td>Required per language for discovery + cyclomatic counting.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="optional">
+      <h2><span class="num">20</span>Optional artifacts</h2>
+      <table>
+        <thead><tr><th>Artifact</th><th>Effect when present</th></tr></thead>
+        <tbody>
+          <tr><td><code>ooze.toml</code></td><td>Persists defaults so CLI invocations shrink.</td></tr>
+          <tr><td>LCOV coverage file</td><td>Enables meaningful CRAP scores + smarter ordering.</td></tr>
+          <tr><td>Per-language operator queries (e.g. Rust's)</td><td>Unlocks language-specific operators beyond the cross-language defaults.</td></tr>
+          <tr><td>CI cache of <code>.ooze/cache</code></td><td>Turns cold builds into warm cache hits.</td></tr>
+          <tr><td><code>--output</code> report file</td><td>Machine-readable artifact for upload (JSON/SARIF).</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="config">
+      <h2><span class="num">21</span>Configuration and environment model</h2>
+      <p>Precedence is <strong>CLI flag &gt; <code>ooze.toml</code> &gt; built-in default</strong>
+      (visible throughout <code>main.rs</code> via the <code>.or(cfg…)</code> merges). The
+      config is strict (<code>deny_unknown_fields</code>). Generate a starter with
+      <code>ooze init-config --language &lt;preset&gt;</code>.</p>
+      <table>
+        <thead><tr><th>Section</th><th>Selected keys</th><th>Default</th></tr></thead>
+        <tbody>
+          <tr><td><code>[scope]</code></td><td><code>exclude</code>, <code>changed_only</code></td><td>defaults + <code>.gitignore</code> always applied</td></tr>
+          <tr><td><code>[mutation]</code></td><td><code>strategy</code>, <code>operators</code>/<code>categories</code> (+ excludes), <code>static_skips</code>, <code>context_lines</code>, <code>limit</code>, <code>lcov</code></td><td>strategy <code>actionable</code>; skips on; ctx 3</td></tr>
+          <tr><td><code>[runner]</code></td><td><code>workspace_backend</code>, <code>jobs</code>, <code>timeout_seconds</code>, <code>preflight</code>, <code>warmup</code>, <code>per_worker_cache</code>, <code>cache_dir</code>, <code>runs_dir</code></td><td>auto backend; 2 jobs; 120s; preflight+warmup on</td></tr>
+          <tr><td><code>[probe]</code></td><td><code>command</code>, <code>env</code></td><td><code>["cargo","test","--jobs","1"]</code></td></tr>
+          <tr><td><code>[report]</code></td><td><code>format</code>, <code>output</code>, <code>detail</code>, <code>fail_on_survivors</code>, <code>allow_incomplete</code>, per-field trims</td><td>format <code>human</code>; fail-on-survivors on</td></tr>
+        </tbody>
+      </table>
+      <h3>Environment</h3>
+      <ul class="tight">
+        <li><code>CI</code> — when set, auto progress mode goes silent.</li>
+        <li><code>--probe-env KEY=VALUE</code> — env injected into probe + warmup; <code>{worker}</code> → worker index, <code>{build_cache}</code> → build cache path; path-like values are auto-created.</li>
+        <li>Nix flake exports <code>RUST_SRC_PATH</code>, <code>LLVM_COV</code>, <code>LLVM_PROFDATA</code> for the dev shell.</li>
+      </ul>
+    </section>
+
+    <section id="quality">
+      <h2><span class="num">22</span>Testing and quality gates</h2>
+      <table>
+        <thead><tr><th>Gate</th><th>Where</th><th>What it enforces</th></tr></thead>
+        <tbody>
+          <tr><td>Unit tests</td><td>Inline <code>#[cfg(test)]</code> modules (e.g. flag-merge logic in <code>main.rs</code>)</td><td>Pure-function correctness.</td></tr>
+          <tr><td>Integration tests</td><td><code>tests/cli.rs</code></td><td>Drives the built binary; asserts JSON validity, output gating, command behavior.</td></tr>
+          <tr><td>Clippy (pedantic)</td><td><code>Cargo.toml</code> <code>[lints.clippy]</code></td><td>Pedantic warnings, with documented allow-list exceptions.</td></tr>
+          <tr><td>Self-mutation</td><td>ooze on ooze, with checked-in <code>lcov.info</code></td><td>Suite actually catches behavior changes.</td></tr>
+          <tr><td>Doctor</td><td><code>src/doctor.rs</code></td><td>Repo/config/runtime preconditions (overlay availability, config validity, operators).</td></tr>
+        </tbody>
+      </table>
+      <div class="callout unknown">
+        <span class="label">Needs confirmation</span>
+        <p>No automated CI workflow file is present in the repository (no <code>.github/</code>
+        or equivalent found). The gates above are run locally / on demand unless a pipeline
+        exists outside the tree. <code>docs/ci.md</code> documents how teams <em>should</em>
+        wire these into GitHub Actions / GitLab CI.</p>
+      </div>
+    </section>
+
+    <section id="errors">
+      <h2><span class="num">23</span>Error handling and failure modes</h2>
+      <table>
+        <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>0</code></td><td>Completed; no survivors, no timeouts/errors.</td></tr>
+          <tr><td><code>1</code></td><td>Completed; survived mutants found.</td></tr>
+          <tr><td><code>2</code></td><td>Preflight failed/timed out — probe broken on clean code.</td></tr>
+          <tr><td><code>3</code></td><td>Completed but timeout/error outcomes occurred (incomplete).</td></tr>
+          <tr><td><code>4</code></td><td>Usage / invalid invocation (reserved).</td></tr>
+          <tr><td><code>5</code></td><td>Internal ooze error (reserved).</td></tr>
+        </tbody>
+      </table>
+      <p>Priority when several apply: <strong>preflight &gt; infrastructure &gt; survivors &gt; success</strong>.
+      Overrides: <code>--no-fail-on-survivors</code> (exit 0 despite survivors) and
+      <code>--allow-incomplete</code> (timeouts/errors non-fatal).</p>
+      <p>Other failure modes handled in code: invalid/mismatched candidate byte ranges abort
+      the apply (<code>apply_mutation</code> verifies original text), unknown config keys and
+      unknown operators/categories fail at load, and <code>--changed-only</code> errors clearly
+      if <code>--path</code> isn't inside a git repo. Recoverable internals use
+      <code>anyhow</code> with context; typed errors use <code>thiserror</code>.</p>
+    </section>
+
+    <section id="security">
+      <h2><span class="num">24</span>Security and privacy considerations</h2>
+      <ul class="tight">
+        <li><strong>Arbitrary command execution by design:</strong> the probe is whatever you pass after <code>--</code>. ooze runs it repeatedly — only run trusted probes on trusted repos.</li>
+        <li><strong>overlayfs backend needs root.</strong> Prefer the <code>copy</code> backend in untrusted or unprivileged environments.</li>
+        <li><strong>No network calls</strong> are made by ooze itself; it reads local files and spawns the probe/git.</li>
+        <li><strong>Reports may contain source snippets and probe stdout/stderr.</strong> Trim with <code>--report-detail compact</code> / <code>--no-stdout</code> / <code>--no-stderr</code> before publishing to avoid leaking secrets that tests print.</li>
+        <li>Workspaces are isolated copies/overlays, so a misbehaving mutant cannot corrupt the real working tree.</li>
+      </ul>
+    </section>
+
+    <section id="observability">
+      <h2><span class="num">25</span>Observability and diagnostics</h2>
+      <ul class="tight">
+        <li><strong>Progress</strong> on stderr (<code>--progress auto|always|never</code>, <code>--quiet</code>): per-mutant <code>[i/N] STATUS id</code> lines.</li>
+        <li><strong>Structured reports</strong> (JSON/SARIF) carry per-outcome diffs, durations, exit codes, and optional probe output.</li>
+        <li><strong><code>ooze doctor</code></strong> emits human or JSON check results (Ok/Warn/Fail/Skip) for preconditions.</li>
+        <li><strong><code>plan-mutants</code></strong> exposes selection scores and reasons for transparency into why a candidate was (de)prioritized.</li>
+        <li><code>tracing</code> / <code>tracing-subscriber</code> are dependencies for instrumentation. <span class="pill tag-unknown">Extent of tracing usage: Unknown from current context</span></li>
+      </ul>
+    </section>
+
+    <section id="release">
+      <h2><span class="num">26</span>Deployment / release model</h2>
+      <p>ooze is distributed as source built to a single binary (<code>cargo build --release</code>);
+      there is no service to deploy. It is consumed either as a local CLI or as a CI step that
+      builds the binary and runs <code>test-mutants</code>.</p>
+      <div class="callout unknown">
+        <span class="label">Unknown from current context</span>
+        <p>Version is <code>0.1.0</code> in <code>Cargo.toml</code>. No published release process,
+        crates.io publication, tagging convention, or binary-distribution channel is documented
+        in the repo. <strong>Needs confirmation.</strong></p>
+      </div>
+    </section>
+
+    <section id="constraints">
+      <h2><span class="num">27</span>Known constraints</h2>
+      <ul class="tight">
+        <li>Rust edition 2024 toolchain required to build.</li>
+        <li><code>overlay</code> backend: Linux + overlayfs + root only; elsewhere falls back to <code>copy</code>.</li>
+        <li><code>--changed-only</code> requires the path to be inside a git repository.</li>
+        <li>Mutation is limited to languages with an operator implementation; discovery covers all 23 grammars but mutation operators are richest for Rust.</li>
+        <li>Per-mutant cost ≈ one full probe run; wall time scales with candidate count ÷ jobs. <code>--limit</code> and <code>--changed-only</code> bound it.</li>
+        <li>Reports can be large (diffs + probe output per outcome) — trimming flags exist for this reason.</li>
+      </ul>
+    </section>
+
+    <section id="risks">
+      <h2><span class="num">28</span>Known risks</h2>
+      <ul class="tight">
+        <li><strong>Equivalent mutants:</strong> some surviving mutants are behaviorally identical and unkillable; static skips mitigate but cannot eliminate them — survivor counts need human judgment.</li>
+        <li><strong>Flaky probes:</strong> a non-deterministic test suite produces noisy killed/survived results; <code>--preflight</code> and a sane <code>--timeout-seconds</code> reduce but don't remove this.</li>
+        <li><strong>Shared build cache contention</strong> if <code>--per-worker-cache</code> is omitted under high <code>--jobs</code>.</li>
+        <li><strong>Documentation drift:</strong> <code>docs/</code> mirrors code by convention, not by test — easy to desync.</li>
+        <li><strong>No CI workflow in-tree</strong> means quality gates depend on discipline / an external pipeline.</li>
+      </ul>
+    </section>
+
+    <section id="open">
+      <h2><span class="num">29</span>Open questions</h2>
+      <ul class="tight">
+        <li>Is there an external CI pipeline, or is gating manual? <strong>Needs confirmation.</strong></li>
+        <li>What is the release/versioning plan beyond <code>0.1.0</code>?</li>
+        <li>Which non-Rust languages will receive richer operator sets, and in what order (cross-ref <code>docs/deferred-languages.md</code>)?</li>
+        <li>How extensively is <code>tracing</code> wired up today?</li>
+        <li>Is a <code>context/</code> / SCE convention intended to be adopted here, or is <code>docs/</code> the deliberate substitute?</li>
+      </ul>
+    </section>
+
+    <section id="anti">
+      <h2><span class="num">30</span>Anti-patterns</h2>
+      <ul class="tight">
+        <li>❌ Running without <code>--preflight</code> on CI — a broken baseline yields all-survived noise.</li>
+        <li>❌ "Fixing" a survivor by deleting/weakening the mutant or loosening the probe instead of adding a real test.</li>
+        <li>❌ Adding config keys without updating <code>docs/config.md</code> + <code>ooze.example.toml</code> (and remembering <code>deny_unknown_fields</code>).</li>
+        <li>❌ Special-casing a language in <code>main.rs</code> instead of extending the registry/grammar layer.</li>
+        <li>❌ Silencing clippy with scattered <code>#[allow]</code> when the project centralizes intentional exceptions in <code>Cargo.toml</code>.</li>
+        <li>❌ Using the <code>overlay</code> backend in unprivileged/untrusted contexts.</li>
+        <li>❌ Publishing full reports with probe output that may contain secrets.</li>
+      </ul>
+    </section>
+
+    <section id="onboarding">
+      <h2><span class="num">31</span>Adoption / onboarding checklist</h2>
+      <ol class="tight">
+        <li>☐ Enter the Nix dev shell (<code>nix develop</code> / direnv) or install a Rust 2024 toolchain.</li>
+        <li>☐ <code>cargo build --release</code> and confirm <code>./target/release/ooze --help</code>.</li>
+        <li>☐ <code>cargo test</code> — unit + integration green.</li>
+        <li>☐ Run <code>ooze doctor --path .</code> on a target repo.</li>
+        <li>☐ Generate config: <code>ooze init-config --language rust</code>.</li>
+        <li>☐ Smoke run: <code>ooze test-mutants --path . --limit 20 --preflight -- cargo test</code>.</li>
+        <li>☐ Read <code>README.md</code>, <code>docs/config.md</code>, <code>docs/ci.md</code>.</li>
+        <li>☐ For CI: start in rollout mode (<code>--no-fail-on-survivors --format github-annotations</code>), then enforce.</li>
+      </ol>
+    </section>
+
+    <section id="final">
+      <h2><span class="num">32</span>Final summary</h2>
+      <p>ooze is a focused, single-crate Rust CLI for multi-language mutation testing. Its
+      architecture is a clean pipeline — discover (tree-sitter) → mutate (operator registry)
+      → skip → schedule → run in isolated parallel workspaces → classify → report — anchored
+      by shared types in <code>core.rs</code>. It is built for CI with deterministic exit
+      codes, several report formats (including SARIF and agent task lists), and a
+      <code>--changed-only</code> fast path. The project documents itself through
+      <code>docs/</code> and the README rather than an SCE <code>context/</code> directory, and
+      it dogfoods on its own test suite. The main areas a newcomer should verify are the CI
+      story and the release plan, both of which are not pinned down in the tree today.</p>
+    </section>
+
+    <section id="not-prescribe">
+      <h2><span class="num">33</span>What this spec intentionally does not prescribe</h2>
+      <p>The following are about <em>the codebase you point ooze at</em> — by design, ooze is
+      stack-agnostic for its targets. The table below states whether <strong>this repository
+      itself</strong> (the ooze tool's own implementation) prescribes each item and where that
+      came from.</p>
+      <table>
+        <thead><tr><th>Item</th><th>Prescribed for ooze itself?</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td>Programming language</td><td><strong>Yes</strong> — Rust (edition 2024)</td><td><code>Cargo.toml</code></td></tr>
+          <tr><td>Framework</td><td><strong>Partial</strong> — clap (CLI), tree-sitter, rayon, serde; no web framework</td><td><code>Cargo.toml</code> deps</td></tr>
+          <tr><td>Hosting provider</td><td><strong>No</strong> — it's a CLI/binary, nothing to host</td><td><span class="pill tag-unknown">Unknown from current context</span></td></tr>
+          <tr><td>Database</td><td><strong>No</strong> — none; on-disk caches under <code>.ooze/</code> only</td><td>repo inspection</td></tr>
+          <tr><td>CI provider</td><td><strong>No</strong> in-tree pipeline; patterns documented for GitHub Actions &amp; GitLab</td><td><code>docs/ci.md</code>; no <code>.github/</code> found</td></tr>
+          <tr><td>Test framework</td><td><strong>Yes</strong> — Rust's built-in <code>cargo test</code> (unit + <code>tests/cli.rs</code>)</td><td><code>tests/</code>, inline <code>#[cfg(test)]</code></td></tr>
+          <tr><td>Deployment model</td><td><strong>Build-from-source binary</strong>; no formal release process documented</td><td>README install; <code>Cargo.toml</code> v0.1.0</td></tr>
+          <tr><td>Package manager</td><td><strong>Yes</strong> — Cargo; dev env via Nix flake + direnv</td><td><code>Cargo.toml</code>/<code>Cargo.lock</code>, <code>flake.nix</code>, <code>.envrc</code></td></tr>
+        </tbody>
+      </table>
+      <p>For ooze's <strong>target</strong> repositories, none of the above is prescribed: the
+      target language is whichever of the 23 grammars match, the "test framework" is whatever
+      probe you pass after <code>--</code>, coverage is any tool that emits LCOV, and CI is
+      whatever runs the binary and reads its exit code.</p>
+    </section>
+
+    <footer class="page">
+      Generated from repository inspection on 2026-06-24 · ooze v0.1.0 · facts drawn from
+      <code>README.md</code>, <code>docs/</code>, <code>Cargo.toml</code>, <code>ooze.example.toml</code>,
+      and <code>src/</code>. Items marked “Unknown from current context” / “Needs confirmation”
+      were not determinable from the tree.
+    </footer>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "base",
+    themeVariables: {
+      primaryColor: "#e6f1ed",
+      primaryBorderColor: "#2f6f5e",
+      primaryTextColor: "#1c2330",
+      lineColor: "#6b7686",
+      fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+    }
+  });
+</script>
+</body>
+</html>
