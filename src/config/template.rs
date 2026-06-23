@@ -28,6 +28,8 @@ const RUST: &str = r#"# ooze config — defaults applied when CLI flags are abse
 [scope]
 # Extra exclude globs on top of DEFAULT_EXCLUDES (.git, target, .ooze, node_modules, vendor, __pycache__, .gradle) and .gitignore.
 exclude = []
+# Only mutate files changed versus this git ref (diff BASE...HEAD + uncommitted/untracked).
+# changed_only = "main"
 
 [mutation]
 strategy = "actionable"
@@ -69,6 +71,8 @@ const GO: &str = r#"# ooze config — defaults applied when CLI flags are absent
 [scope]
 # Extra exclude globs on top of DEFAULT_EXCLUDES (.git, target, .ooze, node_modules, vendor, __pycache__, .gradle) and .gitignore.
 exclude = []
+# Only mutate files changed versus this git ref (diff BASE...HEAD + uncommitted/untracked).
+# changed_only = "main"
 
 [mutation]
 strategy = "actionable"
@@ -108,6 +112,8 @@ const PYTHON: &str = r#"# ooze config — defaults applied when CLI flags are ab
 [scope]
 # Extra exclude globs on top of DEFAULT_EXCLUDES (.git, target, .ooze, node_modules, vendor, __pycache__, .gradle) and .gitignore.
 exclude = []
+# Only mutate files changed versus this git ref (diff BASE...HEAD + uncommitted/untracked).
+# changed_only = "main"
 
 [mutation]
 strategy = "actionable"
@@ -148,6 +154,8 @@ const NODE: &str = r#"# ooze config — defaults applied when CLI flags are abse
 [scope]
 # Extra exclude globs on top of DEFAULT_EXCLUDES (.git, target, .ooze, node_modules, vendor, __pycache__, .gradle) and .gitignore.
 exclude = []
+# Only mutate files changed versus this git ref (diff BASE...HEAD + uncommitted/untracked).
+# changed_only = "main"
 
 [mutation]
 strategy = "actionable"
@@ -187,6 +195,8 @@ const JAVA_GRADLE: &str = r#"# ooze config — defaults applied when CLI flags a
 [scope]
 # Extra exclude globs on top of DEFAULT_EXCLUDES (.git, target, .ooze, node_modules, vendor, __pycache__, .gradle) and .gitignore.
 exclude = []
+# Only mutate files changed versus this git ref (diff BASE...HEAD + uncommitted/untracked).
+# changed_only = "main"
 
 [mutation]
 strategy = "actionable"
@@ -225,6 +235,8 @@ const JAVA_MAVEN: &str = r#"# ooze config — defaults applied when CLI flags ar
 [scope]
 # Extra exclude globs on top of DEFAULT_EXCLUDES (.git, target, .ooze, node_modules, vendor, __pycache__, .gradle) and .gitignore.
 exclude = []
+# Only mutate files changed versus this git ref (diff BASE...HEAD + uncommitted/untracked).
+# changed_only = "main"
 
 [mutation]
 strategy = "actionable"
@@ -262,6 +274,8 @@ const RUBY: &str = r#"# ooze config — defaults applied when CLI flags are abse
 [scope]
 # Extra exclude globs on top of DEFAULT_EXCLUDES (.git, target, .ooze, node_modules, vendor, __pycache__, .gradle) and .gitignore.
 exclude = []
+# Only mutate files changed versus this git ref (diff BASE...HEAD + uncommitted/untracked).
+# changed_only = "main"
 
 [mutation]
 strategy = "actionable"

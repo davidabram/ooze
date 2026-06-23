@@ -20,6 +20,7 @@ pub struct OozeConfig {
 pub struct ScopeConfigToml {
     #[serde(default)]
     pub exclude: Vec<String>,
+    pub changed_only: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, Default)]

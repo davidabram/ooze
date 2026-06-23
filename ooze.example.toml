@@ -5,6 +5,8 @@
 [scope]
 # Extra exclude globs on top of DEFAULT_EXCLUDES (.git, target, .ooze) and .gitignore.
 exclude = []
+# Only mutate files changed versus this git ref (diff BASE...HEAD + uncommitted/untracked).
+# changed_only = "main"
 
 [mutation]
 strategy = "actionable"

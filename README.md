@@ -99,6 +99,7 @@ Full per-language recipes in [docs/running-mutants.md](docs/running-mutants.md).
 | `--jobs N`             | Parallel workers.                                                    |
 | `--limit N`            | Cap candidates (smoke runs).                                         |
 | `--strategy`           | `discovery`, `actionable`, ...                                       |
+| `--changed-only BASE`  | Only mutate files changed vs `BASE` (e.g. `main`). For PR/CI runs.   |
 | `--timeout-seconds`    | Per-mutant probe timeout (→ `timeout` verdict).                      |
 | `--workspace-backend`  | `copy`, `overlay`, `auto`.                                           |
 | `--exclude`            | Extra globs. Defaults + `.gitignore` always apply.                   |
@@ -108,6 +109,21 @@ Full per-language recipes in [docs/running-mutants.md](docs/running-mutants.md).
 | `--probe-env KEY=VAL`  | Env vars on probe + warmup. `{worker}` → worker index, `{build_cache}` → build cache path. |
 | `--cache-dir`          | Where caches live (default `.ooze/cache`).                           |
 | `--runs-dir`           | Where workspaces live (default `.ooze/runs`).                        |
+
+## PR / CI runs (`--changed-only`)
+
+Mutate only the files a branch touched instead of the whole repo:
+
+```bash
+./target/release/ooze test-mutants --path . --changed-only main -- cargo test
+```
+
+The changed set is the union of `git diff --name-only main...HEAD` (commits on the
+branch since its merge-base with `main`), uncommitted working-tree changes, and
+untracked-but-not-ignored files — so it works the same in CI and during local
+iteration. Candidates in unchanged files are dropped before scheduling, which keeps
+PR runs fast. Also settable as `changed_only = "main"` under `[scope]` in `ooze.toml`,
+and supported on `plan-mutants` for previewing the selection.
 
 ## Output
 

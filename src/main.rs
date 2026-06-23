@@ -108,6 +108,94 @@ fn resolve_excludes(root: &std::path::Path, user: &[String]) -> Vec<String> {
     out
 }
 
+// Collects the set of files that differ from `base`, used by `--changed-only`.
+// Returns canonical absolute paths so they can be matched against candidate
+// file paths regardless of how `--path` was spelled. The union covers three
+// sources: commits on this branch since the merge-base with `base`, working-tree
+// modifications (staged and unstaged), and untracked-but-not-ignored files.
+fn git_changed_files(
+    base: &str,
+    root: &std::path::Path,
+) -> anyhow::Result<std::collections::HashSet<PathBuf>> {
+    use anyhow::Context;
+
+    let toplevel_out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .context("running `git rev-parse --show-toplevel`")?;
+    if !toplevel_out.status.success() {
+        anyhow::bail!(
+            "--changed-only: `git rev-parse` failed (is {} inside a git repo?): {}",
+            root.display(),
+            String::from_utf8_lossy(&toplevel_out.stderr).trim()
+        );
+    }
+    let toplevel = PathBuf::from(String::from_utf8_lossy(&toplevel_out.stdout).trim());
+
+    let mut names: std::collections::HashSet<String> = std::collections::HashSet::new();
+    collect_git_paths(root, &["diff", "--name-only", &format!("{base}...HEAD")], &mut names)?;
+    collect_git_paths(root, &["diff", "--name-only", "HEAD"], &mut names)?;
+    collect_git_paths(root, &["ls-files", "--others", "--exclude-standard"], &mut names)?;
+
+    // Resolve to canonical absolute paths; drop entries that no longer exist
+    // (e.g. deletions) since they carry no mutation candidates anyway.
+    let mut out = std::collections::HashSet::new();
+    for name in names {
+        if let Ok(canon) = toplevel.join(&name).canonicalize() {
+            out.insert(canon);
+        }
+    }
+    Ok(out)
+}
+
+fn collect_git_paths(
+    root: &std::path::Path,
+    args: &[&str],
+    out: &mut std::collections::HashSet<String>,
+) -> anyhow::Result<()> {
+    use anyhow::Context;
+
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(args)
+        .output()
+        .with_context(|| format!("running `git {}`", args.join(" ")))?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "--changed-only: `git {}` failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    for line in String::from_utf8_lossy(&output.stdout).lines() {
+        let line = line.trim();
+        if !line.is_empty() {
+            out.insert(line.to_string());
+        }
+    }
+    Ok(())
+}
+
+// Keeps only candidates whose source file is among `changed`. Candidate files
+// that fail to canonicalize (already gone) are dropped.
+fn filter_candidates_to_changed(
+    candidates: Vec<core::MutationCandidate>,
+    changed: &std::collections::HashSet<PathBuf>,
+) -> Vec<core::MutationCandidate> {
+    candidates
+        .into_iter()
+        .filter(|c| {
+            c.file
+                .canonicalize()
+                .map(|p| changed.contains(&p))
+                .unwrap_or(false)
+        })
+        .collect()
+}
+
 fn resolve_bool_flag(cli_flag: bool, config_value: Option<bool>) -> bool {
     cli_flag || config_value == Some(true)
 }
@@ -228,6 +316,9 @@ enum Commands {
         #[arg(long, value_delimiter = ',', help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git.")]
         exclude: Vec<String>,
 
+        #[arg(long, value_name = "BASE", help = "Only mutate files changed versus BASE (e.g. `main`): git diff BASE...HEAD plus uncommitted and untracked changes.")]
+        changed_only: Option<String>,
+
         #[arg(long, value_delimiter = ',', value_parser = parse_operator, help = "Restrict to these operators (comma-separated).")]
         operators: Vec<core::OperatorName>,
 
@@ -312,6 +403,9 @@ enum Commands {
 
         #[arg(long, value_delimiter = ',', help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git.")]
         exclude: Vec<String>,
+
+        #[arg(long, value_name = "BASE", help = "Only mutate files changed versus BASE (e.g. `main`): git diff BASE...HEAD plus uncommitted and untracked changes.")]
+        changed_only: Option<String>,
 
         #[arg(long = "probe-env", value_parser = parse_key_val, help = "KEY=VALUE env var to set on probe (and warmup). {worker} in VALUE expands to the worker index. Repeatable.")]
         probe_env: Vec<(String, String)>,
@@ -427,6 +521,7 @@ fn main() -> anyhow::Result<()> {
             limit,
             format,
             exclude,
+            changed_only,
             operators,
             exclude_operators,
             no_static_skips,
@@ -438,6 +533,12 @@ fn main() -> anyhow::Result<()> {
             let candidates = mutate::discover_mutants(&functions, &languages)?;
             let filter = mutate::OperatorFilter::from_cli(&operators, &exclude_operators);
             let candidates = filter.apply(candidates);
+            let candidates = if let Some(base) = changed_only.as_deref() {
+                let changed = git_changed_files(base, &path)?;
+                filter_candidates_to_changed(candidates, &changed)
+            } else {
+                candidates
+            };
             let total_candidates = candidates.len();
             let (candidates, skipped_candidates) = if no_static_skips {
                 (candidates, Vec::new())
@@ -544,6 +645,7 @@ fn main() -> anyhow::Result<()> {
             no_stderr,
             only_survivors,
             exclude,
+            changed_only,
             probe_env,
             operators,
             exclude_operators,
@@ -707,6 +809,20 @@ fn main() -> anyhow::Result<()> {
             } else {
                 let (kept, _) = skip::partition(candidates);
                 kept
+            };
+
+            let changed_only = changed_only.or(cfg.scope.changed_only.clone());
+            let candidates = if let Some(base) = changed_only.as_deref() {
+                let changed = git_changed_files(base, &path)?;
+                let before = candidates.len();
+                let kept = filter_candidates_to_changed(candidates, &changed);
+                eprintln!(
+                    "ooze: --changed-only {base}: {} of {before} candidates in changed files",
+                    kept.len()
+                );
+                kept
+            } else {
+                candidates
             };
 
             let crap_entries = if let Some(lcov_path) = lcov.as_ref() {
