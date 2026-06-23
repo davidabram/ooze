@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/elixir/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/elixir/branches.scm");
 
 pub struct Elixir;
 
-impl Language for Elixir {
-    fn name(&self) -> &'static str {
-        "elixir"
+impl Grammar for Elixir {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Elixir
     }
 
     fn extensions(&self) -> &'static [&'static str] {

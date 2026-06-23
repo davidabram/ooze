@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/java/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/java/branches.scm");
 
 pub struct Java;
 
-impl Language for Java {
-    fn name(&self) -> &'static str {
-        "java"
+impl Grammar for Java {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Java
     }
 
     fn extensions(&self) -> &'static [&'static str] {

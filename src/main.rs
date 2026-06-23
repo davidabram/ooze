@@ -496,7 +496,8 @@ fn main() -> anyhow::Result<()> {
             let excludes = resolve_excludes(&path, &exclude);
             let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
             let languages = lang::supported_languages();
-            let candidates = mutate::discover_mutants(&functions, &languages)?;
+            let candidates =
+                mutate::discover_mutants(&functions, &languages, &mutate::OperatorFilter::allow_all())?;
             if format == "json" {
                 println!("{}", serde_json::to_string_pretty(&candidates)?);
             }
@@ -530,9 +531,8 @@ fn main() -> anyhow::Result<()> {
             let excludes = resolve_excludes(&path, &exclude);
             let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
             let languages = lang::supported_languages();
-            let candidates = mutate::discover_mutants(&functions, &languages)?;
             let filter = mutate::OperatorFilter::from_cli(&operators, &exclude_operators);
-            let candidates = filter.apply(candidates);
+            let candidates = mutate::discover_mutants(&functions, &languages, &filter)?;
             let candidates = if let Some(base) = changed_only.as_deref() {
                 let changed = git_changed_files(base, &path)?;
                 filter_candidates_to_changed(candidates, &changed)
@@ -612,7 +612,8 @@ fn main() -> anyhow::Result<()> {
 
             let functions = lang::scan_directory(&repo_root)?;
             let languages = lang::supported_languages();
-            let candidates = mutate::discover_mutants(&functions, &languages)?;
+            let candidates =
+                mutate::discover_mutants(&functions, &languages, &mutate::OperatorFilter::allow_all())?;
 
             let Some(candidate) = candidates.into_iter().find(|c| c.id == id) else {
                 anyhow::bail!("no mutation candidate found with id {id:?}");
@@ -801,9 +802,8 @@ fn main() -> anyhow::Result<()> {
             let excludes = resolve_excludes(&path, &exclude);
             let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
             let languages = lang::supported_languages();
-            let candidates = mutate::discover_mutants(&functions, &languages)?;
             let filter = mutate::OperatorFilter::from_cli(&operators, &exclude_operators);
-            let candidates = filter.apply(candidates);
+            let candidates = mutate::discover_mutants(&functions, &languages, &filter)?;
             let candidates = if no_static_skips {
                 candidates
             } else {
@@ -1096,7 +1096,8 @@ fn main() -> anyhow::Result<()> {
         Commands::TestMutant { path, id, probe } => {
             let functions = lang::scan_directory(&path)?;
             let languages = lang::supported_languages();
-            let candidates = mutate::discover_mutants(&functions, &languages)?;
+            let candidates =
+                mutate::discover_mutants(&functions, &languages, &mutate::OperatorFilter::allow_all())?;
 
             let Some(candidate) = candidates.into_iter().find(|c| c.id == id) else {
                 anyhow::bail!("no mutation candidate found with id {id:?}");

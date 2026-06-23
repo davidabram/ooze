@@ -1,4 +1,4 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str =
     include_str!("../../queries/javascript/functions.scm");
@@ -7,9 +7,9 @@ const BRANCHES_QUERY: &str =
 
 pub struct JavaScript;
 
-impl Language for JavaScript {
-    fn name(&self) -> &'static str {
-        "javascript"
+impl Grammar for JavaScript {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::JavaScript
     }
 
     fn extensions(&self) -> &'static [&'static str] {

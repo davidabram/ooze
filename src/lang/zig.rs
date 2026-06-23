@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/zig/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/zig/branches.scm");
 
 pub struct Zig;
 
-impl Language for Zig {
-    fn name(&self) -> &'static str {
-        "zig"
+impl Grammar for Zig {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Zig
     }
 
     fn extensions(&self) -> &'static [&'static str] {

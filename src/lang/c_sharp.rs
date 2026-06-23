@@ -1,4 +1,4 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/c_sharp/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/c_sharp/branches.scm");
@@ -6,9 +6,9 @@ const BRANCHES_QUERY: &str = include_str!("../../queries/c_sharp/branches.scm");
 #[allow(non_camel_case_types)]
 pub struct CSharp;
 
-impl Language for CSharp {
-    fn name(&self) -> &'static str {
-        "c_sharp"
+impl Grammar for CSharp {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::CSharp
     }
 
     fn extensions(&self) -> &'static [&'static str] {

@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/julia/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/julia/branches.scm");
 
 pub struct Julia;
 
-impl Language for Julia {
-    fn name(&self) -> &'static str {
-        "julia"
+impl Grammar for Julia {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Julia
     }
 
     fn extensions(&self) -> &'static [&'static str] {

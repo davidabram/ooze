@@ -1040,6 +1040,7 @@ pub fn human(report: &EnrichedRunReport) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::{Language, OperatorCategory};
     use std::path::PathBuf;
 
     fn make_task(file: &str, line: usize, operator: OperatorName, mutation: &str, priority: f64) -> AgentTask {
@@ -1099,9 +1100,11 @@ mod tests {
         let candidate = MutationCandidate {
             id: "m1".into(),
             file: PathBuf::from("src/lib.rs"),
-            language: "rust".into(),
+            language: Language::Rust,
             function: "f".into(),
             operator: OperatorName::NegateEquality,
+            operator_category: OperatorCategory::Equality,
+            implementation: "rust.negate_equality".into(),
             line: 1,
             column: 0,
             start_byte: 0,

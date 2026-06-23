@@ -35,6 +35,12 @@ Built-in operators: `comparison_boundary`, `comparison_negation`,
 `is_ok` <-> `is_err`). All are on by default; an operator only runs for
 languages that implement it.
 
+`operators` / `exclude_operators` filter by **semantic operator**, so they apply
+to every language being scanned. Each operator is realized by one or more
+per-language implementations in the registry (`src/mutate/registry.rs`); a
+candidate's `implementation` field reports the one that produced it, e.g.
+`rust.negate_equality`.
+
 ### `[runner]`
 
 | Key | Type | Default | Notes |

@@ -1,6 +1,114 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+/// A language ooze can parse and mutate. Serializes to the same canonical string
+/// the grammar previously returned from `name()` (e.g. `javascript`, `c_sharp`),
+/// so report/JSON consumers are unaffected by the move to a typed enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Language {
+    Bash,
+    C,
+    Cpp,
+    CSharp,
+    Dart,
+    Elixir,
+    Erlang,
+    Gleam,
+    Go,
+    Haskell,
+    Java,
+    JavaScript,
+    Julia,
+    Lua,
+    Ocaml,
+    Php,
+    Python,
+    Ruby,
+    Rust,
+    Scala,
+    Swift,
+    TypeScript,
+    Zig,
+}
+
+impl Language {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Language::Bash => "bash",
+            Language::C => "c",
+            Language::Cpp => "cpp",
+            Language::CSharp => "c_sharp",
+            Language::Dart => "dart",
+            Language::Elixir => "elixir",
+            Language::Erlang => "erlang",
+            Language::Gleam => "gleam",
+            Language::Go => "go",
+            Language::Haskell => "haskell",
+            Language::Java => "java",
+            Language::JavaScript => "javascript",
+            Language::Julia => "julia",
+            Language::Lua => "lua",
+            Language::Ocaml => "ocaml",
+            Language::Php => "php",
+            Language::Python => "python",
+            Language::Ruby => "ruby",
+            Language::Rust => "rust",
+            Language::Scala => "scala",
+            Language::Swift => "swift",
+            Language::TypeScript => "typescript",
+            Language::Zig => "zig",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Language> {
+        Some(match s {
+            "bash" => Language::Bash,
+            "c" => Language::C,
+            "cpp" => Language::Cpp,
+            "c_sharp" => Language::CSharp,
+            "dart" => Language::Dart,
+            "elixir" => Language::Elixir,
+            "erlang" => Language::Erlang,
+            "gleam" => Language::Gleam,
+            "go" => Language::Go,
+            "haskell" => Language::Haskell,
+            "java" => Language::Java,
+            "javascript" => Language::JavaScript,
+            "julia" => Language::Julia,
+            "lua" => Language::Lua,
+            "ocaml" => Language::Ocaml,
+            "php" => Language::Php,
+            "python" => Language::Python,
+            "ruby" => Language::Ruby,
+            "rust" => Language::Rust,
+            "scala" => Language::Scala,
+            "swift" => Language::Swift,
+            "typescript" => Language::TypeScript,
+            "zig" => Language::Zig,
+            _ => return None,
+        })
+    }
+}
+
+impl std::fmt::Display for Language {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl serde::Serialize for Language {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Language {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Language::parse(&s).ok_or_else(|| serde::de::Error::custom(format!("unknown language {s:?}")))
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MutantStatus {
@@ -90,7 +198,7 @@ pub struct AppliedMutation {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct FunctionSpan {
     pub file: PathBuf,
-    pub language: String,
+    pub language: Language,
     pub name: String,
     pub start_line: usize,
     pub end_line: usize,
@@ -102,7 +210,7 @@ pub struct FunctionSpan {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CrapEntry {
     pub file: PathBuf,
-    pub language: String,
+    pub language: Language,
     pub function: String,
     pub line: usize,
     pub cyclomatic: usize,
@@ -218,8 +326,10 @@ impl std::fmt::Display for OperatorCategory {
     }
 }
 
+/// Language-agnostic metadata for a semantic mutation operator. One row per
+/// `OperatorName`; the actual find/apply logic lives in `MutatorImpl` entries.
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct MutationOperatorInfo {
+pub struct OperatorInfo {
     pub name: &'static str,
     pub category: OperatorCategory,
     pub default_enabled: bool,
@@ -258,65 +368,65 @@ impl OperatorName {
         OperatorName::ALL.iter().copied().find(|op| op.as_str() == s)
     }
 
-    pub fn info(&self) -> MutationOperatorInfo {
+    pub fn info(&self) -> OperatorInfo {
         match self {
-            OperatorName::ComparisonBoundary => MutationOperatorInfo {
+            OperatorName::ComparisonBoundary => OperatorInfo {
                 name: self.as_str(),
                 category: OperatorCategory::Comparison,
                 default_enabled: true,
                 description: "Toggle comparison strictness (< <-> <=, > <-> >=).",
                 test_hint: "Add boundary tests at the exact threshold value.",
             },
-            OperatorName::ComparisonNegation => MutationOperatorInfo {
+            OperatorName::ComparisonNegation => OperatorInfo {
                 name: self.as_str(),
                 category: OperatorCategory::Comparison,
                 default_enabled: true,
                 description: "Negate comparison operators (< -> >=, <= -> >, > -> <=, >= -> <).",
                 test_hint: "Add tests covering inputs on both sides of the comparison.",
             },
-            OperatorName::NegateEquality => MutationOperatorInfo {
+            OperatorName::NegateEquality => OperatorInfo {
                 name: self.as_str(),
                 category: OperatorCategory::Equality,
                 default_enabled: true,
                 description: "Replace == with != or != with ==.",
                 test_hint: "Add tests covering equal and non-equal inputs.",
             },
-            OperatorName::SwapLogical => MutationOperatorInfo {
+            OperatorName::SwapLogical => OperatorInfo {
                 name: self.as_str(),
                 category: OperatorCategory::Logical,
                 default_enabled: true,
                 description: "Replace && with || or || with &&.",
                 test_hint: "Add truth-table style tests for both sides of the condition.",
             },
-            OperatorName::RemoveNot => MutationOperatorInfo {
+            OperatorName::RemoveNot => OperatorInfo {
                 name: self.as_str(),
                 category: OperatorCategory::Logical,
                 default_enabled: true,
                 description: "Remove logical negation (!condition -> condition).",
                 test_hint: "Add a test that exercises the negative path of the condition.",
             },
-            OperatorName::SwapBoolean => MutationOperatorInfo {
+            OperatorName::SwapBoolean => OperatorInfo {
                 name: self.as_str(),
                 category: OperatorCategory::BooleanLiteral,
                 default_enabled: true,
                 description: "Flip boolean literals (true <-> false).",
                 test_hint: "Assert both the true and the false branch independently.",
             },
-            OperatorName::IntegerZeroOne => MutationOperatorInfo {
+            OperatorName::IntegerZeroOne => OperatorInfo {
                 name: self.as_str(),
                 category: OperatorCategory::NumericLiteral,
                 default_enabled: true,
                 description: "Replace integer 0 with 1 or 1 with 0.",
                 test_hint: "Add empty / singleton / boundary count tests.",
             },
-            OperatorName::RangeInclusiveExclusive => MutationOperatorInfo {
+            OperatorName::RangeInclusiveExclusive => OperatorInfo {
                 name: self.as_str(),
                 category: OperatorCategory::RangeBoundary,
                 default_enabled: true,
                 description: "Toggle range bound inclusivity (.. <-> ..=).",
                 test_hint: "Add a test that exercises the range's final element.",
             },
-            OperatorName::SwapPredicateMethod => MutationOperatorInfo {
+            OperatorName::SwapPredicateMethod => OperatorInfo {
                 name: self.as_str(),
                 category: OperatorCategory::Method,
                 default_enabled: true,
@@ -337,20 +447,43 @@ impl std::fmt::Display for OperatorName {
     }
 }
 
-pub struct MutationOperator {
-    pub name: OperatorName,
+/// One language's implementation of a semantic operator: how the idea is found
+/// (`query`) and applied (`replacement`) in a single language. Many `MutatorImpl`
+/// rows can share an `OperatorName`.
+pub struct MutatorImpl {
+    /// Stable id of the form `<language>.<operator>`, e.g. `rust.negate_equality`.
+    pub id: &'static str,
+    pub operator: OperatorName,
+    pub language: Language,
     pub query: &'static str,
     pub replacement: fn(&str) -> Option<String>,
     pub description: fn(&str, &str) -> String,
+    /// Override the operator-level default for this one language. `None` falls
+    /// back to `operator.info().default_enabled`.
+    pub default_enabled_override: Option<bool>,
+}
+
+impl MutatorImpl {
+    pub fn category(&self) -> OperatorCategory {
+        self.operator.info().category
+    }
+
+    pub fn default_enabled(&self) -> bool {
+        self.default_enabled_override
+            .unwrap_or(self.operator.info().default_enabled)
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MutationCandidate {
     pub id: String,
     pub file: PathBuf,
-    pub language: String,
+    pub language: Language,
     pub function: String,
     pub operator: OperatorName,
+    pub operator_category: OperatorCategory,
+    /// Language-qualified implementation id, e.g. `rust.negate_equality`.
+    pub implementation: String,
     pub line: usize,
     pub column: usize,
     pub start_byte: usize,

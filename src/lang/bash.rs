@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/bash/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/bash/branches.scm");
 
 pub struct Bash;
 
-impl Language for Bash {
-    fn name(&self) -> &'static str {
-        "bash"
+impl Grammar for Bash {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Bash
     }
 
     fn extensions(&self) -> &'static [&'static str] {

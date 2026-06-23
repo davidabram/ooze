@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/scala/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/scala/branches.scm");
 
 pub struct Scala;
 
-impl Language for Scala {
-    fn name(&self) -> &'static str {
-        "scala"
+impl Grammar for Scala {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Scala
     }
 
     fn extensions(&self) -> &'static [&'static str] {

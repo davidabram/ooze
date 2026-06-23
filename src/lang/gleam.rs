@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/gleam/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/gleam/branches.scm");
 
 pub struct Gleam;
 
-impl Language for Gleam {
-    fn name(&self) -> &'static str {
-        "gleam"
+impl Grammar for Gleam {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Gleam
     }
 
     fn extensions(&self) -> &'static [&'static str] {

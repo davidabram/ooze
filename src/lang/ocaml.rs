@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/ocaml/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/ocaml/branches.scm");
 
 pub struct Ocaml;
 
-impl Language for Ocaml {
-    fn name(&self) -> &'static str {
-        "ocaml"
+impl Grammar for Ocaml {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Ocaml
     }
 
     fn extensions(&self) -> &'static [&'static str] {

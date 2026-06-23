@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/swift/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/swift/branches.scm");
 
 pub struct Swift;
 
-impl Language for Swift {
-    fn name(&self) -> &'static str {
-        "swift"
+impl Grammar for Swift {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Swift
     }
 
     fn extensions(&self) -> &'static [&'static str] {

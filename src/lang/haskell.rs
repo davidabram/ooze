@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/haskell/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/haskell/branches.scm");
 
 pub struct Haskell;
 
-impl Language for Haskell {
-    fn name(&self) -> &'static str {
-        "haskell"
+impl Grammar for Haskell {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Haskell
     }
 
     fn extensions(&self) -> &'static [&'static str] {

@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/typescript/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/typescript/branches.scm");
 
 pub struct TypeScript;
 
-impl Language for TypeScript {
-    fn name(&self) -> &'static str {
-        "typescript"
+impl Grammar for TypeScript {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::TypeScript
     }
 
     fn extensions(&self) -> &'static [&'static str] {

@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/php/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/php/branches.scm");
 
 pub struct Php;
 
-impl Language for Php {
-    fn name(&self) -> &'static str {
-        "php"
+impl Grammar for Php {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Php
     }
 
     fn extensions(&self) -> &'static [&'static str] {

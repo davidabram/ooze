@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/dart/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/dart/branches.scm");
 
 pub struct Dart;
 
-impl Language for Dart {
-    fn name(&self) -> &'static str {
-        "dart"
+impl Grammar for Dart {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Dart
     }
 
     fn extensions(&self) -> &'static [&'static str] {

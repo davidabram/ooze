@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/erlang/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/erlang/branches.scm");
 
 pub struct Erlang;
 
-impl Language for Erlang {
-    fn name(&self) -> &'static str {
-        "erlang"
+impl Grammar for Erlang {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Erlang
     }
 
     fn extensions(&self) -> &'static [&'static str] {

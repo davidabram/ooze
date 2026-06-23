@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 
-use crate::core::{MutationCandidate, OperatorName};
+use crate::core::{MutationCandidate, MutatorImpl, OperatorName};
+
+pub mod registry;
 
 #[derive(Debug, Clone, Copy, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -39,6 +41,17 @@ impl OperatorFilter {
         }
     }
 
+    /// A filter that admits every implementation, regardless of per-operator or
+    /// per-implementation defaults. Used by commands that must reproduce an
+    /// arbitrary candidate id (raw discovery, apply-mutant, test-mutant).
+    pub fn allow_all() -> Self {
+        Self {
+            mode: OperatorFilterMode::Explicit,
+            include: OperatorName::ALL.iter().copied().collect(),
+            exclude: BTreeSet::new(),
+        }
+    }
+
     pub fn allows(&self, op: OperatorName) -> bool {
         if self.exclude.contains(&op) {
             return false;
@@ -46,11 +59,17 @@ impl OperatorFilter {
         self.include.contains(&op)
     }
 
-    pub fn apply(&self, candidates: Vec<MutationCandidate>) -> Vec<MutationCandidate> {
-        candidates
-            .into_iter()
-            .filter(|c| self.allows(c.operator))
-            .collect()
+    /// Whether a specific implementation should run. In `RegistryDefaults` mode
+    /// the per-implementation default is the authority (so a language can opt out
+    /// of an otherwise default-on operator); in `Explicit` mode the user's
+    /// `--operators` selection decides, by semantic operator.
+    pub fn allows_impl(&self, m: &MutatorImpl) -> bool {
+        match self.mode {
+            OperatorFilterMode::RegistryDefaults => {
+                m.default_enabled() && !self.exclude.contains(&m.operator)
+            }
+            OperatorFilterMode::Explicit => self.allows(m.operator),
+        }
     }
 
     pub fn included_after_excludes(&self) -> Vec<OperatorName> {
@@ -83,31 +102,34 @@ use std::path::{Path, PathBuf};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, Query, QueryCursor};
 
-use crate::lang::Language;
+use crate::lang::Grammar;
 
 pub fn discover_mutants(
     functions: &[crate::core::FunctionSpan],
-    languages: &[Box<dyn Language>],
+    grammars: &[Box<dyn Grammar>],
+    filter: &OperatorFilter,
 ) -> Result<Vec<MutationCandidate>> {
     let mut candidates = Vec::new();
 
     for function in functions {
-        let Some(lang) = languages.iter().find(|l| l.name() == function.language) else {
+        let Some(grammar) = grammars.iter().find(|g| g.id() == function.language) else {
             continue;
         };
 
-        let operators = lang.mutation_operators();
-        if operators.is_empty() {
+        let impls: Vec<&MutatorImpl> = registry::implementations_for_language(function.language)
+            .filter(|m| filter.allows_impl(m))
+            .collect();
+        if impls.is_empty() {
             continue;
         }
 
         let source = std::fs::read_to_string(&function.file)
             .with_context(|| format!("reading {}", function.file.display()))?;
 
-        let ts_lang = lang.tree_sitter_language();
+        let ts_lang = grammar.tree_sitter_language();
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&ts_lang)
-            .with_context(|| format!("loading {} grammar", lang.name()))?;
+            .with_context(|| format!("loading {} grammar", function.language))?;
 
         let tree = parser
             .parse(&source, None)
@@ -122,9 +144,9 @@ pub fn discover_mutants(
             continue;
         };
 
-        for op in operators {
-            let query = Query::new(&ts_lang, op.query)
-                .with_context(|| format!("compiling {} mutation query", op.name))?;
+        for m in impls {
+            let query = Query::new(&ts_lang, m.query)
+                .with_context(|| format!("compiling {} mutation query", m.id))?;
 
             let Some(target_idx) = query.capture_index_for_name("target") else {
                 continue;
@@ -133,15 +155,15 @@ pub fn discover_mutants(
             let mut cursor = QueryCursor::new();
             let mut matches = cursor.matches(&query, function_node, source_bytes);
 
-            while let Some(m) = matches.next() {
-                for capture in m.captures {
+            while let Some(captured) = matches.next() {
+                for capture in captured.captures {
                     if capture.index != target_idx {
                         continue;
                     }
 
                     let node = capture.node;
                     let original = node_text(node, source_bytes);
-                    let Some(replacement) = (op.replacement)(&original) else {
+                    let Some(replacement) = (m.replacement)(&original) else {
                         continue;
                     };
 
@@ -153,17 +175,19 @@ pub fn discover_mutants(
                             candidate_file.display(),
                             node.start_position().row + 1,
                             node.start_position().column,
-                            op.name,
+                            m.id,
                         ),
                         file: function.file.clone(),
-                        language: function.language.clone(),
+                        language: function.language,
                         function: function.name.clone(),
                         line: node.start_position().row + 1,
                         column: node.start_position().column,
                         start_byte: node.start_byte(),
                         end_byte: node.end_byte(),
-                        operator: op.name,
-                        description: (op.description)(&original, &replacement),
+                        operator: m.operator,
+                        operator_category: m.category(),
+                        implementation: m.id.to_string(),
+                        description: (m.description)(&original, &replacement),
                         original,
                         replacement,
                     });
@@ -210,4 +234,33 @@ fn node_text(node: Node, source: &[u8]) -> String {
     std::str::from_utf8(&source[node.start_byte()..node.end_byte()])
         .unwrap_or("<invalid utf8>")
         .to_string()
+}
+
+#[cfg(test)]
+mod discover_tests {
+    use super::*;
+    use crate::core::Language;
+    use std::path::Path;
+
+    #[test]
+    fn discover_sets_language_qualified_implementation_and_id() {
+        let functions = crate::lang::scan_directory(Path::new("tests/fixtures/mutate"))
+            .expect("scanning fixtures");
+        let grammars = crate::lang::supported_languages();
+        let candidates =
+            discover_mutants(&functions, &grammars, &OperatorFilter::allow_all()).unwrap();
+
+        assert!(!candidates.is_empty(), "fixture should yield candidates");
+        for c in &candidates {
+            assert_eq!(c.language, Language::Rust);
+            assert_eq!(c.implementation, format!("rust.{}", c.operator.as_str()));
+            assert_eq!(c.operator_category, c.operator.info().category);
+            assert!(
+                c.id.ends_with(&c.implementation),
+                "id {:?} should end with implementation {:?}",
+                c.id,
+                c.implementation
+            );
+        }
+    }
 }

@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::Context;
 use streaming_iterator::StreamingIterator;
 
-use crate::core::{FunctionSpan, MutationOperator};
+use crate::core::{FunctionSpan, Language};
 
 pub mod bash;
 pub mod c;
@@ -32,18 +32,23 @@ pub mod zig;
 #[cfg(test)]
 mod tests;
 
-pub trait Language {
-    fn name(&self) -> &'static str;
+/// A parseable language grammar. Mutation operators no longer live here — they
+/// are in `crate::mutate::registry`, keyed by `Language`. This trait is purely
+/// about discovery/parsing.
+pub trait Grammar {
+    /// The typed language id. `name()` derives from this, so it is the single
+    /// source of truth for the canonical language string.
+    fn id(&self) -> Language;
+    fn name(&self) -> &'static str {
+        self.id().as_str()
+    }
     fn extensions(&self) -> &'static [&'static str];
     fn tree_sitter_language(&self) -> tree_sitter::Language;
     fn functions_query(&self) -> &'static str;
     fn branches_query(&self) -> &'static str;
-    fn mutation_operators(&self) -> &'static [MutationOperator] {
-        &[]
-    }
 }
 
-pub fn supported_languages() -> Vec<Box<dyn Language>> {
+pub fn supported_languages() -> Vec<Box<dyn Grammar>> {
     vec![
         Box::new(bash::Bash),
         Box::new(javascript::JavaScript),
@@ -72,7 +77,7 @@ pub fn supported_languages() -> Vec<Box<dyn Language>> {
 }
 
 struct Compiled {
-    language: Box<dyn Language>,
+    language: Box<dyn Grammar>,
     functions: tree_sitter::Query,
     branches: tree_sitter::Query,
 }
@@ -144,7 +149,7 @@ pub fn scan_directory_with_excludes(
 
 fn scan_file(
     path: &Path,
-    language: &dyn Language,
+    language: &dyn Grammar,
     fn_query: &tree_sitter::Query,
     branch_query: &tree_sitter::Query,
 ) -> anyhow::Result<Vec<FunctionSpan>> {
@@ -234,7 +239,7 @@ fn scan_file(
 
         spans.push(FunctionSpan {
             file: path.to_path_buf(),
-            language: language.name().to_string(),
+            language: language.id(),
             name,
             start_line: func.node.start_position().row + 1,
             end_line: func.node.end_position().row + 1,

@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/lua/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/lua/branches.scm");
 
 pub struct Lua;
 
-impl Language for Lua {
-    fn name(&self) -> &'static str {
-        "lua"
+impl Grammar for Lua {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Lua
     }
 
     fn extensions(&self) -> &'static [&'static str] {

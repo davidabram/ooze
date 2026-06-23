@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/go/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/go/branches.scm");
 
 pub struct Go;
 
-impl Language for Go {
-    fn name(&self) -> &'static str {
-        "go"
+impl Grammar for Go {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Go
     }
 
     fn extensions(&self) -> &'static [&'static str] {

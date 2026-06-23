@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/ruby/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/ruby/branches.scm");
 
 pub struct Ruby;
 
-impl Language for Ruby {
-    fn name(&self) -> &'static str {
-        "ruby"
+impl Grammar for Ruby {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Ruby
     }
 
     fn extensions(&self) -> &'static [&'static str] {

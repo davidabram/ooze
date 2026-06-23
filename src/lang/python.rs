@@ -1,13 +1,13 @@
-use super::Language;
+use super::Grammar;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/python/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/python/branches.scm");
 
 pub struct Python;
 
-impl Language for Python {
-    fn name(&self) -> &'static str {
-        "python"
+impl Grammar for Python {
+    fn id(&self) -> crate::core::Language {
+        crate::core::Language::Python
     }
 
     fn extensions(&self) -> &'static [&'static str] {

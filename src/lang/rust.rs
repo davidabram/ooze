@@ -1,152 +1,159 @@
-use super::Language;
-use crate::core::{MutationOperator, OperatorName};
+use super::Grammar;
+use crate::core::{Language, MutatorImpl, OperatorName};
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/rust/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/rust/branches.scm");
 
-const SWAP_BOOLEAN: MutationOperator = MutationOperator {
-    name: OperatorName::SwapBoolean,
-    query: include_str!("../../queries/rust/swap-boolean.scm"),
-    replacement: |original| match original {
-        "true" => Some("false".to_string()),
-        "false" => Some("true".to_string()),
-        _ => None,
+/// Rust's mutator implementations. The registry (`crate::mutate::registry`)
+/// aggregates this slice with the other languages' slices for discovery.
+pub const MUTATORS: &[MutatorImpl] = &[
+    MutatorImpl {
+        id: "rust.swap_boolean",
+        operator: OperatorName::SwapBoolean,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/swap-boolean.scm"),
+        replacement: |original| match original {
+            "true" => Some("false".to_string()),
+            "false" => Some("true".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Swap boolean literal {original} -> {replacement}")
+        },
+        default_enabled_override: None,
     },
-    description: |original, replacement| {
-        format!("Swap boolean literal {original} -> {replacement}")
+    MutatorImpl {
+        id: "rust.negate_equality",
+        operator: OperatorName::NegateEquality,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/negate-equality.scm"),
+        replacement: |original| match original {
+            "==" => Some("!=".to_string()),
+            "!=" => Some("==".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Negate equality {original} -> {replacement}")
+        },
+        default_enabled_override: None,
     },
-};
-
-const NEGATE_EQUALITY: MutationOperator = MutationOperator {
-    name: OperatorName::NegateEquality,
-    query: include_str!("../../queries/rust/negate-equality.scm"),
-    replacement: |original| match original {
-        "==" => Some("!=".to_string()),
-        "!=" => Some("==".to_string()),
-        _ => None,
+    MutatorImpl {
+        id: "rust.comparison_boundary",
+        operator: OperatorName::ComparisonBoundary,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/comparison-boundary.scm"),
+        replacement: |original| match original {
+            "<" => Some("<=".to_string()),
+            "<=" => Some("<".to_string()),
+            ">" => Some(">=".to_string()),
+            ">=" => Some(">".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Toggle comparison boundary {original} -> {replacement}")
+        },
+        default_enabled_override: None,
     },
-    description: |original, replacement| {
-        format!("Negate equality {original} -> {replacement}")
+    MutatorImpl {
+        id: "rust.comparison_negation",
+        operator: OperatorName::ComparisonNegation,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/comparison-negation.scm"),
+        replacement: |original| match original {
+            "<" => Some(">=".to_string()),
+            "<=" => Some(">".to_string()),
+            ">" => Some("<=".to_string()),
+            ">=" => Some("<".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Negate comparison {original} -> {replacement}")
+        },
+        default_enabled_override: None,
     },
-};
-
-const COMPARISON_BOUNDARY: MutationOperator = MutationOperator {
-    name: OperatorName::ComparisonBoundary,
-    query: include_str!("../../queries/rust/comparison-boundary.scm"),
-    replacement: |original| match original {
-        "<" => Some("<=".to_string()),
-        "<=" => Some("<".to_string()),
-        ">" => Some(">=".to_string()),
-        ">=" => Some(">".to_string()),
-        _ => None,
+    MutatorImpl {
+        id: "rust.swap_logical",
+        operator: OperatorName::SwapLogical,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/swap-logical.scm"),
+        replacement: |original| match original {
+            "&&" => Some("||".to_string()),
+            "||" => Some("&&".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| format!("Swap logical {original} -> {replacement}"),
+        default_enabled_override: None,
     },
-    description: |original, replacement| {
-        format!("Toggle comparison boundary {original} -> {replacement}")
+    MutatorImpl {
+        id: "rust.remove_not",
+        operator: OperatorName::RemoveNot,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/remove-not.scm"),
+        replacement: |original| {
+            let rest = original.strip_prefix('!')?.trim_start();
+            if rest.is_empty() {
+                None
+            } else {
+                Some(rest.to_string())
+            }
+        },
+        description: |original, replacement| {
+            format!("Remove negation `{original}` -> `{replacement}`")
+        },
+        default_enabled_override: None,
     },
-};
-
-const COMPARISON_NEGATION: MutationOperator = MutationOperator {
-    name: OperatorName::ComparisonNegation,
-    query: include_str!("../../queries/rust/comparison-negation.scm"),
-    replacement: |original| match original {
-        "<" => Some(">=".to_string()),
-        "<=" => Some(">".to_string()),
-        ">" => Some("<=".to_string()),
-        ">=" => Some("<".to_string()),
-        _ => None,
+    MutatorImpl {
+        id: "rust.integer_zero_one",
+        operator: OperatorName::IntegerZeroOne,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/integer-zero-one.scm"),
+        replacement: |original| match original {
+            "0" => Some("1".to_string()),
+            "1" => Some("0".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| format!("Replace integer {original} -> {replacement}"),
+        default_enabled_override: None,
     },
-    description: |original, replacement| {
-        format!("Negate comparison {original} -> {replacement}")
+    MutatorImpl {
+        id: "rust.range_inclusive_exclusive",
+        operator: OperatorName::RangeInclusiveExclusive,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/range-inclusive-exclusive.scm"),
+        replacement: |original| match original {
+            ".." => Some("..=".to_string()),
+            "..=" => Some("..".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Toggle range bound {original} -> {replacement}")
+        },
+        default_enabled_override: None,
     },
-};
-
-const SWAP_LOGICAL: MutationOperator = MutationOperator {
-    name: OperatorName::SwapLogical,
-    query: include_str!("../../queries/rust/swap-logical.scm"),
-    replacement: |original| match original {
-        "&&" => Some("||".to_string()),
-        "||" => Some("&&".to_string()),
-        _ => None,
+    MutatorImpl {
+        id: "rust.swap_predicate_method",
+        operator: OperatorName::SwapPredicateMethod,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/swap-predicate-method.scm"),
+        replacement: |original| match original {
+            "is_some" => Some("is_none".to_string()),
+            "is_none" => Some("is_some".to_string()),
+            "is_ok" => Some("is_err".to_string()),
+            "is_err" => Some("is_ok".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Swap predicate method {original}() -> {replacement}()")
+        },
+        default_enabled_override: None,
     },
-    description: |original, replacement| {
-        format!("Swap logical {original} -> {replacement}")
-    },
-};
-
-const REMOVE_NOT: MutationOperator = MutationOperator {
-    name: OperatorName::RemoveNot,
-    query: include_str!("../../queries/rust/remove-not.scm"),
-    replacement: |original| {
-        let rest = original.strip_prefix('!')?.trim_start();
-        if rest.is_empty() {
-            None
-        } else {
-            Some(rest.to_string())
-        }
-    },
-    description: |original, replacement| {
-        format!("Remove negation `{original}` -> `{replacement}`")
-    },
-};
-
-const INTEGER_ZERO_ONE: MutationOperator = MutationOperator {
-    name: OperatorName::IntegerZeroOne,
-    query: include_str!("../../queries/rust/integer-zero-one.scm"),
-    replacement: |original| match original {
-        "0" => Some("1".to_string()),
-        "1" => Some("0".to_string()),
-        _ => None,
-    },
-    description: |original, replacement| {
-        format!("Replace integer {original} -> {replacement}")
-    },
-};
-
-const RANGE_INCLUSIVE_EXCLUSIVE: MutationOperator = MutationOperator {
-    name: OperatorName::RangeInclusiveExclusive,
-    query: include_str!("../../queries/rust/range-inclusive-exclusive.scm"),
-    replacement: |original| match original {
-        ".." => Some("..=".to_string()),
-        "..=" => Some("..".to_string()),
-        _ => None,
-    },
-    description: |original, replacement| {
-        format!("Toggle range bound {original} -> {replacement}")
-    },
-};
-
-const SWAP_PREDICATE_METHOD: MutationOperator = MutationOperator {
-    name: OperatorName::SwapPredicateMethod,
-    query: include_str!("../../queries/rust/swap-predicate-method.scm"),
-    replacement: |original| match original {
-        "is_some" => Some("is_none".to_string()),
-        "is_none" => Some("is_some".to_string()),
-        "is_ok" => Some("is_err".to_string()),
-        "is_err" => Some("is_ok".to_string()),
-        _ => None,
-    },
-    description: |original, replacement| {
-        format!("Swap predicate method {original}() -> {replacement}()")
-    },
-};
-
-const MUTATION_OPERATORS: &[MutationOperator] = &[
-    SWAP_BOOLEAN,
-    NEGATE_EQUALITY,
-    COMPARISON_BOUNDARY,
-    COMPARISON_NEGATION,
-    SWAP_LOGICAL,
-    REMOVE_NOT,
-    INTEGER_ZERO_ONE,
-    RANGE_INCLUSIVE_EXCLUSIVE,
-    SWAP_PREDICATE_METHOD,
 ];
 
 pub struct Rust;
 
-impl Language for Rust {
-    fn name(&self) -> &'static str {
-        "rust"
+impl Grammar for Rust {
+    fn id(&self) -> Language {
+        Language::Rust
     }
 
     fn extensions(&self) -> &'static [&'static str] {
@@ -163,9 +170,5 @@ impl Language for Rust {
 
     fn branches_query(&self) -> &'static str {
         BRANCHES_QUERY
-    }
-
-    fn mutation_operators(&self) -> &'static [MutationOperator] {
-        MUTATION_OPERATORS
     }
 }
