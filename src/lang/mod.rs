@@ -135,9 +135,8 @@ pub fn scan_directory_with_excludes(
             continue;
         }
         let file_path = entry.path();
-        let ext = match file_path.extension().and_then(|e| e.to_str()) {
-            Some(ext) => ext,
-            None => continue,
+        let Some(ext) = file_path.extension().and_then(|e| e.to_str()) else {
+            continue;
         };
         let Some(compiled) = compiled
             .iter()
@@ -161,6 +160,16 @@ fn scan_file(
     fn_query: &tree_sitter::Query,
     branch_query: &tree_sitter::Query,
 ) -> anyhow::Result<Vec<FunctionSpan>> {
+    // A function definition (named or anonymous) and its byte range. Anonymous
+    // functions (closures, lambdas, arrow functions) get a synthetic name derived
+    // from their start line so they are no longer dropped.
+    struct Func<'a> {
+        name: Option<String>,
+        node: tree_sitter::Node<'a>,
+        start: usize,
+        end: usize,
+    }
+
     let source =
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let source_bytes = source.as_bytes();
@@ -178,15 +187,7 @@ fn scan_file(
     let mut branch_cursor = tree_sitter::QueryCursor::new();
 
     // First pass: collect every function definition (named and anonymous) and its
-    // byte range. Anonymous functions (closures, lambdas, arrow functions) get a
-    // synthetic name derived from their start line so they are no longer dropped.
-    struct Func<'a> {
-        name: Option<String>,
-        node: tree_sitter::Node<'a>,
-        start: usize,
-        end: usize,
-    }
-
+    // byte range.
     let mut funcs: Vec<Func> = Vec::new();
     let mut matches = fn_cursor.matches(fn_query, tree.root_node(), source_bytes);
     while let Some(m) = matches.next() {
@@ -199,7 +200,7 @@ fn scan_file(
                         .node
                         .utf8_text(source_bytes)
                         .ok()
-                        .map(|s| s.to_string());
+                        .map(std::string::ToString::to_string);
                 }
                 "fn.def" => {
                     def_node = Some(capture.node);

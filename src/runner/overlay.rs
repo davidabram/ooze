@@ -95,6 +95,5 @@ pub fn overlay_available() -> bool {
         return true;
     }
     std::fs::read_to_string("/proc/filesystems")
-        .map(|s| s.contains("overlay"))
-        .unwrap_or(false)
+        .is_ok_and(|s| s.contains("overlay"))
 }

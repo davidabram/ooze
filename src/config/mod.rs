@@ -11,12 +11,9 @@ pub use template::{LANGUAGES, template_for_language};
 pub const DEFAULT_CONFIG_NAME: &str = "ooze.toml";
 
 pub fn load_config(path: Option<&Path>) -> anyhow::Result<(OozeConfig, Option<PathBuf>)> {
-    let resolved = match path {
-        Some(p) => Some(p.to_path_buf()),
-        None => {
-            let default = PathBuf::from(DEFAULT_CONFIG_NAME);
-            if default.exists() { Some(default) } else { None }
-        }
+    let resolved = if let Some(p) = path { Some(p.to_path_buf()) } else {
+        let default = PathBuf::from(DEFAULT_CONFIG_NAME);
+        if default.exists() { Some(default) } else { None }
     };
 
     let Some(p) = resolved else {

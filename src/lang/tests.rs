@@ -273,7 +273,7 @@ fn cyclomatic_values_match_expected() {
         match map.get(&(file.to_string(), name.to_string())) {
             None => missing.push(format!("{file}:{name} (expected {want})")),
             Some(got) if *got != *want => {
-                wrong.push(format!("{file}:{name} = {got}, expected {want}"))
+                wrong.push(format!("{file}:{name} = {got}, expected {want}"));
             }
             _ => {}
         }

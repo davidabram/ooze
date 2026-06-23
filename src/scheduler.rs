@@ -97,8 +97,7 @@ pub fn explain(
         MutationStrategy::Actionable => actionable_score_with_reasons(entry),
         MutationStrategy::HighestCrap => {
             let s = entry
-                .map(|e| e.crap.round() as i32)
-                .unwrap_or(i32::MIN);
+                .map_or(i32::MIN, |e| e.crap.round() as i32);
             let r = match entry {
                 Some(e) => vec![format!("CRAP {:.1}", e.crap)],
                 None => vec!["no CRAP entry for function".to_string()],
@@ -142,8 +141,8 @@ fn rank_highest_crap(
     let index = index_crap(crap_entries);
 
     candidates.sort_by(|a, b| {
-        let ca = lookup(&index, a).map(|e| e.crap).unwrap_or(f64::NEG_INFINITY);
-        let cb = lookup(&index, b).map(|e| e.crap).unwrap_or(f64::NEG_INFINITY);
+        let ca = lookup(&index, a).map_or(f64::NEG_INFINITY, |e| e.crap);
+        let cb = lookup(&index, b).map_or(f64::NEG_INFINITY, |e| e.crap);
         cb.partial_cmp(&ca)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| a.id.cmp(&b.id))

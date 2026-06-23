@@ -41,6 +41,9 @@ struct MacroRange {
     inner_end: usize,
 }
 
+// `.test`/`.spec` here are lowercase test-file naming conventions, not real
+// file extensions, so the case-sensitive comparison is deliberate.
+#[allow(clippy::case_sensitive_file_extension_comparisons)]
 fn is_test_path(path: &Path) -> bool {
     for c in path.components() {
         let seg = c.as_os_str().to_string_lossy();

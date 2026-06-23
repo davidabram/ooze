@@ -69,7 +69,7 @@ pub fn agent_tasks(report: &EnrichedRunReport) -> AgentTaskReport {
             cyclomatic: func_info.and_then(|f| f.cyclomatic),
             coverage: func_info.and_then(|f| f.coverage),
             crap: func_info.and_then(|f| f.crap),
-            priority_score: func_info.map(|f| f.priority_score).unwrap_or(0.0),
+            priority_score: func_info.map_or(0.0, |f| f.priority_score),
             source_context: o.source_context.clone(),
         });
     }
@@ -142,7 +142,7 @@ pub fn default_detail_for_format(format: &str) -> ReportDetail {
 /// Strip heavy fields and non-survivor outcomes from a report in place,
 /// according to the resolved options. Summary counts (survived/timeout/error)
 /// are left untouched so exit codes and totals stay correct.
-pub fn apply_options(report: &mut EnrichedRunReport, opts: &ReportOptions) {
+pub fn apply_options(report: &mut EnrichedRunReport, opts: ReportOptions) {
     if opts.only_survivors {
         report
             .outcomes
@@ -310,25 +310,21 @@ pub fn sarif(report: &EnrichedRunReport) -> SarifLog {
             help: SarifMessage {
                 text: o
                     .test_suggestion
-                    .as_ref()
-                    .map(|s| s.operator_hint.clone())
-                    .unwrap_or_else(|| {
+                    .as_ref().map_or_else(|| {
                         "Add a test that distinguishes the original behavior from the mutant."
                             .to_string()
-                    }),
+                    }, |s| s.operator_hint.clone()),
             },
         });
 
         let text = o
             .test_suggestion
-            .as_ref()
-            .map(|s| s.prompt.clone())
-            .unwrap_or_else(|| {
+            .as_ref().map_or_else(|| {
                 format!(
                     "Survived mutant in `{}`: `{}` -> `{}`.",
                     c.function, c.original, c.replacement
                 )
-            });
+            }, |s| s.prompt.clone());
 
         let uri = c
             .file
@@ -411,6 +407,9 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
     use std::collections::{BTreeMap, BTreeSet};
     use std::fmt::Write;
 
+    // Deduplicate by (file, line, operator, mutation) — keep highest priority_score per site
+    type DedupeKey = (String, usize, String, String);
+
     let mut out = String::new();
     let _ = writeln!(out, "# Mutation Testing Tasks\n");
 
@@ -419,8 +418,6 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
         return out;
     }
 
-    // Deduplicate by (file, line, operator, mutation) — keep highest priority_score per site
-    type DedupeKey = (String, usize, String, String);
     let mut best_idx: BTreeMap<DedupeKey, usize> = BTreeMap::new();
     let mut dup_counts: BTreeMap<DedupeKey, usize> = BTreeMap::new();
 
@@ -472,13 +469,12 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
 
     // --- Summary ---
     let _ = writeln!(out, "## Summary\n");
-    let _ = writeln!(out, "- Raw mutations: {}", raw_count);
-    let _ = writeln!(out, "- Unique mutation records after dedupe: {}", unique_mutations);
+    let _ = writeln!(out, "- Raw mutations: {raw_count}");
+    let _ = writeln!(out, "- Unique mutation records after dedupe: {unique_mutations}");
     if unique_location_count < unique_mutations {
         let _ = writeln!(
             out,
-            "- Unique source locations: {} (lines with multiple operators)",
-            unique_location_count
+            "- Unique source locations: {unique_location_count} (lines with multiple operators)"
         );
     }
     if raw_count > unique_mutations {
@@ -487,7 +483,7 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
     let _ = writeln!(out, "- Files affected: {}\n", file_list.len());
     out.push_str("Most affected files:\n\n");
     for (file, count) in file_list.iter().take(5) {
-        let _ = writeln!(out, "- `{}` ({} mutations)", file, count);
+        let _ = writeln!(out, "- `{file}` ({count} mutations)");
     }
     out.push('\n');
 
@@ -503,9 +499,9 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
     // deduped is already sorted by priority_score desc, so targets preserves that order
     let _ = writeln!(out, "## Target{}\n", if targets.len() == 1 { "" } else { "s" });
     for t in &targets {
-        let crap = t.crap.map(|v| format!("{:.1}", v)).unwrap_or_else(|| "n/a".into());
-        let cc = t.cyclomatic.map(|v| v.to_string()).unwrap_or_else(|| "n/a".into());
-        let cov = t.coverage.map(|v| format!("{:.1}%", v)).unwrap_or_else(|| "n/a".into());
+        let crap = t.crap.map_or_else(|| "n/a".into(), |v| format!("{v:.1}"));
+        let cc = t.cyclomatic.map_or_else(|| "n/a".into(), |v| v.to_string());
+        let cov = t.coverage.map_or_else(|| "n/a".into(), |v| format!("{v:.1}%"));
         let _ = writeln!(out, "### `{}::{}`\n", t.file.display(), t.function);
         let _ = writeln!(
             out,
@@ -536,7 +532,7 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
 
         // Group by file → function
         let mut by_file: TasksByFile = BTreeMap::new();
-        for &(t, dup) in bucket.iter() {
+        for &(t, dup) in bucket {
             by_file
                 .entry(t.file.to_string_lossy().into_owned())
                 .or_default()
@@ -559,7 +555,7 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
 
                 // Group mutations by line so same-location operators merge into one table row
                 let mut by_line: BTreeMap<usize, TaskRefs> = BTreeMap::new();
-                for &(t, dup) in func_tasks.iter() {
+                for &(t, dup) in func_tasks {
                     by_line.entry(t.line).or_default().push((t, dup));
                 }
 
@@ -649,6 +645,7 @@ pub fn source_context_for_candidate(
     candidate: &MutationCandidate,
     radius: usize,
 ) -> Option<SourceContext> {
+    use std::fmt::Write;
     if radius == 0 {
         return None;
     }
@@ -676,7 +673,7 @@ pub fn source_context_for_candidate(
     for n in start..=end {
         let marker = if n == line { ">" } else { " " };
         let content = lines.get(n - 1).copied().unwrap_or("");
-        snippet.push_str(&format!("{marker} {:>4} | {content}\n", n));
+        let _ = writeln!(snippet, "{marker} {n:>4} | {content}");
     }
 
     Some(SourceContext {
@@ -955,9 +952,7 @@ pub fn human(report: &EnrichedRunReport) -> String {
     let mut out = String::new();
 
     let score = report
-        .mutation_score
-        .map(|s| format!("{:.1}%", s))
-        .unwrap_or_else(|| "n/a".to_string());
+        .mutation_score.map_or_else(|| "n/a".to_string(), |s| format!("{s:.1}%"));
 
     let _ = writeln!(
         out,
@@ -970,9 +965,7 @@ pub fn human(report: &EnrichedRunReport) -> String {
         out.push_str("Per-operator:\n");
         for op in &report.operators {
             let ms = op
-                .mutation_score
-                .map(|v| format!("{:.1}%", v))
-                .unwrap_or_else(|| "n/a".into());
+                .mutation_score.map_or_else(|| "n/a".into(), |v| format!("{v:.1}%"));
             let _ = writeln!(
                 out,
                 "  {:<18} total {:>3}  killed {:>3}  survived {:>3}  score {}",
@@ -1000,10 +993,10 @@ pub fn human(report: &EnrichedRunReport) -> String {
 
     out.push_str("Top test targets:\n\n");
     for (i, f) in top.iter().enumerate() {
-        let crap = f.crap.map(|v| format!("{:.1}", v)).unwrap_or_else(|| "n/a".into());
-        let cc = f.cyclomatic.map(|v| v.to_string()).unwrap_or_else(|| "n/a".into());
-        let cov = f.coverage.map(|v| format!("{:.1}%", v)).unwrap_or_else(|| "n/a".into());
-        let ms = f.mutation_score.map(|v| format!("{:.1}%", v)).unwrap_or_else(|| "n/a".into());
+        let crap = f.crap.map_or_else(|| "n/a".into(), |v| format!("{v:.1}"));
+        let cc = f.cyclomatic.map_or_else(|| "n/a".into(), |v| v.to_string());
+        let cov = f.coverage.map_or_else(|| "n/a".into(), |v| format!("{v:.1}%"));
+        let ms = f.mutation_score.map_or_else(|| "n/a".into(), |v| format!("{v:.1}%"));
 
         let _ = writeln!(out, "{}. {}::{}", i + 1, f.file.display(), f.function);
         let _ = writeln!(
@@ -1031,7 +1024,7 @@ pub fn human(report: &EnrichedRunReport) -> String {
                 if let Some(ctx) = &s.source_context {
                     out.push_str("     context:\n");
                     for snippet_line in ctx.snippet.lines() {
-                        let _ = writeln!(out, "       {}", snippet_line);
+                        let _ = writeln!(out, "       {snippet_line}");
                     }
                 }
             }
@@ -1050,7 +1043,7 @@ mod tests {
 
     fn make_task(file: &str, line: usize, operator: OperatorName, mutation: &str, priority: f64) -> AgentTask {
         AgentTask {
-            id: format!("task-{}", priority),
+            id: format!("task-{priority}"),
             file: PathBuf::from(file),
             function: "test_fn".to_string(),
             line,
@@ -1157,7 +1150,7 @@ mod tests {
             make_outcome(MutantStatus::Survived),
             make_outcome(MutantStatus::Killed),
         ]);
-        apply_options(&mut report, &ReportOptions::from_detail(ReportDetail::Compact));
+        apply_options(&mut report, ReportOptions::from_detail(ReportDetail::Compact));
         assert_eq!(report.outcomes.len(), 1, "only the survivor should remain");
         let o = &report.outcomes[0].outcome;
         assert!(o.diff.is_empty());
@@ -1168,7 +1161,7 @@ mod tests {
     #[test]
     fn normal_keeps_diff_but_drops_probe_output() {
         let mut report = report_with(vec![make_outcome(MutantStatus::Killed)]);
-        apply_options(&mut report, &ReportOptions::from_detail(ReportDetail::Normal));
+        apply_options(&mut report, ReportOptions::from_detail(ReportDetail::Normal));
         assert_eq!(report.outcomes.len(), 1, "non-survivors are kept");
         let o = &report.outcomes[0].outcome;
         assert_eq!(o.diff, "some diff");
@@ -1179,7 +1172,7 @@ mod tests {
     #[test]
     fn full_keeps_everything() {
         let mut report = report_with(vec![make_outcome(MutantStatus::Killed)]);
-        apply_options(&mut report, &ReportOptions::from_detail(ReportDetail::Full));
+        apply_options(&mut report, ReportOptions::from_detail(ReportDetail::Full));
         let o = &report.outcomes[0].outcome;
         assert_eq!(o.diff, "some diff");
         assert_eq!(o.stdout, "some stdout");
@@ -1196,7 +1189,7 @@ mod tests {
             make_outcome(MutantStatus::Survived),
             make_outcome(MutantStatus::Timeout),
         ]);
-        apply_options(&mut report, &opts);
+        apply_options(&mut report, opts);
         assert_eq!(report.outcomes.len(), 1);
         let o = &report.outcomes[0].outcome;
         assert!(o.diff.is_empty());

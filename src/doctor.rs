@@ -90,7 +90,7 @@ fn which(cmd: &str) -> Option<PathBuf> {
     None
 }
 
-pub fn run(path: &Path) -> anyhow::Result<DoctorReport> {
+pub fn run(path: &Path) -> DoctorReport {
     let mut checks: Vec<CheckResult> = Vec::new();
 
     let canonical = match std::fs::canonicalize(path) {
@@ -142,7 +142,7 @@ pub fn run(path: &Path) -> anyhow::Result<DoctorReport> {
                 )),
                 None => checks.push(warn(
                     "probe_command",
-                    format!("{} not found on PATH (still ok if invoked via wrapper)", bin),
+                    format!("{bin} not found on PATH (still ok if invoked via wrapper)"),
                 )),
             }
         }
@@ -225,15 +225,14 @@ pub fn run(path: &Path) -> anyhow::Result<DoctorReport> {
     );
     if gitignore.is_file() {
         let lines = std::fs::read_to_string(&gitignore)
-            .map(|s| {
+            .map_or(0, |s| {
                 s.lines()
                     .filter(|l| {
                         let t = l.trim();
                         !t.is_empty() && !t.starts_with('#')
                     })
                     .count()
-            })
-            .unwrap_or(0);
+            });
         excludes_msg = format!("{excludes_msg}, gitignore={lines}");
         checks.push(ok("excludes", excludes_msg));
     } else {
@@ -294,13 +293,13 @@ pub fn run(path: &Path) -> anyhow::Result<DoctorReport> {
         .filter(|c| matches!(c.status, CheckStatus::Warn))
         .count();
 
-    Ok(DoctorReport {
+    DoctorReport {
         path: canonical,
         config_path: cfg_loaded_from,
         checks,
         failed,
         warned,
-    })
+    }
 }
 
 pub fn print_human(report: &DoctorReport) {

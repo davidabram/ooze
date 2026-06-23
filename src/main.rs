@@ -51,7 +51,7 @@ fn read_gitignore_patterns(root: &std::path::Path) -> Vec<String> {
         return Vec::new();
     };
     text.lines()
-        .map(|l| l.trim())
+        .map(str::trim)
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
         .map(|l| l.trim_start_matches('/').to_string())
         .collect()
@@ -59,7 +59,7 @@ fn read_gitignore_patterns(root: &std::path::Path) -> Vec<String> {
 
 fn parse_operator(s: &str) -> Result<core::OperatorName, String> {
     core::OperatorName::parse(s).ok_or_else(|| {
-        let names: Vec<&str> = core::OperatorName::ALL.iter().map(|o| o.as_str()).collect();
+        let names: Vec<&str> = core::OperatorName::ALL.iter().copied().map(core::OperatorName::as_str).collect();
         format!("unknown operator {s:?}; known: {}", names.join(", "))
     })
 }
@@ -102,7 +102,7 @@ fn prompt_language() -> anyhow::Result<String> {
 }
 
 fn resolve_excludes(root: &std::path::Path, user: &[String]) -> Vec<String> {
-    let mut out: Vec<String> = DEFAULT_EXCLUDES.iter().map(|s| s.to_string()).collect();
+    let mut out: Vec<String> = DEFAULT_EXCLUDES.iter().map(std::string::ToString::to_string).collect();
     out.extend(read_gitignore_patterns(root));
     out.extend(user.iter().cloned());
     out
@@ -190,8 +190,7 @@ fn filter_candidates_to_changed(
         .filter(|c| {
             c.file
                 .canonicalize()
-                .map(|p| changed.contains(&p))
-                .unwrap_or(false)
+                .is_ok_and(|p| changed.contains(&p))
         })
         .collect()
 }
@@ -489,6 +488,27 @@ struct TestMutantsArgs {
     probe: Vec<String>,
 }
 
+#[derive(serde::Serialize)]
+struct PlannedCandidate {
+    #[serde(flatten)]
+    candidate: core::MutationCandidate,
+    #[serde(flatten)]
+    selection: scheduler::SelectionExplanation,
+}
+
+#[derive(serde::Serialize)]
+struct Plan {
+    total_candidates: usize,
+    skipped: usize,
+    selected: usize,
+    strategy: String,
+    excluded_patterns: Vec<String>,
+    operator_filter: mutate::OperatorFilterReport,
+    candidates: Vec<PlannedCandidate>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    skipped_candidates: Option<Vec<skip::SkippedCandidate>>,
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -509,7 +529,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Operators { format } => {
-            let infos: Vec<_> = core::OperatorName::ALL.iter().map(|o| o.info()).collect();
+            let infos: Vec<_> = core::OperatorName::ALL.iter().copied().map(core::OperatorName::info).collect();
             if format == "json" {
                 println!("{}", serde_json::to_string_pretty(&infos)?);
             } else {
@@ -555,7 +575,7 @@ fn main() -> anyhow::Result<()> {
 
             let crap_entries = if let Some(lcov_path) = lcov.as_ref() {
                 let coverage = crap::coverage::parse_lcov(lcov_path)?;
-                crap::score_with_coverage(functions, coverage)
+                crap::score_with_coverage(functions, &coverage)
             } else {
                 crap::score_without_coverage(functions)
             };
@@ -565,14 +585,6 @@ fn main() -> anyhow::Result<()> {
                 ordered.truncate(limit);
             }
 
-            #[derive(serde::Serialize)]
-            struct PlannedCandidate {
-                #[serde(flatten)]
-                candidate: core::MutationCandidate,
-                #[serde(flatten)]
-                selection: scheduler::SelectionExplanation,
-            }
-
             let planned: Vec<PlannedCandidate> = ordered
                 .into_iter()
                 .map(|c| {
@@ -580,19 +592,6 @@ fn main() -> anyhow::Result<()> {
                     PlannedCandidate { candidate: c, selection }
                 })
                 .collect();
-
-            #[derive(serde::Serialize)]
-            struct Plan {
-                total_candidates: usize,
-                skipped: usize,
-                selected: usize,
-                strategy: String,
-                excluded_patterns: Vec<String>,
-                operator_filter: mutate::OperatorFilterReport,
-                candidates: Vec<PlannedCandidate>,
-                #[serde(skip_serializing_if = "Option::is_none")]
-                skipped_candidates: Option<Vec<skip::SkippedCandidate>>,
-            }
 
             let plan = Plan {
                 total_candidates,
@@ -798,7 +797,7 @@ fn main() -> anyhow::Result<()> {
             let mut probe = probe;
             if probe.is_empty() {
                 if let Some(cmd) = cfg.probe.command.as_ref() {
-                    probe = cmd.clone();
+                    probe.clone_from(cmd);
                 } else {
                     anyhow::bail!(
                         "missing probe command; pass one after `--` or set [probe].command in ooze.toml"
@@ -834,7 +833,7 @@ fn main() -> anyhow::Result<()> {
 
             let crap_entries = if let Some(lcov_path) = lcov.as_ref() {
                 let coverage = crap::coverage::parse_lcov(lcov_path)?;
-                crap::score_with_coverage(functions, coverage)
+                crap::score_with_coverage(functions, &coverage)
             } else {
                 crap::score_without_coverage(functions)
             };
@@ -885,10 +884,10 @@ fn main() -> anyhow::Result<()> {
                     (Some(dir), Vec::new())
                 };
 
-            let num_workers = if !worker_build_cache_dirs.is_empty() {
-                worker_build_cache_dirs.len()
-            } else {
+            let num_workers = if worker_build_cache_dirs.is_empty() {
                 jobs.max(1)
+            } else {
+                worker_build_cache_dirs.len()
             };
             for (_, v) in &probe_env {
                 if !v.contains("{worker}") {
@@ -908,7 +907,7 @@ fn main() -> anyhow::Result<()> {
             if preflight {
                 let preflight_build_cache = target_dir
                     .as_deref()
-                    .or_else(|| worker_build_cache_dirs.first().map(|p| p.as_path()));
+                    .or_else(|| worker_build_cache_dirs.first().map(std::path::PathBuf::as_path));
                 let preflight_envs: Vec<(String, String)> = probe_env
                     .iter()
                     .map(|(k, v)| {
@@ -958,10 +957,10 @@ fn main() -> anyhow::Result<()> {
                     };
                     if format == "human" {
                         eprintln!("Preflight failed.\n");
-                        eprintln!("{}\n", msg);
+                        eprintln!("{msg}\n");
                         eprintln!("Command: {}", probe.join(" "));
                         if let Some(code) = payload.exit_code {
-                            eprintln!("Exit code: {}", code);
+                            eprintln!("Exit code: {code}");
                         }
                     } else {
                         println!("{}", serde_json::to_string_pretty(&payload)?);
@@ -1037,11 +1036,11 @@ fn main() -> anyhow::Result<()> {
                 candidates,
                 &probe,
                 jobs,
-                cfg,
+                &cfg,
             )?;
 
             let mut enriched = report::enrich(raw_report, &crap_entries, &repo_root, context_lines);
-            report::apply_options(&mut enriched, &report_opts);
+            report::apply_options(&mut enriched, report_opts);
 
             let text = match format.as_str() {
                 "human" => report::human(&enriched),
@@ -1071,7 +1070,7 @@ fn main() -> anyhow::Result<()> {
             match output.as_deref() {
                 Some(path) => std::fs::write(path, &text)
                     .with_context(|| format!("writing report to {}", path.display()))?,
-                None => print!("{}", text),
+                None => print!("{text}"),
             }
 
             let exit = report::exit_code_for_report(
@@ -1119,7 +1118,7 @@ fn main() -> anyhow::Result<()> {
             println!("{}", serde_json::to_string_pretty(&outcome)?);
         }
         Commands::Doctor { path, format } => {
-            let report = doctor::run(&path)?;
+            let report = doctor::run(&path);
             if format == "json" {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
@@ -1156,7 +1155,7 @@ fn main() -> anyhow::Result<()> {
             let functions = lang::scan_directory(std::path::Path::new(&path))?;
             let entries = if let Some(lcov_path) = lcov.as_ref() {
                 let coverage = crap::coverage::parse_lcov(lcov_path)?;
-                crap::score_with_coverage(functions, coverage)
+                crap::score_with_coverage(functions, &coverage)
             } else {
                 crap::score_without_coverage(functions)
             };

@@ -147,25 +147,21 @@ pub fn run_probe(
 
     let mut child = cmd
         .spawn()
-        .with_context(|| format!("spawning probe command {:?}", probe))?;
+        .with_context(|| format!("spawning probe command {probe:?}"))?;
 
     let mut timed_out = false;
 
     let status = loop {
-        match child.try_wait().context("polling probe child")? {
-            Some(s) => break Some(s),
-            None => {
-                if let Some(limit) = timeout
-                    && started.elapsed() >= limit
-                {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    timed_out = true;
-                    break None;
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
+        if let Some(s) = child.try_wait().context("polling probe child")? { break Some(s) }
+        if let Some(limit) = timeout
+            && started.elapsed() >= limit
+        {
+            let _ = child.kill();
+            let _ = child.wait();
+            timed_out = true;
+            break None;
         }
+        std::thread::sleep(Duration::from_millis(50));
     };
 
     let duration_ms = started.elapsed().as_millis();
@@ -306,22 +302,22 @@ fn run_id_for(idx: usize, candidate: &MutationCandidate) -> String {
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect();
-    format!("mutant-{:05}-{}", idx, safe)
+    format!("mutant-{idx:05}-{safe}")
 }
 
 pub fn run_mutants_sequential(
     repo_root: &Path,
     candidates: Vec<MutationCandidate>,
     probe: &[String],
-    cfg: BatchConfig<'_>,
-) -> Result<MutationRunReport> {
+    cfg: &BatchConfig<'_>,
+) -> MutationRunReport {
     let total = candidates.len();
     let outcomes: Vec<MutantOutcome> = candidates
         .into_iter()
         .enumerate()
         .map(|(i, candidate)| {
             let id = run_id_for(i, &candidate);
-            let outcome = run_one(repo_root, candidate, probe, &cfg, &id);
+            let outcome = run_one(repo_root, candidate, probe, cfg, &id);
             if let Some(cb) = cfg.progress {
                 cb(ProgressEvent {
                     completed: i + 1,
@@ -333,7 +329,7 @@ pub fn run_mutants_sequential(
         })
         .collect();
 
-    Ok(MutationRunReport::from_outcomes(outcomes))
+    MutationRunReport::from_outcomes(outcomes)
 }
 
 pub fn run_mutants_parallel(
@@ -341,10 +337,10 @@ pub fn run_mutants_parallel(
     candidates: Vec<MutationCandidate>,
     probe: &[String],
     jobs: usize,
-    cfg: BatchConfig<'_>,
+    cfg: &BatchConfig<'_>,
 ) -> Result<MutationRunReport> {
     if jobs <= 1 {
-        return run_mutants_sequential(repo_root, candidates, probe, cfg);
+        return Ok(run_mutants_sequential(repo_root, candidates, probe, cfg));
     }
 
     let pool = rayon::ThreadPoolBuilder::new()
@@ -361,7 +357,7 @@ pub fn run_mutants_parallel(
             .into_par_iter()
             .map(|(i, candidate)| {
                 let id = run_id_for(i, &candidate);
-                let outcome = run_one(repo_root, candidate, probe, &cfg, &id);
+                let outcome = run_one(repo_root, candidate, probe, cfg, &id);
                 if let Some(cb) = cfg.progress {
                     let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
                     cb(ProgressEvent {
@@ -412,24 +408,20 @@ pub fn preflight(
 
     let mut child = cmd
         .spawn()
-        .with_context(|| format!("spawning preflight probe {:?}", probe))?;
+        .with_context(|| format!("spawning preflight probe {probe:?}"))?;
 
     let mut timed_out = false;
     let status = loop {
-        match child.try_wait().context("polling preflight child")? {
-            Some(s) => break Some(s),
-            None => {
-                if let Some(limit) = timeout
-                    && started.elapsed() >= limit
-                {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    timed_out = true;
-                    break None;
-                }
-                std::thread::sleep(Duration::from_millis(50));
-            }
+        if let Some(s) = child.try_wait().context("polling preflight child")? { break Some(s) }
+        if let Some(limit) = timeout
+            && started.elapsed() >= limit
+        {
+            let _ = child.kill();
+            let _ = child.wait();
+            timed_out = true;
+            break None;
         }
+        std::thread::sleep(Duration::from_millis(50));
     };
 
     let duration_ms = started.elapsed().as_millis();
@@ -483,7 +475,7 @@ pub fn warmup(
     }
 
     cmd.status()
-        .with_context(|| format!("running warmup command {:?}", probe))
+        .with_context(|| format!("running warmup command {probe:?}"))
 }
 
 pub fn default_build_cache_dir(cache_dir: &Path) -> PathBuf {
@@ -586,11 +578,11 @@ fn should_skip(relative: &Path) -> bool {
 }
 
 fn unified_diff(path: &str, old: &str, new: &str) -> String {
+    use std::fmt::Write;
     let diff = TextDiff::from_lines(old, new);
 
     let mut output = String::new();
-    output.push_str(&format!("--- a/{path}\n"));
-    output.push_str(&format!("+++ b/{path}\n"));
+    let _ = write!(output, "--- a/{path}\n+++ b/{path}\n");
 
     for group in diff.grouped_ops(3) {
         for op in group {

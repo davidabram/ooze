@@ -350,7 +350,7 @@ impl OperatorName {
         OperatorName::SwapPredicateMethod,
     ];
 
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             OperatorName::SwapBoolean => "swap_boolean",
             OperatorName::NegateEquality => "negate_equality",
@@ -368,7 +368,7 @@ impl OperatorName {
         OperatorName::ALL.iter().copied().find(|op| op.as_str() == s)
     }
 
-    pub fn info(&self) -> OperatorInfo {
+    pub fn info(self) -> OperatorInfo {
         match self {
             OperatorName::ComparisonBoundary => OperatorInfo {
                 name: self.as_str(),

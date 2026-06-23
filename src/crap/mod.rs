@@ -42,14 +42,13 @@ pub fn score_without_coverage(functions: Vec<FunctionSpan>) -> Vec<CrapEntry> {
 
 pub fn score_with_coverage(
     functions: Vec<FunctionSpan>,
-    coverage: HashMap<PathBuf, FileCoverage>,
+    coverage: &HashMap<PathBuf, FileCoverage>,
 ) -> Vec<CrapEntry> {
     let mut entries: Vec<CrapEntry> = functions
         .into_iter()
         .map(|f| {
-            let coverage_pct = lookup_coverage(&f.file, &coverage)
-                .map(|file_cov| file_cov.coverage_in_span(f.start_line, f.end_line))
-                .unwrap_or(0.0);
+            let coverage_pct = lookup_coverage(&f.file, coverage)
+                .map_or(0.0, |file_cov| file_cov.coverage_in_span(f.start_line, f.end_line));
 
             CrapEntry {
                 file: f.file,
