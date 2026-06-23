@@ -29,6 +29,12 @@ pub struct AgentTaskReport {
     pub tasks: Vec<AgentTask>,
 }
 
+/// Borrowed agent tasks paired with the count of duplicates they represent.
+type TaskRefs<'a> = Vec<(&'a AgentTask, usize)>;
+/// Tasks grouped by file, then by function.
+type TasksByFile<'a> =
+    std::collections::BTreeMap<String, std::collections::BTreeMap<String, TaskRefs<'a>>>;
+
 pub fn agent_tasks(report: &EnrichedRunReport) -> AgentTaskReport {
     let func_index: HashMap<(&PathBuf, &String), &FunctionMutationSummary> = report
         .functions
@@ -529,8 +535,7 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
         let _ = writeln!(out, "## {label} Priority\n");
 
         // Group by file → function
-        let mut by_file: BTreeMap<String, BTreeMap<String, Vec<(&AgentTask, usize)>>> =
-            BTreeMap::new();
+        let mut by_file: TasksByFile = BTreeMap::new();
         for &(t, dup) in bucket.iter() {
             by_file
                 .entry(t.file.to_string_lossy().into_owned())
@@ -540,7 +545,7 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
                 .push((t, dup));
         }
 
-        let mut high_snippets: Vec<(usize, Vec<(&AgentTask, usize)>)> = Vec::new();
+        let mut high_snippets: Vec<(usize, TaskRefs)> = Vec::new();
 
         for (file, funcs) in &by_file {
             if !single_target {
@@ -553,7 +558,7 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
                 }
 
                 // Group mutations by line so same-location operators merge into one table row
-                let mut by_line: BTreeMap<usize, Vec<(&AgentTask, usize)>> = BTreeMap::new();
+                let mut by_line: BTreeMap<usize, TaskRefs> = BTreeMap::new();
                 for &(t, dup) in func_tasks.iter() {
                     by_line.entry(t.line).or_default().push((t, dup));
                 }

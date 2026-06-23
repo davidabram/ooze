@@ -1,28 +1,12 @@
-use super::Grammar;
+use super::GrammarDef;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/java/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/java/branches.scm");
 
-pub struct Java;
-
-impl Grammar for Java {
-    fn id(&self) -> crate::core::Language {
-        crate::core::Language::Java
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["java"]
-    }
-
-    fn tree_sitter_language(&self) -> tree_sitter::Language {
-        tree_sitter_java::LANGUAGE.into()
-    }
-
-    fn functions_query(&self) -> &'static str {
-        FUNCTIONS_QUERY
-    }
-
-    fn branches_query(&self) -> &'static str {
-        BRANCHES_QUERY
-    }
-}
+pub const GRAMMAR: GrammarDef = GrammarDef {
+    id: crate::core::Language::Java,
+    extensions: &["java"],
+    language: || tree_sitter_java::LANGUAGE.into(),
+    functions_query: FUNCTIONS_QUERY,
+    branches_query: BRANCHES_QUERY,
+};

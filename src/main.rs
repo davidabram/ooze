@@ -340,106 +340,7 @@ enum Commands {
         id: String,
     },
     #[command(about = "Run a batch of mutations sequentially and produce a summary report")]
-    TestMutants {
-        #[arg(long, help = "Path to ooze.toml config (default: ./ooze.toml if present).")]
-        config: Option<PathBuf>,
-
-        #[arg(long, default_value = ".")]
-        path: PathBuf,
-
-        #[arg(long)]
-        lcov: Option<PathBuf>,
-
-        #[arg(long, value_enum)]
-        strategy: Option<scheduler::MutationStrategy>,
-
-        #[arg(long)]
-        limit: Option<usize>,
-
-        #[arg(long)]
-        jobs: Option<usize>,
-
-        #[arg(long)]
-        timeout_seconds: Option<u64>,
-
-        #[arg(long, help = "Shared build cache dir for probe runs (default: <cache_dir>/build-cache). Reference it as {build_cache} in --probe-env.")]
-        build_cache_dir: Option<PathBuf>,
-
-        #[arg(long, help = "Give each worker its own build-cache-job-{i} dir instead of a shared one")]
-        per_worker_cache: bool,
-
-        #[arg(long, help = "Pre-build the probe in each worker target dir before running mutants")]
-        warmup: bool,
-
-        #[arg(long, value_enum)]
-        workspace_backend: Option<WorkspaceBackendArg>,
-
-        #[arg(long)]
-        cache_dir: Option<PathBuf>,
-
-        #[arg(long)]
-        runs_dir: Option<PathBuf>,
-
-        #[arg(long, help = "Report format: json, human, agent-tasks-json, agent-tasks-markdown, github-annotations, sarif")]
-        format: Option<String>,
-
-        #[arg(long, help = "Write report to a file instead of stdout.")]
-        output: Option<PathBuf>,
-
-        #[arg(long, value_enum, help = "Report verbosity baseline: compact, normal, or full. Defaults per format (human/agent-tasks/sarif=compact, json=normal).")]
-        report_detail: Option<report::ReportDetail>,
-
-        #[arg(long, help = "Omit unified diffs from the report.")]
-        no_diff: bool,
-
-        #[arg(long, help = "Omit probe stdout from the report.")]
-        no_stdout: bool,
-
-        #[arg(long, help = "Omit probe stderr from the report.")]
-        no_stderr: bool,
-
-        #[arg(long, help = "Keep only survived mutants in the report outcomes.")]
-        only_survivors: bool,
-
-        #[arg(long, value_delimiter = ',', help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git.")]
-        exclude: Vec<String>,
-
-        #[arg(long, value_name = "BASE", help = "Only mutate files changed versus BASE (e.g. `main`): git diff BASE...HEAD plus uncommitted and untracked changes.")]
-        changed_only: Option<String>,
-
-        #[arg(long = "probe-env", value_parser = parse_key_val, help = "KEY=VALUE env var to set on probe (and warmup). {worker} in VALUE expands to the worker index. Repeatable.")]
-        probe_env: Vec<(String, String)>,
-
-        #[arg(long, value_delimiter = ',', value_parser = parse_operator, help = "Restrict to these operators (comma-separated).")]
-        operators: Vec<core::OperatorName>,
-
-        #[arg(long = "exclude-operators", value_delimiter = ',', value_parser = parse_operator, help = "Drop these operators (comma-separated).")]
-        exclude_operators: Vec<core::OperatorName>,
-
-        #[arg(long, help = "Disable static skip rules (test files, assertion/panic macros, generated files).")]
-        no_static_skips: bool,
-
-        #[arg(long, help = "Lines of source context around each survived mutant (0 disables).")]
-        context_lines: Option<usize>,
-
-        #[arg(long, help = "Run the probe once on unmodified code first; abort if it fails or times out.")]
-        preflight: bool,
-
-        #[arg(long, help = "Exit 0 even if survivors are found (timeouts/errors still surface).")]
-        no_fail_on_survivors: bool,
-
-        #[arg(long, help = "Treat timeout/error outcomes as non-fatal for exit code purposes.")]
-        allow_incomplete: bool,
-
-        #[arg(long, help = "Suppress per-mutant progress output (same as --progress never).")]
-        quiet: bool,
-
-        #[arg(long, value_enum, default_value_t = ProgressMode::Auto, help = "Per-mutant progress on stderr: auto (TTY and not CI), always, or never.")]
-        progress: ProgressMode,
-
-        #[arg(last = true)]
-        probe: Vec<String>,
-    },
+    TestMutants(Box<TestMutantsArgs>),
     #[command(about = "Write a starter ooze.toml in the current directory")]
     InitConfig {
         #[arg(long, default_value = "ooze.toml")]
@@ -483,6 +384,111 @@ enum Commands {
     },
 }
 
+/// Args for `TestMutants`. Extracted into its own struct (and boxed in the
+/// `Commands` variant) so this large, rarely-constructed variant doesn't bloat
+/// every `Commands` value.
+#[derive(clap::Args)]
+struct TestMutantsArgs {
+    #[arg(long, help = "Path to ooze.toml config (default: ./ooze.toml if present).")]
+    config: Option<PathBuf>,
+
+    #[arg(long, default_value = ".")]
+    path: PathBuf,
+
+    #[arg(long)]
+    lcov: Option<PathBuf>,
+
+    #[arg(long, value_enum)]
+    strategy: Option<scheduler::MutationStrategy>,
+
+    #[arg(long)]
+    limit: Option<usize>,
+
+    #[arg(long)]
+    jobs: Option<usize>,
+
+    #[arg(long)]
+    timeout_seconds: Option<u64>,
+
+    #[arg(long, help = "Shared build cache dir for probe runs (default: <cache_dir>/build-cache). Reference it as {build_cache} in --probe-env.")]
+    build_cache_dir: Option<PathBuf>,
+
+    #[arg(long, help = "Give each worker its own build-cache-job-{i} dir instead of a shared one")]
+    per_worker_cache: bool,
+
+    #[arg(long, help = "Pre-build the probe in each worker target dir before running mutants")]
+    warmup: bool,
+
+    #[arg(long, value_enum)]
+    workspace_backend: Option<WorkspaceBackendArg>,
+
+    #[arg(long)]
+    cache_dir: Option<PathBuf>,
+
+    #[arg(long)]
+    runs_dir: Option<PathBuf>,
+
+    #[arg(long, help = "Report format: json, human, agent-tasks-json, agent-tasks-markdown, github-annotations, sarif")]
+    format: Option<String>,
+
+    #[arg(long, help = "Write report to a file instead of stdout.")]
+    output: Option<PathBuf>,
+
+    #[arg(long, value_enum, help = "Report verbosity baseline: compact, normal, or full. Defaults per format (human/agent-tasks/sarif=compact, json=normal).")]
+    report_detail: Option<report::ReportDetail>,
+
+    #[arg(long, help = "Omit unified diffs from the report.")]
+    no_diff: bool,
+
+    #[arg(long, help = "Omit probe stdout from the report.")]
+    no_stdout: bool,
+
+    #[arg(long, help = "Omit probe stderr from the report.")]
+    no_stderr: bool,
+
+    #[arg(long, help = "Keep only survived mutants in the report outcomes.")]
+    only_survivors: bool,
+
+    #[arg(long, value_delimiter = ',', help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git.")]
+    exclude: Vec<String>,
+
+    #[arg(long, value_name = "BASE", help = "Only mutate files changed versus BASE (e.g. `main`): git diff BASE...HEAD plus uncommitted and untracked changes.")]
+    changed_only: Option<String>,
+
+    #[arg(long = "probe-env", value_parser = parse_key_val, help = "KEY=VALUE env var to set on probe (and warmup). {worker} in VALUE expands to the worker index. Repeatable.")]
+    probe_env: Vec<(String, String)>,
+
+    #[arg(long, value_delimiter = ',', value_parser = parse_operator, help = "Restrict to these operators (comma-separated).")]
+    operators: Vec<core::OperatorName>,
+
+    #[arg(long = "exclude-operators", value_delimiter = ',', value_parser = parse_operator, help = "Drop these operators (comma-separated).")]
+    exclude_operators: Vec<core::OperatorName>,
+
+    #[arg(long, help = "Disable static skip rules (test files, assertion/panic macros, generated files).")]
+    no_static_skips: bool,
+
+    #[arg(long, help = "Lines of source context around each survived mutant (0 disables).")]
+    context_lines: Option<usize>,
+
+    #[arg(long, help = "Run the probe once on unmodified code first; abort if it fails or times out.")]
+    preflight: bool,
+
+    #[arg(long, help = "Exit 0 even if survivors are found (timeouts/errors still surface).")]
+    no_fail_on_survivors: bool,
+
+    #[arg(long, help = "Treat timeout/error outcomes as non-fatal for exit code purposes.")]
+    allow_incomplete: bool,
+
+    #[arg(long, help = "Suppress per-mutant progress output (same as --progress never).")]
+    quiet: bool,
+
+    #[arg(long, value_enum, default_value_t = ProgressMode::Auto, help = "Per-mutant progress on stderr: auto (TTY and not CI), always, or never.")]
+    progress: ProgressMode,
+
+    #[arg(last = true)]
+    probe: Vec<String>,
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
@@ -497,7 +503,7 @@ fn main() -> anyhow::Result<()> {
             let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
             let languages = lang::supported_languages();
             let candidates =
-                mutate::discover_mutants(&functions, &languages, &mutate::OperatorFilter::allow_all())?;
+                mutate::discover_mutants(&functions, languages, &mutate::OperatorFilter::allow_all())?;
             if format == "json" {
                 println!("{}", serde_json::to_string_pretty(&candidates)?);
             }
@@ -532,7 +538,7 @@ fn main() -> anyhow::Result<()> {
             let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
             let languages = lang::supported_languages();
             let filter = mutate::OperatorFilter::from_cli(&operators, &exclude_operators);
-            let candidates = mutate::discover_mutants(&functions, &languages, &filter)?;
+            let candidates = mutate::discover_mutants(&functions, languages, &filter)?;
             let candidates = if let Some(base) = changed_only.as_deref() {
                 let changed = git_changed_files(base, &path)?;
                 filter_candidates_to_changed(candidates, &changed)
@@ -613,7 +619,7 @@ fn main() -> anyhow::Result<()> {
             let functions = lang::scan_directory(&repo_root)?;
             let languages = lang::supported_languages();
             let candidates =
-                mutate::discover_mutants(&functions, &languages, &mutate::OperatorFilter::allow_all())?;
+                mutate::discover_mutants(&functions, languages, &mutate::OperatorFilter::allow_all())?;
 
             let Some(candidate) = candidates.into_iter().find(|c| c.id == id) else {
                 anyhow::bail!("no mutation candidate found with id {id:?}");
@@ -624,41 +630,42 @@ fn main() -> anyhow::Result<()> {
 
             println!("{}", applied.diff);
         }
-        Commands::TestMutants {
-            config: config_path,
-            path,
-            lcov,
-            strategy,
-            limit,
-            jobs,
-            timeout_seconds,
-            build_cache_dir,
-            per_worker_cache,
-            warmup,
-            workspace_backend,
-            cache_dir,
-            runs_dir,
-            format,
-            output,
-            report_detail,
-            no_diff,
-            no_stdout,
-            no_stderr,
-            only_survivors,
-            exclude,
-            changed_only,
-            probe_env,
-            operators,
-            exclude_operators,
-            no_static_skips,
-            context_lines,
-            preflight,
-            no_fail_on_survivors,
-            allow_incomplete,
-            quiet,
-            progress,
-            probe,
-        } => {
+        Commands::TestMutants(args) => {
+            let TestMutantsArgs {
+                config: config_path,
+                path,
+                lcov,
+                strategy,
+                limit,
+                jobs,
+                timeout_seconds,
+                build_cache_dir,
+                per_worker_cache,
+                warmup,
+                workspace_backend,
+                cache_dir,
+                runs_dir,
+                format,
+                output,
+                report_detail,
+                no_diff,
+                no_stdout,
+                no_stderr,
+                only_survivors,
+                exclude,
+                changed_only,
+                probe_env,
+                operators,
+                exclude_operators,
+                no_static_skips,
+                context_lines,
+                preflight,
+                no_fail_on_survivors,
+                allow_incomplete,
+                quiet,
+                progress,
+                probe,
+            } = *args;
             let (cfg, cfg_loaded_from) = config::load_config(config_path.as_deref())?;
             if let Some(p) = &cfg_loaded_from {
                 eprintln!("ooze: loaded config from {}", p.display());
@@ -803,7 +810,7 @@ fn main() -> anyhow::Result<()> {
             let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
             let languages = lang::supported_languages();
             let filter = mutate::OperatorFilter::from_cli(&operators, &exclude_operators);
-            let candidates = mutate::discover_mutants(&functions, &languages, &filter)?;
+            let candidates = mutate::discover_mutants(&functions, languages, &filter)?;
             let candidates = if no_static_skips {
                 candidates
             } else {
@@ -994,23 +1001,22 @@ fn main() -> anyhow::Result<()> {
             }
 
             let progress_enabled = !quiet && progress.resolve();
-            let progress_cb: Option<Box<dyn Fn(runner::ProgressEvent<'_>) + Send + Sync>> =
-                if progress_enabled {
-                    Some(Box::new(|ev: runner::ProgressEvent<'_>| {
-                        let status = match ev.outcome.status {
-                            core::MutantStatus::Killed => "killed",
-                            core::MutantStatus::Survived => "SURVIVED",
-                            core::MutantStatus::Timeout => "timeout",
-                            core::MutantStatus::Error => "ERROR",
-                        };
-                        eprintln!(
-                            "[{}/{}] {} {}",
-                            ev.completed, ev.total, status, ev.outcome.candidate.id
-                        );
-                    }))
-                } else {
-                    None
-                };
+            let progress_cb: Option<fn(runner::ProgressEvent<'_>)> = if progress_enabled {
+                Some(|ev: runner::ProgressEvent<'_>| {
+                    let status = match ev.outcome.status {
+                        core::MutantStatus::Killed => "killed",
+                        core::MutantStatus::Survived => "SURVIVED",
+                        core::MutantStatus::Timeout => "timeout",
+                        core::MutantStatus::Error => "ERROR",
+                    };
+                    eprintln!(
+                        "[{}/{}] {} {}",
+                        ev.completed, ev.total, status, ev.outcome.candidate.id
+                    );
+                })
+            } else {
+                None
+            };
 
             let cfg = runner::BatchConfig {
                 backend: workspace_backend.resolve(),
@@ -1023,7 +1029,7 @@ fn main() -> anyhow::Result<()> {
                 },
                 probe_env_templates: &probe_env,
                 runs_dir: &runs_dir,
-                progress: progress_cb.as_deref(),
+                progress: progress_cb,
             };
 
             let raw_report = runner::run_mutants_parallel(
@@ -1097,7 +1103,7 @@ fn main() -> anyhow::Result<()> {
             let functions = lang::scan_directory(&path)?;
             let languages = lang::supported_languages();
             let candidates =
-                mutate::discover_mutants(&functions, &languages, &mutate::OperatorFilter::allow_all())?;
+                mutate::discover_mutants(&functions, languages, &mutate::OperatorFilter::allow_all())?;
 
             let Some(candidate) = candidates.into_iter().find(|c| c.id == id) else {
                 anyhow::bail!("no mutation candidate found with id {id:?}");

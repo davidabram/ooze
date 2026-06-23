@@ -33,51 +33,59 @@ pub mod zig;
 mod tests;
 
 /// A parseable language grammar. Mutation operators no longer live here — they
-/// are in `crate::mutate::registry`, keyed by `Language`. This trait is purely
-/// about discovery/parsing.
-pub trait Grammar {
+/// are in `crate::mutate::registry`, keyed by `Language`. This struct is purely
+/// about discovery/parsing, and is a compile-time constant per language (e.g.
+/// `crate::lang::rust::GRAMMAR`).
+pub struct GrammarDef {
     /// The typed language id. `name()` derives from this, so it is the single
     /// source of truth for the canonical language string.
-    fn id(&self) -> Language;
-    fn name(&self) -> &'static str {
-        self.id().as_str()
-    }
-    fn extensions(&self) -> &'static [&'static str];
-    fn tree_sitter_language(&self) -> tree_sitter::Language;
-    fn functions_query(&self) -> &'static str;
-    fn branches_query(&self) -> &'static str;
+    pub id: Language,
+    pub extensions: &'static [&'static str],
+    /// Loads the tree-sitter language. A function pointer because the grammar
+    /// handle is produced by a runtime call, not a const.
+    pub language: fn() -> tree_sitter::Language,
+    pub functions_query: &'static str,
+    pub branches_query: &'static str,
 }
 
-pub fn supported_languages() -> Vec<Box<dyn Grammar>> {
-    vec![
-        Box::new(bash::Bash),
-        Box::new(javascript::JavaScript),
-        Box::new(typescript::TypeScript),
-        Box::new(python::Python),
-        Box::new(java::Java),
-        Box::new(c_sharp::CSharp),
-        Box::new(cpp::Cpp),
-        Box::new(c::C),
-        Box::new(dart::Dart),
-        Box::new(elixir::Elixir),
-        Box::new(erlang::Erlang),
-        Box::new(gleam::Gleam),
-        Box::new(go::Go),
-        Box::new(haskell::Haskell),
-        Box::new(julia::Julia),
-        Box::new(lua::Lua),
-        Box::new(ocaml::Ocaml),
-        Box::new(rust::Rust),
-        Box::new(ruby::Ruby),
-        Box::new(php::Php),
-        Box::new(scala::Scala),
-        Box::new(swift::Swift),
-        Box::new(zig::Zig),
-    ]
+impl GrammarDef {
+    pub fn name(&self) -> &'static str {
+        self.id.as_str()
+    }
+}
+
+pub const GRAMMARS: &[&GrammarDef] = &[
+    &bash::GRAMMAR,
+    &javascript::GRAMMAR,
+    &typescript::GRAMMAR,
+    &python::GRAMMAR,
+    &java::GRAMMAR,
+    &c_sharp::GRAMMAR,
+    &cpp::GRAMMAR,
+    &c::GRAMMAR,
+    &dart::GRAMMAR,
+    &elixir::GRAMMAR,
+    &erlang::GRAMMAR,
+    &gleam::GRAMMAR,
+    &go::GRAMMAR,
+    &haskell::GRAMMAR,
+    &julia::GRAMMAR,
+    &lua::GRAMMAR,
+    &ocaml::GRAMMAR,
+    &rust::GRAMMAR,
+    &ruby::GRAMMAR,
+    &php::GRAMMAR,
+    &scala::GRAMMAR,
+    &swift::GRAMMAR,
+    &zig::GRAMMAR,
+];
+
+pub fn supported_languages() -> &'static [&'static GrammarDef] {
+    GRAMMARS
 }
 
 struct Compiled {
-    language: Box<dyn Grammar>,
+    language: &'static GrammarDef,
     functions: tree_sitter::Query,
     branches: tree_sitter::Query,
 }
@@ -92,11 +100,11 @@ pub fn scan_directory_with_excludes(
 ) -> anyhow::Result<Vec<FunctionSpan>> {
     let languages = supported_languages();
     let mut compiled = Vec::with_capacity(languages.len());
-    for language in languages {
-        let ts_lang = language.tree_sitter_language();
-        let functions = tree_sitter::Query::new(&ts_lang, language.functions_query())
+    for &language in languages {
+        let ts_lang = (language.language)();
+        let functions = tree_sitter::Query::new(&ts_lang, language.functions_query)
             .with_context(|| format!("compiling {} function query", language.name()))?;
-        let branches = tree_sitter::Query::new(&ts_lang, language.branches_query())
+        let branches = tree_sitter::Query::new(&ts_lang, language.branches_query)
             .with_context(|| format!("compiling {} branch query", language.name()))?;
         compiled.push(Compiled {
             language,
@@ -133,13 +141,13 @@ pub fn scan_directory_with_excludes(
         };
         let Some(compiled) = compiled
             .iter()
-            .find(|c| c.language.extensions().contains(&ext))
+            .find(|c| c.language.extensions.contains(&ext))
         else {
             continue;
         };
         spans.extend(scan_file(
             file_path,
-            compiled.language.as_ref(),
+            compiled.language,
             &compiled.functions,
             &compiled.branches,
         )?);
@@ -149,7 +157,7 @@ pub fn scan_directory_with_excludes(
 
 fn scan_file(
     path: &Path,
-    language: &dyn Grammar,
+    language: &GrammarDef,
     fn_query: &tree_sitter::Query,
     branch_query: &tree_sitter::Query,
 ) -> anyhow::Result<Vec<FunctionSpan>> {
@@ -157,7 +165,7 @@ fn scan_file(
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let source_bytes = source.as_bytes();
 
-    let ts_lang = language.tree_sitter_language();
+    let ts_lang = (language.language)();
     let mut parser = tree_sitter::Parser::new();
     parser
         .set_language(&ts_lang)
@@ -239,7 +247,7 @@ fn scan_file(
 
         spans.push(FunctionSpan {
             file: path.to_path_buf(),
-            language: language.id(),
+            language: language.id,
             name,
             start_line: func.node.start_position().row + 1,
             end_line: func.node.end_position().row + 1,

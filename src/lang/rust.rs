@@ -1,4 +1,4 @@
-use super::Grammar;
+use super::GrammarDef;
 use crate::core::{Language, MutatorImpl, OperatorName};
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/rust/functions.scm");
@@ -149,26 +149,10 @@ pub const MUTATORS: &[MutatorImpl] = &[
     },
 ];
 
-pub struct Rust;
-
-impl Grammar for Rust {
-    fn id(&self) -> Language {
-        Language::Rust
-    }
-
-    fn extensions(&self) -> &'static [&'static str] {
-        &["rs"]
-    }
-
-    fn tree_sitter_language(&self) -> tree_sitter::Language {
-        tree_sitter_rust::LANGUAGE.into()
-    }
-
-    fn functions_query(&self) -> &'static str {
-        FUNCTIONS_QUERY
-    }
-
-    fn branches_query(&self) -> &'static str {
-        BRANCHES_QUERY
-    }
-}
+pub const GRAMMAR: GrammarDef = GrammarDef {
+    id: crate::core::Language::Rust,
+    extensions: &["rs"],
+    language: || tree_sitter_rust::LANGUAGE.into(),
+    functions_query: FUNCTIONS_QUERY,
+    branches_query: BRANCHES_QUERY,
+};

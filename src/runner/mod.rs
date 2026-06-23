@@ -155,13 +155,13 @@ pub fn run_probe(
         match child.try_wait().context("polling probe child")? {
             Some(s) => break Some(s),
             None => {
-                if let Some(limit) = timeout {
-                    if started.elapsed() >= limit {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                        timed_out = true;
-                        break None;
-                    }
+                if let Some(limit) = timeout
+                    && started.elapsed() >= limit
+                {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    timed_out = true;
+                    break None;
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }
@@ -211,7 +211,7 @@ pub struct BatchConfig<'a> {
     pub worker_build_cache_dirs: Option<&'a [PathBuf]>,
     pub probe_env_templates: &'a [(String, String)],
     pub runs_dir: &'a Path,
-    pub progress: Option<&'a (dyn Fn(ProgressEvent<'_>) + Send + Sync)>,
+    pub progress: Option<fn(ProgressEvent<'_>)>,
 }
 
 pub struct ProgressEvent<'a> {
@@ -419,13 +419,13 @@ pub fn preflight(
         match child.try_wait().context("polling preflight child")? {
             Some(s) => break Some(s),
             None => {
-                if let Some(limit) = timeout {
-                    if started.elapsed() >= limit {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                        timed_out = true;
-                        break None;
-                    }
+                if let Some(limit) = timeout
+                    && started.elapsed() >= limit
+                {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    timed_out = true;
+                    break None;
                 }
                 std::thread::sleep(Duration::from_millis(50));
             }

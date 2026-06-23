@@ -102,17 +102,17 @@ use std::path::{Path, PathBuf};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, Query, QueryCursor};
 
-use crate::lang::Grammar;
+use crate::lang::GrammarDef;
 
 pub fn discover_mutants(
     functions: &[crate::core::FunctionSpan],
-    grammars: &[Box<dyn Grammar>],
+    grammars: &[&GrammarDef],
     filter: &OperatorFilter,
 ) -> Result<Vec<MutationCandidate>> {
     let mut candidates = Vec::new();
 
     for function in functions {
-        let Some(grammar) = grammars.iter().find(|g| g.id() == function.language) else {
+        let Some(grammar) = grammars.iter().find(|g| g.id == function.language) else {
             continue;
         };
 
@@ -126,7 +126,7 @@ pub fn discover_mutants(
         let source = std::fs::read_to_string(&function.file)
             .with_context(|| format!("reading {}", function.file.display()))?;
 
-        let ts_lang = grammar.tree_sitter_language();
+        let ts_lang = (grammar.language)();
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&ts_lang)
             .with_context(|| format!("loading {} grammar", function.language))?;
@@ -223,8 +223,8 @@ fn find_node_by_byte_range(root: Node, start_byte: usize, end_byte: usize) -> Op
 
 fn normalize_path(path: &Path) -> PathBuf {
     let path_str = path.to_string_lossy();
-    if path_str.starts_with("./") {
-        PathBuf::from(&path_str[2..])
+    if let Some(stripped) = path_str.strip_prefix("./") {
+        PathBuf::from(stripped)
     } else {
         path.to_path_buf()
     }
@@ -248,7 +248,7 @@ mod discover_tests {
             .expect("scanning fixtures");
         let grammars = crate::lang::supported_languages();
         let candidates =
-            discover_mutants(&functions, &grammars, &OperatorFilter::allow_all()).unwrap();
+            discover_mutants(&functions, grammars, &OperatorFilter::allow_all()).unwrap();
 
         assert!(!candidates.is_empty(), "fixture should yield candidates");
         for c in &candidates {
