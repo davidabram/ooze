@@ -7,7 +7,7 @@ use similar::{ChangeTag, TextDiff};
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use walkdir::WalkDir;
@@ -211,6 +211,13 @@ pub struct BatchConfig<'a> {
     pub worker_build_cache_dirs: Option<&'a [PathBuf]>,
     pub probe_env_templates: &'a [(String, String)],
     pub runs_dir: &'a Path,
+    pub progress: Option<&'a (dyn Fn(ProgressEvent<'_>) + Send + Sync)>,
+}
+
+pub struct ProgressEvent<'a> {
+    pub completed: usize,
+    pub total: usize,
+    pub outcome: &'a MutantOutcome,
 }
 
 fn create_workspace(
@@ -309,16 +316,19 @@ pub fn run_mutants_sequential(
     cfg: BatchConfig<'_>,
 ) -> Result<MutationRunReport> {
     let total = candidates.len();
-    let done = AtomicUsize::new(0);
-
-    let outcomes = candidates
+    let outcomes: Vec<MutantOutcome> = candidates
         .into_iter()
         .enumerate()
         .map(|(i, candidate)| {
             let id = run_id_for(i, &candidate);
             let outcome = run_one(repo_root, candidate, probe, &cfg, &id);
-            let n = done.fetch_add(1, Ordering::Relaxed) + 1;
-            eprintln!("[{n}/{total}] {} {}", outcome.status, outcome.candidate.id);
+            if let Some(cb) = cfg.progress {
+                cb(ProgressEvent {
+                    completed: i + 1,
+                    total,
+                    outcome: &outcome,
+                });
+            }
             outcome
         })
         .collect();
@@ -337,15 +347,14 @@ pub fn run_mutants_parallel(
         return run_mutants_sequential(repo_root, candidates, probe, cfg);
     }
 
-    let total = candidates.len();
-    let done = AtomicUsize::new(0);
-
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(jobs)
         .build()
         .context("building mutation worker pool")?;
 
+    let total = candidates.len();
     let indexed: Vec<(usize, MutationCandidate)> = candidates.into_iter().enumerate().collect();
+    let completed = std::sync::atomic::AtomicUsize::new(0);
 
     let outcomes = pool.install(|| {
         indexed
@@ -353,8 +362,14 @@ pub fn run_mutants_parallel(
             .map(|(i, candidate)| {
                 let id = run_id_for(i, &candidate);
                 let outcome = run_one(repo_root, candidate, probe, &cfg, &id);
-                let n = done.fetch_add(1, Ordering::Relaxed) + 1;
-                eprintln!("[{n}/{total}] {} {}", outcome.status, outcome.candidate.id);
+                if let Some(cb) = cfg.progress {
+                    let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
+                    cb(ProgressEvent {
+                        completed: done,
+                        total,
+                        outcome: &outcome,
+                    });
+                }
                 outcome
             })
             .collect()

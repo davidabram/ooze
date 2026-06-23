@@ -653,14 +653,20 @@ pub fn suggest(candidate: &MutationCandidate) -> TestSuggestion {
     let replacement = &candidate.replacement;
 
     let prompt = match candidate.operator {
-        OperatorName::SwapComparison => format!(
-            "Add a boundary-focused test for `{func}` in `{file}`. The test should fail if `{original}` at line {line} is changed to `{replacement}`."
+        OperatorName::ComparisonBoundary => format!(
+            "Add a boundary test for `{func}` in `{file}` at the exact threshold value. The test should fail if `{original}` at line {line} is changed to `{replacement}`."
+        ),
+        OperatorName::ComparisonNegation => format!(
+            "Add a test for `{func}` in `{file}` that covers inputs on both sides of the comparison. The test should fail if `{original}` at line {line} is changed to `{replacement}`."
         ),
         OperatorName::NegateEquality => format!(
             "Add a test for `{func}` in `{file}` that covers both equal and non-equal inputs. The test should fail if `{original}` at line {line} is changed to `{replacement}`."
         ),
         OperatorName::SwapLogical => format!(
             "Add a truth-table-style test for `{func}` in `{file}`. Cover cases where the left and right side of the condition differ. The test should fail if `{original}` at line {line} is changed to `{replacement}`."
+        ),
+        OperatorName::RemoveNot => format!(
+            "Add a test for `{func}` in `{file}` that exercises the negative path of the condition at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
         ),
         OperatorName::SwapBoolean => format!(
             "Add a test for `{func}` in `{file}` that asserts the boolean branch/result at line {line}. The test should fail if `{original}` is changed to `{replacement}`."

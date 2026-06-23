@@ -1,0 +1,328 @@
+use std::path::{Path, PathBuf};
+
+use crate::config::{self, OozeConfig};
+use crate::core::OperatorName;
+use crate::runner::overlay;
+
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckStatus {
+    Ok,
+    Warn,
+    Fail,
+    Skip,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CheckResult {
+    pub name: &'static str,
+    pub status: CheckStatus,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct DoctorReport {
+    pub path: PathBuf,
+    pub config_path: Option<PathBuf>,
+    pub checks: Vec<CheckResult>,
+    pub failed: usize,
+    pub warned: usize,
+}
+
+impl DoctorReport {
+    pub fn has_failures(&self) -> bool {
+        self.failed > 0
+    }
+}
+
+fn ok(name: &'static str, msg: impl Into<String>) -> CheckResult {
+    CheckResult {
+        name,
+        status: CheckStatus::Ok,
+        message: msg.into(),
+    }
+}
+
+fn warn(name: &'static str, msg: impl Into<String>) -> CheckResult {
+    CheckResult {
+        name,
+        status: CheckStatus::Warn,
+        message: msg.into(),
+    }
+}
+
+fn fail(name: &'static str, msg: impl Into<String>) -> CheckResult {
+    CheckResult {
+        name,
+        status: CheckStatus::Fail,
+        message: msg.into(),
+    }
+}
+
+fn skip(name: &'static str, msg: impl Into<String>) -> CheckResult {
+    CheckResult {
+        name,
+        status: CheckStatus::Skip,
+        message: msg.into(),
+    }
+}
+
+fn check_writable(dir: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("create_dir_all: {e}"))?;
+    let probe = dir.join(".ooze-doctor-probe");
+    std::fs::write(&probe, b"ok").map_err(|e| format!("write probe: {e}"))?;
+    let _ = std::fs::remove_file(&probe);
+    Ok(())
+}
+
+fn which(cmd: &str) -> Option<PathBuf> {
+    if cmd.contains(std::path::MAIN_SEPARATOR) {
+        let p = PathBuf::from(cmd);
+        return p.exists().then_some(p);
+    }
+    let path_env = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path_env) {
+        let candidate = dir.join(cmd);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+pub fn run(path: &Path) -> anyhow::Result<DoctorReport> {
+    let mut checks: Vec<CheckResult> = Vec::new();
+
+    let canonical = match std::fs::canonicalize(path) {
+        Ok(p) => {
+            if p.is_dir() {
+                checks.push(ok("repo_root", format!("{} is a directory", p.display())));
+                p
+            } else {
+                checks.push(fail("repo_root", format!("{} is not a directory", p.display())));
+                p
+            }
+        }
+        Err(e) => {
+            checks.push(fail("repo_root", format!("cannot canonicalize {}: {e}", path.display())));
+            path.to_path_buf()
+        }
+    };
+
+    let cfg_path = canonical.join(config::DEFAULT_CONFIG_NAME);
+    let (cfg, cfg_loaded_from) = if cfg_path.exists() {
+        match config::load_config(Some(&cfg_path)) {
+            Ok((c, loaded)) => {
+                checks.push(ok(
+                    "ooze_toml",
+                    format!("{} parsed cleanly", cfg_path.display()),
+                ));
+                (c, loaded)
+            }
+            Err(e) => {
+                checks.push(fail("ooze_toml", format!("{}: {e:#}", cfg_path.display())));
+                (OozeConfig::default(), None)
+            }
+        }
+    } else {
+        checks.push(skip(
+            "ooze_toml",
+            format!("no {} (defaults will apply)", config::DEFAULT_CONFIG_NAME),
+        ));
+        (OozeConfig::default(), None)
+    };
+
+    match cfg.probe.command.as_ref() {
+        Some(cmd) if !cmd.is_empty() => {
+            let bin = &cmd[0];
+            match which(bin) {
+                Some(p) => checks.push(ok(
+                    "probe_command",
+                    format!("{} found at {}", bin, p.display()),
+                )),
+                None => checks.push(warn(
+                    "probe_command",
+                    format!("{} not found on PATH (still ok if invoked via wrapper)", bin),
+                )),
+            }
+        }
+        _ => checks.push(warn(
+            "probe_command",
+            "no [probe].command set; pass one after `--` or configure ooze.toml",
+        )),
+    }
+
+    let requested_backend = cfg.runner.workspace_backend.as_deref().unwrap_or("auto");
+    let overlay_ok = overlay::overlay_available();
+    match requested_backend {
+        "overlay" => {
+            if overlay_ok {
+                checks.push(ok("workspace_backend", "overlay requested and available"));
+            } else {
+                checks.push(fail(
+                    "workspace_backend",
+                    "overlay requested but OverlayFS unavailable (Linux + overlay module needed)",
+                ));
+            }
+        }
+        "copy" => checks.push(ok("workspace_backend", "copy backend always available")),
+        _ => {
+            let resolved = if overlay_ok { "overlay" } else { "copy" };
+            checks.push(ok(
+                "workspace_backend",
+                format!("auto -> {resolved} (overlay_available={overlay_ok})"),
+            ));
+        }
+    }
+
+    let cache_dir = cfg
+        .runner
+        .cache_dir
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(".ooze/cache"));
+    let cache_abs = if cache_dir.is_absolute() {
+        cache_dir
+    } else {
+        canonical.join(cache_dir)
+    };
+    match check_writable(&cache_abs) {
+        Ok(()) => checks.push(ok("cache_dir", format!("{} writable", cache_abs.display()))),
+        Err(e) => checks.push(fail("cache_dir", format!("{}: {e}", cache_abs.display()))),
+    }
+
+    let runs_dir = cfg
+        .runner
+        .runs_dir
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(".ooze/runs"));
+    let runs_abs = if runs_dir.is_absolute() {
+        runs_dir
+    } else {
+        canonical.join(runs_dir)
+    };
+    match check_writable(&runs_abs) {
+        Ok(()) => checks.push(ok("runs_dir", format!("{} writable", runs_abs.display()))),
+        Err(e) => checks.push(fail("runs_dir", format!("{}: {e}", runs_abs.display()))),
+    }
+
+    match cfg.mutation.lcov.as_ref() {
+        Some(p) => {
+            let resolved = if p.is_absolute() { p.clone() } else { canonical.join(p) };
+            if resolved.is_file() {
+                checks.push(ok("lcov", format!("{} exists", resolved.display())));
+            } else {
+                checks.push(fail("lcov", format!("{} not found", resolved.display())));
+            }
+        }
+        None => checks.push(skip("lcov", "no [mutation].lcov configured")),
+    }
+
+    let gitignore = canonical.join(".gitignore");
+    let mut excludes_msg = format!(
+        "defaults={}, user={}",
+        crate::DEFAULT_EXCLUDES.len(),
+        cfg.scope.exclude.len()
+    );
+    if gitignore.is_file() {
+        let lines = std::fs::read_to_string(&gitignore)
+            .map(|s| {
+                s.lines()
+                    .filter(|l| {
+                        let t = l.trim();
+                        !t.is_empty() && !t.starts_with('#')
+                    })
+                    .count()
+            })
+            .unwrap_or(0);
+        excludes_msg = format!("{excludes_msg}, gitignore={lines}");
+        checks.push(ok("excludes", excludes_msg));
+    } else {
+        checks.push(warn("excludes", format!("{excludes_msg}, no .gitignore at repo root")));
+    }
+
+    let env_target = std::env::var("CARGO_TARGET_DIR").ok();
+    let cfg_build_cache = cfg.runner.build_cache_dir.clone();
+    match (env_target, cfg_build_cache) {
+        (Some(e), Some(c)) => checks.push(warn(
+            "build_cache_dir",
+            format!(
+                "CARGO_TARGET_DIR={e} but [runner].build_cache_dir={} also set; CLI/config wins for probes",
+                c.display()
+            ),
+        )),
+        (Some(e), None) => checks.push(ok(
+            "build_cache_dir",
+            format!("CARGO_TARGET_DIR={e} (inherited)"),
+        )),
+        (None, Some(c)) => {
+            let resolved = if c.is_absolute() { c.clone() } else { canonical.join(&c) };
+            checks.push(ok(
+                "build_cache_dir",
+                format!("configured -> {}", resolved.display()),
+            ));
+        }
+        (None, None) => checks.push(skip(
+            "build_cache_dir",
+            "unset; default will be derived from cache_dir",
+        )),
+    }
+
+    if let Some(ops) = cfg.mutation.operators.as_ref() {
+        let unknown: Vec<&String> = ops
+            .iter()
+            .filter(|o| OperatorName::parse(o).is_none())
+            .collect();
+        if unknown.is_empty() {
+            checks.push(ok(
+                "operators",
+                format!("{} operator(s) configured, all known", ops.len()),
+            ));
+        } else {
+            checks.push(fail(
+                "operators",
+                format!("unknown operator(s) in [mutation].operators: {unknown:?}"),
+            ));
+        }
+    }
+
+    let failed = checks
+        .iter()
+        .filter(|c| matches!(c.status, CheckStatus::Fail))
+        .count();
+    let warned = checks
+        .iter()
+        .filter(|c| matches!(c.status, CheckStatus::Warn))
+        .count();
+
+    Ok(DoctorReport {
+        path: canonical,
+        config_path: cfg_loaded_from,
+        checks,
+        failed,
+        warned,
+    })
+}
+
+pub fn print_human(report: &DoctorReport) {
+    println!("ooze doctor: {}", report.path.display());
+    if let Some(p) = &report.config_path {
+        println!("  config: {}", p.display());
+    } else {
+        println!("  config: (none)");
+    }
+    for c in &report.checks {
+        let tag = match c.status {
+            CheckStatus::Ok => "[ ok ]",
+            CheckStatus::Warn => "[warn]",
+            CheckStatus::Fail => "[FAIL]",
+            CheckStatus::Skip => "[skip]",
+        };
+        println!("  {tag} {:<18} {}", c.name, c.message);
+    }
+    println!(
+        "summary: {} failed, {} warnings, {} total",
+        report.failed,
+        report.warned,
+        report.checks.len()
+    );
+}

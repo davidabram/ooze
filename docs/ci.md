@@ -175,7 +175,7 @@ What's in the SARIF:
 
 - `tool.driver.name = "ooze"`.
 - **One rule per operator** that produced a survivor (e.g.
-  `ooze.survived_mutant.swap_comparison`). The rule's `fullDescription` is the
+  `ooze.survived_mutant.comparison_boundary`). The rule's `fullDescription` is the
   operator description; `helpUri` and `help.text` point at the operator's test
   hint.
 - **One result per survived mutant.** `level: warning`,

@@ -7,13 +7,35 @@ mod skip;
 mod scheduler;
 mod report;
 mod config;
+mod doctor;
 
 use std::path::PathBuf;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand, ValueEnum};
+use std::io::IsTerminal;
 
-const DEFAULT_EXCLUDES: &[&str] = &[
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum ProgressMode {
+    Auto,
+    Always,
+    Never,
+}
+
+impl ProgressMode {
+    fn resolve(self) -> bool {
+        match self {
+            ProgressMode::Always => true,
+            ProgressMode::Never => false,
+            ProgressMode::Auto => {
+                let ci = std::env::var_os("CI").is_some();
+                !ci && std::io::stderr().is_terminal()
+            }
+        }
+    }
+}
+
+pub(crate) const DEFAULT_EXCLUDES: &[&str] = &[
     "target/**",
     ".ooze/**",
     ".git/**",
@@ -295,6 +317,12 @@ enum Commands {
         #[arg(long, help = "Treat timeout/error outcomes as non-fatal for exit code purposes.")]
         allow_incomplete: bool,
 
+        #[arg(long, help = "Suppress per-mutant progress output (same as --progress never).")]
+        quiet: bool,
+
+        #[arg(long, value_enum, default_value_t = ProgressMode::Auto, help = "Per-mutant progress on stderr: auto (TTY and not CI), always, or never.")]
+        progress: ProgressMode,
+
         #[arg(last = true)]
         probe: Vec<String>,
     },
@@ -319,6 +347,14 @@ enum Commands {
 
         #[arg(last = true)]
         probe: Vec<String>,
+    },
+    #[command(about = "Diagnose repo, config, and runtime preconditions for ooze")]
+    Doctor {
+        #[arg(long, default_value = ".")]
+        path: PathBuf,
+
+        #[arg(long, default_value = "human", help = "Output format: human or json")]
+        format: String,
     },
     #[command(about = "Apply a mutation in a workspace, run a probe, and classify the result")]
     TestMutant {
@@ -491,6 +527,8 @@ fn main() -> anyhow::Result<()> {
             preflight,
             no_fail_on_survivors,
             allow_incomplete,
+            quiet,
+            progress,
             probe,
         } => {
             let (cfg, cfg_loaded_from) = config::load_config(config_path.as_deref())?;
@@ -792,6 +830,25 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
+            let progress_enabled = !quiet && progress.resolve();
+            let progress_cb: Option<Box<dyn Fn(runner::ProgressEvent<'_>) + Send + Sync>> =
+                if progress_enabled {
+                    Some(Box::new(|ev: runner::ProgressEvent<'_>| {
+                        let status = match ev.outcome.status {
+                            core::MutantStatus::Killed => "killed",
+                            core::MutantStatus::Survived => "SURVIVED",
+                            core::MutantStatus::Timeout => "timeout",
+                            core::MutantStatus::Error => "ERROR",
+                        };
+                        eprintln!(
+                            "[{}/{}] {} {}",
+                            ev.completed, ev.total, status, ev.outcome.candidate.id
+                        );
+                    }))
+                } else {
+                    None
+                };
+
             let cfg = runner::BatchConfig {
                 backend: workspace_backend.resolve(),
                 timeout,
@@ -803,6 +860,7 @@ fn main() -> anyhow::Result<()> {
                 },
                 probe_env_templates: &probe_env,
                 runs_dir: &runs_dir,
+                progress: progress_cb.as_deref(),
             };
 
             let raw_report = runner::run_mutants_parallel(
@@ -888,6 +946,17 @@ fn main() -> anyhow::Result<()> {
             let outcome = workspace.run_probe(applied, &probe, None)?;
 
             println!("{}", serde_json::to_string_pretty(&outcome)?);
+        }
+        Commands::Doctor { path, format } => {
+            let report = doctor::run(&path)?;
+            if format == "json" {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                doctor::print_human(&report);
+            }
+            if report.has_failures() {
+                std::process::exit(1);
+            }
         }
         Commands::InitConfig { path, force, language } => {
             if path.exists() && !force {

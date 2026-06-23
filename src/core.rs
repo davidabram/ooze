@@ -117,8 +117,10 @@ pub struct FileCoverage {
 pub enum OperatorName {
     SwapBoolean,
     NegateEquality,
-    SwapComparison,
+    ComparisonBoundary,
+    ComparisonNegation,
     SwapLogical,
+    RemoveNot,
     IntegerZeroOne,
 }
 
@@ -222,10 +224,12 @@ pub struct MutationOperatorInfo {
 
 impl OperatorName {
     pub const ALL: &'static [OperatorName] = &[
-        OperatorName::SwapComparison,
+        OperatorName::ComparisonBoundary,
+        OperatorName::ComparisonNegation,
         OperatorName::NegateEquality,
         OperatorName::SwapLogical,
         OperatorName::SwapBoolean,
+        OperatorName::RemoveNot,
         OperatorName::IntegerZeroOne,
     ];
 
@@ -233,8 +237,10 @@ impl OperatorName {
         match self {
             OperatorName::SwapBoolean => "swap_boolean",
             OperatorName::NegateEquality => "negate_equality",
-            OperatorName::SwapComparison => "swap_comparison",
+            OperatorName::ComparisonBoundary => "comparison_boundary",
+            OperatorName::ComparisonNegation => "comparison_negation",
             OperatorName::SwapLogical => "swap_logical",
+            OperatorName::RemoveNot => "remove_not",
             OperatorName::IntegerZeroOne => "integer_zero_one",
         }
     }
@@ -245,12 +251,19 @@ impl OperatorName {
 
     pub fn info(&self) -> MutationOperatorInfo {
         match self {
-            OperatorName::SwapComparison => MutationOperatorInfo {
+            OperatorName::ComparisonBoundary => MutationOperatorInfo {
                 name: self.as_str(),
                 category: OperatorCategory::Comparison,
                 default_enabled: true,
-                description: "Swap comparison operators such as < -> > or >= -> <=.",
-                test_hint: "Add boundary tests around the changed comparison.",
+                description: "Toggle comparison strictness (< <-> <=, > <-> >=).",
+                test_hint: "Add boundary tests at the exact threshold value.",
+            },
+            OperatorName::ComparisonNegation => MutationOperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Comparison,
+                default_enabled: true,
+                description: "Negate comparison operators (< -> >=, <= -> >, > -> <=, >= -> <).",
+                test_hint: "Add tests covering inputs on both sides of the comparison.",
             },
             OperatorName::NegateEquality => MutationOperatorInfo {
                 name: self.as_str(),
@@ -265,6 +278,13 @@ impl OperatorName {
                 default_enabled: true,
                 description: "Replace && with || or || with &&.",
                 test_hint: "Add truth-table style tests for both sides of the condition.",
+            },
+            OperatorName::RemoveNot => MutationOperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Logical,
+                default_enabled: true,
+                description: "Remove logical negation (!condition -> condition).",
+                test_hint: "Add a test that exercises the negative path of the condition.",
             },
             OperatorName::SwapBoolean => MutationOperatorInfo {
                 name: self.as_str(),

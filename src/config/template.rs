@@ -31,7 +31,7 @@ exclude = []
 
 [mutation]
 strategy = "actionable"
-# operators = ["swap_comparison", "negate_equality", "swap_logical", "swap_boolean"]
+# operators = ["comparison_boundary", "comparison_negation", "negate_equality", "swap_logical", "swap_boolean"]
 # exclude_operators = []
 static_skips = true
 context_lines = 3
