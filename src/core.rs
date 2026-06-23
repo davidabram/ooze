@@ -125,6 +125,8 @@ pub enum OperatorName {
     SwapLogical,
     RemoveNot,
     IntegerZeroOne,
+    RangeInclusiveExclusive,
+    SwapPredicateMethod,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -234,6 +236,8 @@ impl OperatorName {
         OperatorName::SwapBoolean,
         OperatorName::RemoveNot,
         OperatorName::IntegerZeroOne,
+        OperatorName::RangeInclusiveExclusive,
+        OperatorName::SwapPredicateMethod,
     ];
 
     pub fn as_str(&self) -> &'static str {
@@ -245,6 +249,8 @@ impl OperatorName {
             OperatorName::SwapLogical => "swap_logical",
             OperatorName::RemoveNot => "remove_not",
             OperatorName::IntegerZeroOne => "integer_zero_one",
+            OperatorName::RangeInclusiveExclusive => "range_inclusive_exclusive",
+            OperatorName::SwapPredicateMethod => "swap_predicate_method",
         }
     }
 
@@ -302,6 +308,20 @@ impl OperatorName {
                 default_enabled: true,
                 description: "Replace integer 0 with 1 or 1 with 0.",
                 test_hint: "Add empty / singleton / boundary count tests.",
+            },
+            OperatorName::RangeInclusiveExclusive => MutationOperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::RangeBoundary,
+                default_enabled: true,
+                description: "Toggle range bound inclusivity (.. <-> ..=).",
+                test_hint: "Add a test that exercises the range's final element.",
+            },
+            OperatorName::SwapPredicateMethod => MutationOperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Method,
+                default_enabled: true,
+                description: "Swap a predicate method for its opposite (is_some <-> is_none, is_ok <-> is_err).",
+                test_hint: "Add tests covering both the present/absent (or ok/err) cases.",
             },
         }
     }

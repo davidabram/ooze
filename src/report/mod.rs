@@ -769,6 +769,12 @@ pub fn suggest(candidate: &MutationCandidate) -> TestSuggestion {
         OperatorName::IntegerZeroOne => format!(
             "Add a test for `{func}` in `{file}` that distinguishes counts of 0 vs 1 around line {line}. The test should fail if `{original}` is changed to `{replacement}`."
         ),
+        OperatorName::RangeInclusiveExclusive => format!(
+            "Add a test for `{func}` in `{file}` that exercises the final element of the range at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::SwapPredicateMethod => format!(
+            "Add a test for `{func}` in `{file}` that distinguishes the outcomes of `{original}()` and `{replacement}()` at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
     };
 
     TestSuggestion {

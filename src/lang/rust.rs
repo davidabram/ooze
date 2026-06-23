@@ -102,6 +102,34 @@ const INTEGER_ZERO_ONE: MutationOperator = MutationOperator {
     },
 };
 
+const RANGE_INCLUSIVE_EXCLUSIVE: MutationOperator = MutationOperator {
+    name: OperatorName::RangeInclusiveExclusive,
+    query: include_str!("../../queries/rust/range-inclusive-exclusive.scm"),
+    replacement: |original| match original {
+        ".." => Some("..=".to_string()),
+        "..=" => Some("..".to_string()),
+        _ => None,
+    },
+    description: |original, replacement| {
+        format!("Toggle range bound {original} -> {replacement}")
+    },
+};
+
+const SWAP_PREDICATE_METHOD: MutationOperator = MutationOperator {
+    name: OperatorName::SwapPredicateMethod,
+    query: include_str!("../../queries/rust/swap-predicate-method.scm"),
+    replacement: |original| match original {
+        "is_some" => Some("is_none".to_string()),
+        "is_none" => Some("is_some".to_string()),
+        "is_ok" => Some("is_err".to_string()),
+        "is_err" => Some("is_ok".to_string()),
+        _ => None,
+    },
+    description: |original, replacement| {
+        format!("Swap predicate method {original}() -> {replacement}()")
+    },
+};
+
 const MUTATION_OPERATORS: &[MutationOperator] = &[
     SWAP_BOOLEAN,
     NEGATE_EQUALITY,
@@ -110,6 +138,8 @@ const MUTATION_OPERATORS: &[MutationOperator] = &[
     SWAP_LOGICAL,
     REMOVE_NOT,
     INTEGER_ZERO_ONE,
+    RANGE_INCLUSIVE_EXCLUSIVE,
+    SWAP_PREDICATE_METHOD,
 ];
 
 pub struct Rust;

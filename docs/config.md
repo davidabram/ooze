@@ -30,7 +30,10 @@ typo will surface as a load error rather than being silently ignored.
 
 Built-in operators: `comparison_boundary`, `comparison_negation`,
 `negate_equality`, `swap_logical`, `swap_boolean`, `remove_not`,
-`integer_zero_one` (off by default).
+`integer_zero_one`. Rust additionally has `range_inclusive_exclusive`
+(`..` <-> `..=`) and `swap_predicate_method` (`is_some` <-> `is_none`,
+`is_ok` <-> `is_err`). All are on by default; an operator only runs for
+languages that implement it.
 
 ### `[runner]`
 
