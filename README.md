@@ -121,6 +121,26 @@ jq '.outcomes[] | select(.status == "survived")' report.json
 
 Verdicts: `killed`, `survived`, `timeout`, `error`.
 
+### Report size
+
+Reports can grow large because every outcome carries a diff plus probe
+stdout/stderr and source context. Trim them with `--report-detail` or the
+per-field flags:
+
+| Flag                    | Effect                                              |
+|-------------------------|-----------------------------------------------------|
+| `--report-detail LEVEL` | `compact` (survivors only, no diffs/output), `normal` (diffs, no probe output), or `full` (everything). |
+| `--no-diff`             | Drop unified diffs.                                 |
+| `--no-stdout`           | Drop probe stdout.                                  |
+| `--no-stderr`           | Drop probe stderr.                                  |
+| `--only-survivors`      | Keep only survived mutants in `outcomes`.           |
+
+Defaults are per format: `human`, `agent-tasks-*`, `sarif`, and
+`github-annotations` use `compact`; `json` uses `normal`. The per-field flags
+compose on top of the chosen level, and summary counts and exit codes are
+unaffected by trimming. All of these are also settable under `[report]` in
+`ooze.toml`.
+
 ## Defaults
 
 - Always excluded: `target/**`, `.ooze/**`, `.git/**`, `node_modules/**`, `vendor/**`, `__pycache__/**`, `.gradle/**`.

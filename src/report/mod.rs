@@ -70,6 +70,101 @@ pub fn agent_tasks(report: &EnrichedRunReport) -> AgentTaskReport {
     AgentTaskReport { tasks }
 }
 
+/// Report verbosity level. Governs which heavy fields (diffs, probe output,
+/// source context) and which outcomes land in the serialized report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+#[clap(rename_all = "lower")]
+pub enum ReportDetail {
+    /// Smallest: survivors only, no diffs or probe output.
+    Compact,
+    /// Diffs kept, probe stdout/stderr dropped, all outcomes.
+    Normal,
+    /// Everything: diffs, stdout, stderr, source context, all outcomes.
+    Full,
+}
+
+/// Resolved set of report-size controls. Built from a `ReportDetail` baseline,
+/// then overridden by individual `--no-*` / `--only-survivors` flags.
+#[derive(Debug, Clone, Copy)]
+pub struct ReportOptions {
+    pub include_diff: bool,
+    pub include_stdout: bool,
+    pub include_stderr: bool,
+    pub include_source_context: bool,
+    pub only_survivors: bool,
+}
+
+impl ReportOptions {
+    pub fn from_detail(detail: ReportDetail) -> Self {
+        match detail {
+            ReportDetail::Full => ReportOptions {
+                include_diff: true,
+                include_stdout: true,
+                include_stderr: true,
+                include_source_context: true,
+                only_survivors: false,
+            },
+            ReportDetail::Normal => ReportOptions {
+                include_diff: true,
+                include_stdout: false,
+                include_stderr: false,
+                include_source_context: true,
+                only_survivors: false,
+            },
+            ReportDetail::Compact => ReportOptions {
+                include_diff: false,
+                include_stdout: false,
+                include_stderr: false,
+                include_source_context: true,
+                only_survivors: true,
+            },
+        }
+    }
+}
+
+/// Default detail level for a given output format. Survivor-only formats
+/// (agent tasks, sarif, github annotations) and the already-terse human format
+/// default to compact; the full JSON report defaults to normal.
+pub fn default_detail_for_format(format: &str) -> ReportDetail {
+    match format {
+        "human" | "agent-tasks-json" | "agent-tasks-markdown" | "sarif"
+        | "github-annotations" => ReportDetail::Compact,
+        _ => ReportDetail::Normal,
+    }
+}
+
+/// Strip heavy fields and non-survivor outcomes from a report in place,
+/// according to the resolved options. Summary counts (survived/timeout/error)
+/// are left untouched so exit codes and totals stay correct.
+pub fn apply_options(report: &mut EnrichedRunReport, opts: &ReportOptions) {
+    if opts.only_survivors {
+        report
+            .outcomes
+            .retain(|o| matches!(o.outcome.status, MutantStatus::Survived));
+    }
+    for o in &mut report.outcomes {
+        if !opts.include_diff {
+            o.outcome.diff.clear();
+        }
+        if !opts.include_stdout {
+            o.outcome.stdout.clear();
+        }
+        if !opts.include_stderr {
+            o.outcome.stderr.clear();
+        }
+        if !opts.include_source_context {
+            o.source_context = None;
+        }
+    }
+    if !opts.include_source_context {
+        for f in &mut report.functions {
+            for s in &mut f.survived_mutants {
+                s.source_context = None;
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OozeExitCode {
     Success = 0,
@@ -992,5 +1087,117 @@ mod tests {
         let report = AgentTaskReport { tasks: vec![] };
         let md = agent_tasks_markdown(&report);
         assert!(md.contains("No survived mutants"));
+    }
+
+    fn make_outcome(status: MutantStatus) -> EnrichedOutcome {
+        let candidate = MutationCandidate {
+            id: "m1".into(),
+            file: PathBuf::from("src/lib.rs"),
+            language: "rust".into(),
+            function: "f".into(),
+            operator: OperatorName::NegateEquality,
+            line: 1,
+            column: 0,
+            start_byte: 0,
+            end_byte: 0,
+            original: "==".into(),
+            replacement: "!=".into(),
+            description: String::new(),
+        };
+        EnrichedOutcome {
+            outcome: MutantOutcome {
+                candidate,
+                status,
+                exit_code: Some(0),
+                duration_ms: 0,
+                diff: "some diff".into(),
+                stdout: "some stdout".into(),
+                stderr: "some stderr".into(),
+            },
+            test_suggestion: None,
+            source_context: Some(SourceContext {
+                start_line: 1,
+                end_line: 1,
+                snippet: "ctx".into(),
+            }),
+        }
+    }
+
+    fn report_with(outcomes: Vec<EnrichedOutcome>) -> EnrichedRunReport {
+        EnrichedRunReport {
+            total: outcomes.len(),
+            killed: 0,
+            survived: 0,
+            timeout: 0,
+            error: 0,
+            mutation_score: None,
+            operators: vec![],
+            functions: vec![],
+            outcomes,
+        }
+    }
+
+    #[test]
+    fn compact_drops_diff_output_and_non_survivors() {
+        let mut report = report_with(vec![
+            make_outcome(MutantStatus::Survived),
+            make_outcome(MutantStatus::Killed),
+        ]);
+        apply_options(&mut report, &ReportOptions::from_detail(ReportDetail::Compact));
+        assert_eq!(report.outcomes.len(), 1, "only the survivor should remain");
+        let o = &report.outcomes[0].outcome;
+        assert!(o.diff.is_empty());
+        assert!(o.stdout.is_empty());
+        assert!(o.stderr.is_empty());
+    }
+
+    #[test]
+    fn normal_keeps_diff_but_drops_probe_output() {
+        let mut report = report_with(vec![make_outcome(MutantStatus::Killed)]);
+        apply_options(&mut report, &ReportOptions::from_detail(ReportDetail::Normal));
+        assert_eq!(report.outcomes.len(), 1, "non-survivors are kept");
+        let o = &report.outcomes[0].outcome;
+        assert_eq!(o.diff, "some diff");
+        assert!(o.stdout.is_empty());
+        assert!(o.stderr.is_empty());
+    }
+
+    #[test]
+    fn full_keeps_everything() {
+        let mut report = report_with(vec![make_outcome(MutantStatus::Killed)]);
+        apply_options(&mut report, &ReportOptions::from_detail(ReportDetail::Full));
+        let o = &report.outcomes[0].outcome;
+        assert_eq!(o.diff, "some diff");
+        assert_eq!(o.stdout, "some stdout");
+        assert_eq!(o.stderr, "some stderr");
+    }
+
+    #[test]
+    fn flag_overrides_compose_with_detail() {
+        // Start from full, then override individual fields off.
+        let mut opts = ReportOptions::from_detail(ReportDetail::Full);
+        opts.include_diff = false;
+        opts.only_survivors = true;
+        let mut report = report_with(vec![
+            make_outcome(MutantStatus::Survived),
+            make_outcome(MutantStatus::Timeout),
+        ]);
+        apply_options(&mut report, &opts);
+        assert_eq!(report.outcomes.len(), 1);
+        let o = &report.outcomes[0].outcome;
+        assert!(o.diff.is_empty());
+        assert_eq!(o.stdout, "some stdout", "stdout untouched by --no-diff");
+    }
+
+    #[test]
+    fn default_detail_per_format() {
+        assert_eq!(default_detail_for_format("human"), ReportDetail::Compact);
+        assert_eq!(default_detail_for_format("sarif"), ReportDetail::Compact);
+        assert_eq!(
+            default_detail_for_format("agent-tasks-json"),
+            ReportDetail::Compact
+        );
+        assert_eq!(default_detail_for_format("json"), ReportDetail::Normal);
+        assert_eq!(default_detail_for_format("anything-else"), ReportDetail::Normal);
     }
 }

@@ -171,6 +171,11 @@ fn parse_workspace_backend_str(s: &str) -> anyhow::Result<WorkspaceBackendArg> {
         .map_err(|e| anyhow::anyhow!("invalid workspace_backend {s:?}: {e}"))
 }
 
+fn parse_report_detail_str(s: &str) -> anyhow::Result<report::ReportDetail> {
+    <report::ReportDetail as ValueEnum>::from_str(s, true)
+        .map_err(|e| anyhow::anyhow!("invalid report detail {s:?}: {e}"))
+}
+
 #[derive(Subcommand)]
 enum Commands {
     #[command(about = "Scan source files and extract function spans")]
@@ -289,6 +294,21 @@ enum Commands {
 
         #[arg(long, help = "Write report to a file instead of stdout.")]
         output: Option<PathBuf>,
+
+        #[arg(long, value_enum, help = "Report verbosity baseline: compact, normal, or full. Defaults per format (human/agent-tasks/sarif=compact, json=normal).")]
+        report_detail: Option<report::ReportDetail>,
+
+        #[arg(long, help = "Omit unified diffs from the report.")]
+        no_diff: bool,
+
+        #[arg(long, help = "Omit probe stdout from the report.")]
+        no_stdout: bool,
+
+        #[arg(long, help = "Omit probe stderr from the report.")]
+        no_stderr: bool,
+
+        #[arg(long, help = "Keep only survived mutants in the report outcomes.")]
+        only_survivors: bool,
 
         #[arg(long, value_delimiter = ',', help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git.")]
         exclude: Vec<String>,
@@ -518,6 +538,11 @@ fn main() -> anyhow::Result<()> {
             runs_dir,
             format,
             output,
+            report_detail,
+            no_diff,
+            no_stdout,
+            no_stderr,
+            only_survivors,
             exclude,
             probe_env,
             operators,
@@ -566,6 +591,28 @@ fn main() -> anyhow::Result<()> {
                 .or(cfg.report.format.clone())
                 .unwrap_or_else(|| "json".to_string());
             let output = output.or(cfg.report.output.clone());
+
+            let report_detail = match report_detail {
+                Some(d) => d,
+                None => match cfg.report.detail.as_deref() {
+                    Some(s) => parse_report_detail_str(s)?,
+                    None => report::default_detail_for_format(&format),
+                },
+            };
+            let mut report_opts = report::ReportOptions::from_detail(report_detail);
+            if resolve_disabled_flag(no_diff, cfg.report.diff) {
+                report_opts.include_diff = false;
+            }
+            if resolve_disabled_flag(no_stdout, cfg.report.stdout) {
+                report_opts.include_stdout = false;
+            }
+            if resolve_disabled_flag(no_stderr, cfg.report.stderr) {
+                report_opts.include_stderr = false;
+            }
+            if resolve_bool_flag(only_survivors, cfg.report.only_survivors) {
+                report_opts.only_survivors = true;
+            }
+
             let no_static_skips = resolve_disabled_flag(no_static_skips, cfg.mutation.static_skips);
             let context_lines = context_lines.or(cfg.mutation.context_lines).unwrap_or(3);
             let preflight = resolve_bool_flag(preflight, cfg.runner.preflight);
@@ -871,7 +918,8 @@ fn main() -> anyhow::Result<()> {
                 cfg,
             )?;
 
-            let enriched = report::enrich(raw_report, &crap_entries, &repo_root, context_lines);
+            let mut enriched = report::enrich(raw_report, &crap_entries, &repo_root, context_lines);
+            report::apply_options(&mut enriched, &report_opts);
 
             let text = match format.as_str() {
                 "human" => report::human(&enriched),

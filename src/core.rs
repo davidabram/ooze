@@ -72,8 +72,11 @@ pub struct MutantOutcome {
     pub status: MutantStatus,
     pub exit_code: Option<i32>,
     pub duration_ms: u128,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub diff: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub stdout: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub stderr: String,
 }
 

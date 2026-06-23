@@ -34,3 +34,11 @@ format = "human"
 # output = "ooze-report.json"
 fail_on_survivors = true
 allow_incomplete = false
+# Verbosity baseline: "compact", "normal", or "full".
+# Defaults per format (human/agent-tasks/sarif = compact, json = normal).
+# detail = "normal"
+# Per-field overrides (compose on top of `detail`):
+# diff = false           # drop unified diffs (CLI: --no-diff)
+# stdout = false         # drop probe stdout    (CLI: --no-stdout)
+# stderr = false         # drop probe stderr    (CLI: --no-stderr)
+# only_survivors = true  # keep only survived mutants (CLI: --only-survivors)

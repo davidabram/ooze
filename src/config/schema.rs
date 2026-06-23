@@ -67,4 +67,14 @@ pub struct ReportConfigToml {
     pub output: Option<PathBuf>,
     pub fail_on_survivors: Option<bool>,
     pub allow_incomplete: Option<bool>,
+    /// Report verbosity baseline: "compact", "normal", or "full".
+    pub detail: Option<String>,
+    /// Include unified diffs (set false to drop them).
+    pub diff: Option<bool>,
+    /// Include probe stdout (set false to drop it).
+    pub stdout: Option<bool>,
+    /// Include probe stderr (set false to drop it).
+    pub stderr: Option<bool>,
+    /// Keep only survived mutants in the report outcomes.
+    pub only_survivors: Option<bool>,
 }
