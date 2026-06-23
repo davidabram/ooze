@@ -32,8 +32,9 @@ Built-in operators: `comparison_boundary`, `comparison_negation`,
 `negate_equality`, `swap_logical`, `swap_boolean`, `remove_not`,
 `integer_zero_one`. Rust additionally has `range_inclusive_exclusive`
 (`..` <-> `..=`) and `swap_predicate_method` (`is_some` <-> `is_none`,
-`is_ok` <-> `is_err`). All are on by default; an operator only runs for
-languages that implement it.
+`is_ok` <-> `is_err`). All are on by default except `integer_zero_one`,
+which is off by default and must be opted in via `operators`. An operator
+only runs for languages that implement it.
 
 `operators` / `exclude_operators` filter by **semantic operator**, so they apply
 to every language being scanned. Each operator is realized by one or more

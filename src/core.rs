@@ -415,7 +415,7 @@ impl OperatorName {
             OperatorName::IntegerZeroOne => OperatorInfo {
                 name: self.as_str(),
                 category: OperatorCategory::NumericLiteral,
-                default_enabled: true,
+                default_enabled: false,
                 description: "Replace integer 0 with 1 or 1 with 0.",
                 test_hint: "Add empty / singleton / boundary count tests.",
             },
