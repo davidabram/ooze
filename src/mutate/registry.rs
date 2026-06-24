@@ -41,6 +41,6 @@ mod tests {
     #[test]
     fn rust_registers_every_current_operator() {
         let count = implementations_for_language(Language::Rust).count();
-        assert_eq!(count, 9, "expected all nine rust operators");
+        assert_eq!(count, 11, "expected all eleven rust operators");
     }
 }

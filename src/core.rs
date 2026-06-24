@@ -235,6 +235,8 @@ pub enum OperatorName {
     IntegerZeroOne,
     RangeInclusiveExclusive,
     SwapPredicateMethod,
+    NegatePredicateMethod,
+    ReturnBoolean,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -348,6 +350,8 @@ impl OperatorName {
         OperatorName::IntegerZeroOne,
         OperatorName::RangeInclusiveExclusive,
         OperatorName::SwapPredicateMethod,
+        OperatorName::NegatePredicateMethod,
+        OperatorName::ReturnBoolean,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -361,6 +365,8 @@ impl OperatorName {
             OperatorName::IntegerZeroOne => "integer_zero_one",
             OperatorName::RangeInclusiveExclusive => "range_inclusive_exclusive",
             OperatorName::SwapPredicateMethod => "swap_predicate_method",
+            OperatorName::NegatePredicateMethod => "negate_predicate_method",
+            OperatorName::ReturnBoolean => "return_boolean",
         }
     }
 
@@ -432,6 +438,20 @@ impl OperatorName {
                 default_enabled: true,
                 description: "Swap a predicate method for its opposite (is_some <-> is_none, is_ok <-> is_err).",
                 test_hint: "Add tests covering both the present/absent (or ok/err) cases.",
+            },
+            OperatorName::NegatePredicateMethod => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Method,
+                default_enabled: true,
+                description: "Negate a boolean predicate method call (is_empty() -> !is_empty(), contains(x) -> !contains(x)).",
+                test_hint: "Add tests covering both the matching and non-matching cases of the predicate.",
+            },
+            OperatorName::ReturnBoolean => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::ReturnValue,
+                default_enabled: true,
+                description: "Flip a boolean literal in return position (return true <-> return false).",
+                test_hint: "Assert the returned boolean for an input that drives each branch.",
             },
         }
     }

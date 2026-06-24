@@ -147,6 +147,34 @@ pub const MUTATORS: &[MutatorImpl] = &[
         },
         default_enabled_override: None,
     },
+    MutatorImpl {
+        id: "rust.negate_predicate_method",
+        operator: OperatorName::NegatePredicateMethod,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/negate-predicate-method.scm"),
+        // The query only matches bool-returning predicate calls, so wrapping the
+        // whole call expression in `!` is always type-correct.
+        replacement: |original| Some(format!("!{original}")),
+        description: |original, replacement| {
+            format!("Negate predicate method `{original}` -> `{replacement}`")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "rust.return_boolean",
+        operator: OperatorName::ReturnBoolean,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/return-boolean.scm"),
+        replacement: |original| match original {
+            "true" => Some("false".to_string()),
+            "false" => Some("true".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Flip returned boolean {original} -> {replacement}")
+        },
+        default_enabled_override: None,
+    },
 ];
 
 pub const GRAMMAR: GrammarDef = GrammarDef {

@@ -30,11 +30,13 @@ typo will surface as a load error rather than being silently ignored.
 
 Built-in operators: `comparison_boundary`, `comparison_negation`,
 `negate_equality`, `swap_logical`, `swap_boolean`, `remove_not`,
-`integer_zero_one`. Rust additionally has `range_inclusive_exclusive`
-(`..` <-> `..=`) and `swap_predicate_method` (`is_some` <-> `is_none`,
-`is_ok` <-> `is_err`). All are on by default except `integer_zero_one`,
-which is off by default and must be opted in via `operators`. An operator
-only runs for languages that implement it.
+`return_boolean`, `integer_zero_one`. Rust additionally has
+`range_inclusive_exclusive` (`..` <-> `..=`), `swap_predicate_method`
+(`is_some` <-> `is_none`, `is_ok` <-> `is_err`), and
+`negate_predicate_method` (`is_empty()` -> `!is_empty()`,
+`contains(x)` -> `!contains(x)`). All are on by default except
+`integer_zero_one`, which is off by default and must be opted in via
+`operators`. An operator only runs for languages that implement it.
 
 `operators` / `exclude_operators` filter by **semantic operator**, so they apply
 to every language being scanned. Each operator is realized by one or more

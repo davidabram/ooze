@@ -777,6 +777,12 @@ pub fn suggest(candidate: &MutationCandidate) -> TestSuggestion {
         OperatorName::SwapPredicateMethod => format!(
             "Add a test for `{func}` in `{file}` that distinguishes the outcomes of `{original}()` and `{replacement}()` at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
         ),
+        OperatorName::NegatePredicateMethod => format!(
+            "Add a test for `{func}` in `{file}` that covers both the matching and non-matching cases of `{original}` at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::ReturnBoolean => format!(
+            "Add a test for `{func}` in `{file}` that asserts the boolean returned at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
     };
 
     TestSuggestion {
