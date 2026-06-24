@@ -390,4 +390,28 @@ mod operator_fixture_tests {
 
         assert_eq!(got, want);
     }
+
+    #[test]
+    fn typescript_operator_fixture_discovers_expected_mutants() {
+        use Language::TypeScript;
+        use OperatorName::{
+            ComparisonBoundary, ComparisonNegation, NegateEquality, RemoveNot, SwapBoolean,
+            SwapLogical,
+        };
+
+        let got = discovered("tests/fixtures/operators/typescript");
+        let want: BTreeSet<ExpectedMutant> = [
+            expect(TypeScript, "swapBoolean", SwapBoolean, "true", "false"),
+            expect(TypeScript, "negateEquality", NegateEquality, "==", "!="),
+            // `compare`'s single `<` drives both comparison operators.
+            expect(TypeScript, "compare", ComparisonBoundary, "<", "<="),
+            expect(TypeScript, "compare", ComparisonNegation, "<", ">="),
+            expect(TypeScript, "swapLogical", SwapLogical, "&&", "||"),
+            expect(TypeScript, "removeNot", RemoveNot, "!flag", "flag"),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(got, want);
+    }
 }
