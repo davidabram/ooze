@@ -785,6 +785,30 @@ pub fn suggest(candidate: &MutationCandidate) -> TestSuggestion {
         OperatorName::ReturnBoolean => format!(
             "Add a test for `{func}` in `{file}` that asserts the boolean returned at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
         ),
+        OperatorName::IsNoneNegation => format!(
+            "Add a test for `{func}` in `{file}` that covers both the None and non-None case at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::InNegation => format!(
+            "Add a test for `{func}` in `{file}` that covers both a member and a non-member input at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::TruthinessNegation => format!(
+            "Add a test for `{func}` in `{file}` that drives the condition at line {line} both truthy and falsy. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::LenZeroBoundary => format!(
+            "Add empty and non-empty collection tests for `{func}` in `{file}` at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::DictGetDefaultRemoval => format!(
+            "Add a test for `{func}` in `{file}` that exercises a missing key so the default at line {line} matters. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::ComprehensionFilterRemoval => format!(
+            "Add a test for `{func}` in `{file}` with inputs the filter at line {line} is meant to exclude. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::NoneReturn => format!(
+            "Add a test for `{func}` in `{file}` that asserts the concrete value returned at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::EmptyCollectionLiteral => format!(
+            "Add a test for `{func}` in `{file}` that asserts the contents of the collection at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
     };
 
     TestSuggestion {

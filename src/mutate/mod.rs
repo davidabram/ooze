@@ -162,10 +162,23 @@ pub fn discover_mutants(
                     }
 
                     let node = capture.node;
-                    let original = node_text(node, source_bytes);
+                    let mut original = node_text(node, source_bytes);
                     let Some(replacement) = (m.replacement)(&original) else {
                         continue;
                     };
+
+                    // A deletion (empty replacement) that removes a whole node
+                    // would otherwise leave the separator that preceded it, e.g.
+                    // `[x for x in xs if p]` -> `[x for x in xs ]`. Absorb one
+                    // preceding space into the range so the edit reads cleanly.
+                    let mut start_byte = node.start_byte();
+                    if replacement.is_empty()
+                        && start_byte > 0
+                        && source_bytes[start_byte - 1] == b' '
+                    {
+                        start_byte -= 1;
+                        original.insert(0, ' ');
+                    }
 
                     let candidate_file = normalize_path(&function.file);
 
@@ -182,7 +195,7 @@ pub fn discover_mutants(
                         function: function.name.clone(),
                         line: node.start_position().row + 1,
                         column: node.start_position().column,
-                        start_byte: node.start_byte(),
+                        start_byte,
                         end_byte: node.end_byte(),
                         operator: m.operator,
                         operator_category: m.category(),
@@ -395,8 +408,8 @@ mod operator_fixture_tests {
     fn python_operator_fixture_discovers_expected_mutants() {
         use Language::Python;
         use OperatorName::{
-            ComparisonBoundary, ComparisonNegation, IntegerZeroOne, NegateEquality, SwapBoolean,
-            SwapLogical,
+            ComparisonBoundary, ComparisonNegation, IntegerZeroOne, NegateEquality, NoneReturn,
+            SwapBoolean, SwapLogical,
         };
 
         let got = discovered("tests/fixtures/operators/python");
@@ -408,6 +421,68 @@ mod operator_fixture_tests {
             expect(Python, "compare", ComparisonNegation, "<", ">="),
             expect(Python, "swap_logical", SwapLogical, "and", "or"),
             expect(Python, "integer_zero_one", IntegerZeroOne, "0", "1"),
+            // Every function returns a non-None value, so none_return also fires.
+            expect(Python, "swap_boolean", NoneReturn, "enabled", "None"),
+            expect(Python, "negate_equality", NoneReturn, "a == b", "None"),
+            expect(Python, "compare", NoneReturn, "a < b", "None"),
+            expect(Python, "swap_logical", NoneReturn, "x and y", "None"),
+            expect(Python, "integer_zero_one", NoneReturn, "n", "None"),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn python_specific_operator_fixture_discovers_expected_mutants() {
+        use Language::Python;
+        use OperatorName::{
+            ComprehensionFilterRemoval, DictGetDefaultRemoval, EmptyCollectionLiteral,
+            InNegation, IntegerZeroOne, IsNoneNegation, LenZeroBoundary, NegateEquality,
+            NoneReturn, TruthinessNegation,
+        };
+
+        let got = discovered("tests/fixtures/operators/python_specific");
+        let want: BTreeSet<ExpectedMutant> = [
+            expect(Python, "is_none", IsNoneNegation, "is", "is not"),
+            expect(Python, "membership", InNegation, "in", "not in"),
+            expect(Python, "truthiness", TruthinessNegation, "x", "not (x)"),
+            // `len(xs) == 0` drives three operators on overlapping nodes.
+            expect(
+                Python,
+                "len_boundary",
+                LenZeroBoundary,
+                "len(xs) == 0",
+                "len(xs) != 0",
+            ),
+            expect(Python, "len_boundary", NegateEquality, "==", "!="),
+            expect(Python, "len_boundary", IntegerZeroOne, "0", "1"),
+            // `d.get(k, 0)` drops its default; the `0` also feeds integer_zero_one.
+            expect(
+                Python,
+                "dict_default",
+                DictGetDefaultRemoval,
+                "d.get(k, 0)",
+                "d.get(k)",
+            ),
+            expect(Python, "dict_default", IntegerZeroOne, "0", "1"),
+            // The leading space is absorbed so removal reads cleanly.
+            expect(
+                Python,
+                "comprehension",
+                ComprehensionFilterRemoval,
+                " if keep(x)",
+                "",
+            ),
+            expect(Python, "none_return", NoneReturn, "value", "None"),
+            expect(
+                Python,
+                "empty_list",
+                EmptyCollectionLiteral,
+                "[a, b]",
+                "[]",
+            ),
         ]
         .into_iter()
         .collect();
