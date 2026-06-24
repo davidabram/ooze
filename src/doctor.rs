@@ -75,6 +75,37 @@ fn check_writable(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+// Evaluates the [probe].command check: warns when unset/empty, otherwise reports
+// whether the binary resolves on PATH.
+fn probe_command_check(cmd: Option<&Vec<String>>) -> CheckResult {
+    match cmd {
+        Some(cmd) if !cmd.is_empty() => {
+            let bin = &cmd[0];
+            match which(bin) {
+                Some(p) => ok(
+                    "probe_command",
+                    format!("{} found at {}", bin, p.display()),
+                ),
+                None => warn(
+                    "probe_command",
+                    format!("{bin} not found on PATH (still ok if invoked via wrapper)"),
+                ),
+            }
+        }
+        _ => warn(
+            "probe_command",
+            "no [probe].command set; pass one after `--` or configure ooze.toml",
+        ),
+    }
+}
+
+// True for a .gitignore content line that contributes a pattern (non-blank and
+// not a comment).
+fn is_gitignore_pattern(line: &str) -> bool {
+    let t = line.trim();
+    !t.is_empty() && !t.starts_with('#')
+}
+
 fn which(cmd: &str) -> Option<PathBuf> {
     if cmd.contains(std::path::MAIN_SEPARATOR) {
         let p = PathBuf::from(cmd);
@@ -132,25 +163,7 @@ pub fn run(path: &Path) -> DoctorReport {
         (OozeConfig::default(), None)
     };
 
-    match cfg.probe.command.as_ref() {
-        Some(cmd) if !cmd.is_empty() => {
-            let bin = &cmd[0];
-            match which(bin) {
-                Some(p) => checks.push(ok(
-                    "probe_command",
-                    format!("{} found at {}", bin, p.display()),
-                )),
-                None => checks.push(warn(
-                    "probe_command",
-                    format!("{bin} not found on PATH (still ok if invoked via wrapper)"),
-                )),
-            }
-        }
-        _ => checks.push(warn(
-            "probe_command",
-            "no [probe].command set; pass one after `--` or configure ooze.toml",
-        )),
-    }
+    checks.push(probe_command_check(cfg.probe.command.as_ref()));
 
     let requested_backend = cfg.runner.workspace_backend.as_deref().unwrap_or("auto");
     let overlay_ok = overlay::overlay_available();
@@ -225,14 +238,7 @@ pub fn run(path: &Path) -> DoctorReport {
     );
     if gitignore.is_file() {
         let lines = std::fs::read_to_string(&gitignore)
-            .map_or(0, |s| {
-                s.lines()
-                    .filter(|l| {
-                        let t = l.trim();
-                        !t.is_empty() && !t.starts_with('#')
-                    })
-                    .count()
-            });
+            .map_or(0, |s| s.lines().filter(|l| is_gitignore_pattern(l)).count());
         excludes_msg = format!("{excludes_msg}, gitignore={lines}");
         checks.push(ok("excludes", excludes_msg));
     } else {
@@ -324,4 +330,49 @@ pub fn print_human(report: &DoctorReport) {
         report.warned,
         report.checks.len()
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn probe_command_check_warns_when_unset() {
+        let c = probe_command_check(None);
+        assert!(matches!(c.status, CheckStatus::Warn));
+        assert!(c.message.contains("no [probe].command set"));
+    }
+
+    #[test]
+    fn probe_command_check_reports_missing_binary() {
+        // A non-empty command takes the resolve branch; a path that doesn't
+        // exist resolves to "not found", distinct from the unset warning.
+        let c = probe_command_check(Some(&vec![
+            "/no/such/binary/xyzzy".to_string(),
+        ]));
+        assert!(matches!(c.status, CheckStatus::Warn));
+        assert!(c.message.contains("not found on PATH"));
+    }
+
+    #[test]
+    fn probe_command_check_ok_when_binary_resolves() {
+        let exe = std::env::current_exe().expect("current exe");
+        let c = probe_command_check(Some(&vec![exe.to_string_lossy().into_owned()]));
+        assert!(matches!(c.status, CheckStatus::Ok));
+        assert!(c.message.contains("found at"));
+    }
+
+    #[test]
+    fn is_gitignore_pattern_rejects_blank_and_comments() {
+        assert!(!is_gitignore_pattern(""));
+        assert!(!is_gitignore_pattern("   "));
+        assert!(!is_gitignore_pattern("# comment"));
+        assert!(!is_gitignore_pattern("   # indented comment"));
+    }
+
+    #[test]
+    fn is_gitignore_pattern_accepts_real_patterns() {
+        assert!(is_gitignore_pattern("*.log"));
+        assert!(is_gitignore_pattern("  target/  "));
+    }
 }

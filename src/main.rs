@@ -218,6 +218,200 @@ fn looks_like_path(s: &str) -> bool {
     s.contains('/') || s.starts_with('.') || std::path::Path::new(s).is_absolute()
 }
 
+// Builds the resolved report-size options from the detail baseline, then applies
+// the individual --no-* / --only-survivors overrides (CLI flag OR config value).
+// The flag pairs mirror the CLI surface, so several bools are expected here.
+#[allow(clippy::fn_params_excessive_bools, clippy::too_many_arguments)]
+fn build_report_options(
+    detail: report::ReportDetail,
+    no_diff: bool,
+    cfg_diff: Option<bool>,
+    no_stdout: bool,
+    cfg_stdout: Option<bool>,
+    no_stderr: bool,
+    cfg_stderr: Option<bool>,
+    only_survivors: bool,
+    cfg_only_survivors: Option<bool>,
+) -> report::ReportOptions {
+    let mut report_opts = report::ReportOptions::from_detail(detail);
+    if resolve_disabled_flag(no_diff, cfg_diff) {
+        report_opts.include_diff = false;
+    }
+    if resolve_disabled_flag(no_stdout, cfg_stdout) {
+        report_opts.include_stdout = false;
+    }
+    if resolve_disabled_flag(no_stderr, cfg_stderr) {
+        report_opts.include_stderr = false;
+    }
+    if resolve_bool_flag(only_survivors, cfg_only_survivors) {
+        report_opts.only_survivors = true;
+    }
+    report_opts
+}
+
+// CLI excludes take precedence; fall back to config scope excludes only when
+// none were passed on the command line.
+fn resolve_exclude_list(cli: Vec<String>, cfg: &[String]) -> Vec<String> {
+    let mut exclude = cli;
+    if exclude.is_empty() {
+        exclude.extend(cfg.iter().cloned());
+    }
+    exclude
+}
+
+// CLI probe-env pairs take precedence; otherwise parse the config entries.
+fn resolve_probe_env(
+    cli: Vec<(String, String)>,
+    cfg: &[String],
+) -> anyhow::Result<Vec<(String, String)>> {
+    let mut probe_env = cli;
+    if probe_env.is_empty() {
+        for entry in cfg {
+            probe_env.push(parse_key_val(entry).map_err(|e| anyhow::anyhow!(e))?);
+        }
+    }
+    Ok(probe_env)
+}
+
+// CLI operators take precedence; otherwise expand config operators and
+// categories, de-duplicating operators contributed by multiple categories.
+fn resolve_operators(
+    cli: Vec<core::OperatorName>,
+    cfg_operators: Option<&Vec<String>>,
+    cfg_categories: Option<&Vec<String>>,
+) -> anyhow::Result<Vec<core::OperatorName>> {
+    let mut operators = cli;
+    if operators.is_empty() {
+        if let Some(ops) = cfg_operators {
+            for s in ops {
+                operators.push(core::OperatorName::parse(s).ok_or_else(|| {
+                    anyhow::anyhow!("unknown operator {s:?} in [mutation].operators")
+                })?);
+            }
+        }
+        if let Some(cats) = cfg_categories {
+            for s in cats {
+                let cat = core::OperatorCategory::parse(s).ok_or_else(|| {
+                    anyhow::anyhow!("unknown category {s:?} in [mutation].categories")
+                })?;
+                for op in cat.operators() {
+                    if !operators.contains(&op) {
+                        operators.push(op);
+                    }
+                }
+            }
+        }
+    }
+    Ok(operators)
+}
+
+// CLI exclude-operators take precedence; otherwise expand config
+// exclude_operators and exclude_categories, de-duplicating.
+fn resolve_exclude_operators(
+    cli: Vec<core::OperatorName>,
+    cfg_exclude_operators: &[String],
+    cfg_exclude_categories: &[String],
+) -> anyhow::Result<Vec<core::OperatorName>> {
+    let mut exclude_operators = cli;
+    if exclude_operators.is_empty() {
+        for s in cfg_exclude_operators {
+            exclude_operators.push(core::OperatorName::parse(s).ok_or_else(|| {
+                anyhow::anyhow!("unknown operator {s:?} in [mutation].exclude_operators")
+            })?);
+        }
+        for s in cfg_exclude_categories {
+            let cat = core::OperatorCategory::parse(s).ok_or_else(|| {
+                anyhow::anyhow!("unknown category {s:?} in [mutation].exclude_categories")
+            })?;
+            for op in cat.operators() {
+                if !exclude_operators.contains(&op) {
+                    exclude_operators.push(op);
+                }
+            }
+        }
+    }
+    Ok(exclude_operators)
+}
+
+// Worker count: one per worker build-cache dir when per-worker caching is on,
+// otherwise the requested job count (at least one).
+fn num_workers(jobs: usize, worker_build_cache_dirs: &[PathBuf]) -> usize {
+    if worker_build_cache_dirs.is_empty() {
+        jobs.max(1)
+    } else {
+        worker_build_cache_dirs.len()
+    }
+}
+
+// Computes the {worker}-templated probe-env directories that should be created,
+// one per worker index, skipping env values that are not `{worker}`-templated or
+// not path-like.
+fn worker_probe_env_dirs(probe_env: &[(String, String)], num_workers: usize) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    for (_, v) in probe_env {
+        if !v.contains("{worker}") {
+            continue;
+        }
+        for i in 0..num_workers {
+            let resolved = v.replace("{worker}", &i.to_string());
+            if looks_like_path(&resolved) {
+                dirs.push(PathBuf::from(resolved));
+            }
+        }
+    }
+    dirs
+}
+
+// `Some` reference for `BatchConfig` when per-worker dirs exist, else `None`.
+fn worker_build_cache_arg(dirs: &[PathBuf]) -> Option<&[PathBuf]> {
+    if dirs.is_empty() {
+        None
+    } else {
+        Some(dirs)
+    }
+}
+
+// Warmup dispatch decision: warm per-worker caches, a single shared cache dir,
+// or nothing to do.
+#[derive(Debug, PartialEq, Eq)]
+enum WarmupTarget<'a> {
+    Workers,
+    Shared(&'a std::path::Path),
+    Nothing,
+}
+
+fn warmup_target<'a>(
+    worker_build_cache_dirs: &[PathBuf],
+    target_dir: Option<&'a std::path::Path>,
+) -> WarmupTarget<'a> {
+    if !worker_build_cache_dirs.is_empty() {
+        WarmupTarget::Workers
+    } else if let Some(dir) = target_dir {
+        WarmupTarget::Shared(dir)
+    } else {
+        WarmupTarget::Nothing
+    }
+}
+
+// Maps a warmup probe exit status into a result, failing on non-success.
+fn warmup_status_to_result(status: std::process::ExitStatus) -> anyhow::Result<()> {
+    if !status.success() {
+        anyhow::bail!("warmup command failed with status {status}");
+    }
+    Ok(())
+}
+
+// Per-mutant progress is shown unless quieted, and only when the resolved mode
+// allows it.
+fn progress_enabled(quiet: bool, progress_resolved: bool) -> bool {
+    !quiet && progress_resolved
+}
+
+// True when JSON output was requested.
+fn wants_json(format: &str) -> bool {
+    format == "json"
+}
+
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum WorkspaceBackendArg {
     Copy,
@@ -708,19 +902,17 @@ fn main() -> anyhow::Result<()> {
                     None => report::default_detail_for_format(&format),
                 },
             };
-            let mut report_opts = report::ReportOptions::from_detail(report_detail);
-            if resolve_disabled_flag(no_diff, cfg.report.diff) {
-                report_opts.include_diff = false;
-            }
-            if resolve_disabled_flag(no_stdout, cfg.report.stdout) {
-                report_opts.include_stdout = false;
-            }
-            if resolve_disabled_flag(no_stderr, cfg.report.stderr) {
-                report_opts.include_stderr = false;
-            }
-            if resolve_bool_flag(only_survivors, cfg.report.only_survivors) {
-                report_opts.only_survivors = true;
-            }
+            let report_opts = build_report_options(
+                report_detail,
+                no_diff,
+                cfg.report.diff,
+                no_stdout,
+                cfg.report.stdout,
+                no_stderr,
+                cfg.report.stderr,
+                only_survivors,
+                cfg.report.only_survivors,
+            );
 
             let no_static_skips = resolve_disabled_flag(no_static_skips, cfg.mutation.static_skips);
             let context_lines = context_lines.or(cfg.mutation.context_lines).unwrap_or(3);
@@ -730,69 +922,21 @@ fn main() -> anyhow::Result<()> {
             let allow_incomplete = resolve_bool_flag(allow_incomplete, cfg.report.allow_incomplete);
             let lcov = lcov.or(cfg.mutation.lcov.clone());
 
-            let mut exclude = exclude;
-            if exclude.is_empty() {
-                exclude.extend(cfg.scope.exclude.iter().cloned());
-            }
+            let exclude = resolve_exclude_list(exclude, &cfg.scope.exclude);
 
-            let mut probe_env = probe_env;
-            if probe_env.is_empty() {
-                for entry in &cfg.probe.env {
-                    probe_env.push(parse_key_val(entry).map_err(|e| anyhow::anyhow!(e))?);
-                }
-            }
+            let probe_env = resolve_probe_env(probe_env, &cfg.probe.env)?;
 
-            let mut operators = operators;
-            if operators.is_empty() {
-                if let Some(ops) = cfg.mutation.operators.as_ref() {
-                    for s in ops {
-                        operators.push(
-                            core::OperatorName::parse(s).ok_or_else(|| {
-                                anyhow::anyhow!(
-                                    "unknown operator {s:?} in [mutation].operators"
-                                )
-                            })?,
-                        );
-                    }
-                }
-                if let Some(cats) = cfg.mutation.categories.as_ref() {
-                    for s in cats {
-                        let cat = core::OperatorCategory::parse(s).ok_or_else(|| {
-                            anyhow::anyhow!("unknown category {s:?} in [mutation].categories")
-                        })?;
-                        for op in cat.operators() {
-                            if !operators.contains(&op) {
-                                operators.push(op);
-                            }
-                        }
-                    }
-                }
-            }
+            let operators = resolve_operators(
+                operators,
+                cfg.mutation.operators.as_ref(),
+                cfg.mutation.categories.as_ref(),
+            )?;
 
-            let mut exclude_operators = exclude_operators;
-            if exclude_operators.is_empty() {
-                for s in &cfg.mutation.exclude_operators {
-                    exclude_operators.push(
-                        core::OperatorName::parse(s).ok_or_else(|| {
-                            anyhow::anyhow!(
-                                "unknown operator {s:?} in [mutation].exclude_operators"
-                            )
-                        })?,
-                    );
-                }
-                for s in &cfg.mutation.exclude_categories {
-                    let cat = core::OperatorCategory::parse(s).ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "unknown category {s:?} in [mutation].exclude_categories"
-                        )
-                    })?;
-                    for op in cat.operators() {
-                        if !exclude_operators.contains(&op) {
-                            exclude_operators.push(op);
-                        }
-                    }
-                }
-            }
+            let exclude_operators = resolve_exclude_operators(
+                exclude_operators,
+                &cfg.mutation.exclude_operators,
+                &cfg.mutation.exclude_categories,
+            )?;
 
             let mut probe = probe;
             if probe.is_empty() {
@@ -884,24 +1028,11 @@ fn main() -> anyhow::Result<()> {
                     (Some(dir), Vec::new())
                 };
 
-            let num_workers = if worker_build_cache_dirs.is_empty() {
-                jobs.max(1)
-            } else {
-                worker_build_cache_dirs.len()
-            };
-            for (_, v) in &probe_env {
-                if !v.contains("{worker}") {
-                    continue;
-                }
-                for i in 0..num_workers {
-                    let resolved = v.replace("{worker}", &i.to_string());
-                    let p = std::path::Path::new(&resolved);
-                    if looks_like_path(&resolved) {
-                        std::fs::create_dir_all(p).with_context(|| {
-                            format!("creating probe-env directory {}", p.display())
-                        })?;
-                    }
-                }
+            let num_workers = num_workers(jobs, &worker_build_cache_dirs);
+            for p in worker_probe_env_dirs(&probe_env, num_workers) {
+                std::fs::create_dir_all(&p).with_context(|| {
+                    format!("creating probe-env directory {}", p.display())
+                })?;
             }
 
             if preflight {
@@ -970,36 +1101,38 @@ fn main() -> anyhow::Result<()> {
             }
 
             if warmup {
-                if !worker_build_cache_dirs.is_empty() {
-                    eprintln!(
-                        "warming up {} worker build cache dirs in parallel...",
-                        worker_build_cache_dirs.len()
-                    );
-                    runner::warmup_workers(
-                        &repo_root,
-                        &probe,
-                        &worker_build_cache_dirs,
-                        jobs,
-                        &probe_env,
-                    )?;
-                } else if let Some(dir) = target_dir.as_deref() {
-                    eprintln!("warming up shared build cache dir...");
-                    let extra: Vec<(String, String)> = probe_env
-                        .iter()
-                        .map(|(k, v)| {
-                            let v = v.replace("{worker}", "0");
-                            let v = v.replace("{build_cache}", &dir.to_string_lossy());
-                            (k.clone(), v)
-                        })
-                        .collect();
-                    let status = runner::warmup(&repo_root, &probe, Some(dir), &extra)?;
-                    if !status.success() {
-                        anyhow::bail!("warmup command failed with status {status}");
+                match warmup_target(&worker_build_cache_dirs, target_dir.as_deref()) {
+                    WarmupTarget::Workers => {
+                        eprintln!(
+                            "warming up {} worker build cache dirs in parallel...",
+                            worker_build_cache_dirs.len()
+                        );
+                        runner::warmup_workers(
+                            &repo_root,
+                            &probe,
+                            &worker_build_cache_dirs,
+                            jobs,
+                            &probe_env,
+                        )?;
                     }
+                    WarmupTarget::Shared(dir) => {
+                        eprintln!("warming up shared build cache dir...");
+                        let extra: Vec<(String, String)> = probe_env
+                            .iter()
+                            .map(|(k, v)| {
+                                let v = v.replace("{worker}", "0");
+                                let v = v.replace("{build_cache}", &dir.to_string_lossy());
+                                (k.clone(), v)
+                            })
+                            .collect();
+                        let status = runner::warmup(&repo_root, &probe, Some(dir), &extra)?;
+                        warmup_status_to_result(status)?;
+                    }
+                    WarmupTarget::Nothing => {}
                 }
             }
 
-            let progress_enabled = !quiet && progress.resolve();
+            let progress_enabled = progress_enabled(quiet, progress.resolve());
             let progress_cb: Option<fn(runner::ProgressEvent<'_>)> = if progress_enabled {
                 Some(|ev: runner::ProgressEvent<'_>| {
                     let status = match ev.outcome.status {
@@ -1021,11 +1154,7 @@ fn main() -> anyhow::Result<()> {
                 backend: workspace_backend.resolve(),
                 timeout,
                 build_cache_dir: target_dir.as_deref(),
-                worker_build_cache_dirs: if worker_build_cache_dirs.is_empty() {
-                    None
-                } else {
-                    Some(&worker_build_cache_dirs)
-                },
+                worker_build_cache_dirs: worker_build_cache_arg(&worker_build_cache_dirs),
                 probe_env_templates: &probe_env,
                 runs_dir: &runs_dir,
                 progress: progress_cb,
@@ -1094,9 +1223,7 @@ fn main() -> anyhow::Result<()> {
             };
             let target_dir = runner::default_build_cache_dir(&cache_dir);
             let status = runner::warmup(&repo_root, &probe, Some(&target_dir), &[])?;
-            if !status.success() {
-                anyhow::bail!("warmup command failed with status {status}");
-            }
+            warmup_status_to_result(status)?;
         }
         Commands::TestMutant { path, id, probe } => {
             let functions = lang::scan_directory(&path)?;
@@ -1119,7 +1246,7 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Doctor { path, format } => {
             let report = doctor::run(&path);
-            if format == "json" {
+            if wants_json(&format) {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
                 doctor::print_human(&report);
@@ -1159,7 +1286,7 @@ fn main() -> anyhow::Result<()> {
             } else {
                 crap::score_without_coverage(functions)
             };
-            if format == "json" {
+            if wants_json(&format) {
                 println!("{}", serde_json::to_string_pretty(&entries)?);
             }
         }
@@ -1239,5 +1366,283 @@ mod tests {
     #[test]
     fn looks_like_path_plain_name_is_not_path() {
         assert!(!looks_like_path("plain"));
+    }
+
+    // --- build_report_options ---------------------------------------------
+
+    #[allow(clippy::fn_params_excessive_bools)]
+    fn report_opts(
+        no_diff: bool,
+        no_stdout: bool,
+        no_stderr: bool,
+        only_survivors: bool,
+    ) -> report::ReportOptions {
+        build_report_options(
+            report::ReportDetail::Full,
+            no_diff,
+            None,
+            no_stdout,
+            None,
+            no_stderr,
+            None,
+            only_survivors,
+            None,
+        )
+    }
+
+    #[test]
+    fn build_report_options_disables_diff_when_requested() {
+        // Full baseline includes diffs; the --no-diff flag must turn it off.
+        assert!(!report_opts(true, false, false, false).include_diff);
+        // ...and leave it on otherwise (guards the `= false` assignment).
+        assert!(report_opts(false, false, false, false).include_diff);
+    }
+
+    #[test]
+    fn build_report_options_disables_stdout_when_requested() {
+        assert!(!report_opts(false, true, false, false).include_stdout);
+        assert!(report_opts(false, false, false, false).include_stdout);
+    }
+
+    #[test]
+    fn build_report_options_disables_stderr_when_requested() {
+        assert!(!report_opts(false, false, true, false).include_stderr);
+        assert!(report_opts(false, false, false, false).include_stderr);
+    }
+
+    #[test]
+    fn build_report_options_enables_only_survivors_when_requested() {
+        // Full baseline keeps all outcomes; --only-survivors flips it on.
+        assert!(report_opts(false, false, false, true).only_survivors);
+        assert!(!report_opts(false, false, false, false).only_survivors);
+    }
+
+    #[test]
+    fn build_report_options_honors_config_values() {
+        let opts = build_report_options(
+            report::ReportDetail::Full,
+            false,
+            Some(false), // [report].diff = false
+            false,
+            Some(false),
+            false,
+            Some(false),
+            false,
+            Some(true), // [report].only_survivors = true
+        );
+        assert!(!opts.include_diff);
+        assert!(!opts.include_stdout);
+        assert!(!opts.include_stderr);
+        assert!(opts.only_survivors);
+    }
+
+    // --- resolve_exclude_list ---------------------------------------------
+
+    #[test]
+    fn resolve_exclude_list_uses_config_when_cli_empty() {
+        let out = resolve_exclude_list(vec![], &["cfg/**".to_string()]);
+        assert_eq!(out, vec!["cfg/**".to_string()]);
+    }
+
+    #[test]
+    fn resolve_exclude_list_keeps_cli_and_ignores_config() {
+        let out = resolve_exclude_list(vec!["cli/**".to_string()], &["cfg/**".to_string()]);
+        assert_eq!(out, vec!["cli/**".to_string()]);
+    }
+
+    // --- resolve_probe_env ------------------------------------------------
+
+    #[test]
+    fn resolve_probe_env_parses_config_when_cli_empty() {
+        let out = resolve_probe_env(vec![], &["A=1".to_string()]).unwrap();
+        assert_eq!(out, vec![("A".to_string(), "1".to_string())]);
+    }
+
+    #[test]
+    fn resolve_probe_env_keeps_cli_and_ignores_config() {
+        let cli = vec![("X".to_string(), "y".to_string())];
+        let out = resolve_probe_env(cli.clone(), &["A=1".to_string()]).unwrap();
+        assert_eq!(out, cli);
+    }
+
+    // --- resolve_operators ------------------------------------------------
+
+    #[test]
+    fn resolve_operators_uses_config_when_cli_empty() {
+        let out = resolve_operators(
+            vec![],
+            Some(&vec!["swap_boolean".to_string()]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(out, vec![core::OperatorName::SwapBoolean]);
+    }
+
+    #[test]
+    fn resolve_operators_keeps_cli_and_ignores_config() {
+        let out = resolve_operators(
+            vec![core::OperatorName::RemoveNot],
+            Some(&vec!["swap_boolean".to_string()]),
+            Some(&vec!["comparison".to_string()]),
+        )
+        .unwrap();
+        assert_eq!(out, vec![core::OperatorName::RemoveNot]);
+    }
+
+    #[test]
+    fn resolve_operators_dedupes_category_operators() {
+        let cat_ops = core::OperatorCategory::Comparison.operators();
+        assert!(cat_ops.len() >= 2, "test needs a multi-operator category");
+        // The first operator is supplied explicitly *and* by the category, so
+        // the de-dup guard must keep it exactly once.
+        let out = resolve_operators(
+            vec![],
+            Some(&vec![cat_ops[0].as_str().to_string()]),
+            Some(&vec!["comparison".to_string()]),
+        )
+        .unwrap();
+        assert_eq!(out, cat_ops);
+    }
+
+    // --- resolve_exclude_operators ----------------------------------------
+
+    #[test]
+    fn resolve_exclude_operators_uses_config_when_cli_empty() {
+        let out = resolve_exclude_operators(
+            vec![],
+            &["swap_boolean".to_string()],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(out, vec![core::OperatorName::SwapBoolean]);
+    }
+
+    #[test]
+    fn resolve_exclude_operators_keeps_cli_and_ignores_config() {
+        let out = resolve_exclude_operators(
+            vec![core::OperatorName::RemoveNot],
+            &["swap_boolean".to_string()],
+            &["comparison".to_string()],
+        )
+        .unwrap();
+        assert_eq!(out, vec![core::OperatorName::RemoveNot]);
+    }
+
+    #[test]
+    fn resolve_exclude_operators_dedupes_category_operators() {
+        let cat_ops = core::OperatorCategory::Comparison.operators();
+        assert!(cat_ops.len() >= 2, "test needs a multi-operator category");
+        let out = resolve_exclude_operators(
+            vec![],
+            &[cat_ops[0].as_str().to_string()],
+            &["comparison".to_string()],
+        )
+        .unwrap();
+        assert_eq!(out, cat_ops);
+    }
+
+    // --- num_workers ------------------------------------------------------
+
+    #[test]
+    fn num_workers_uses_jobs_without_per_worker_dirs() {
+        assert_eq!(num_workers(4, &[]), 4);
+        assert_eq!(num_workers(0, &[]), 1); // floored at 1
+    }
+
+    #[test]
+    fn num_workers_counts_per_worker_dirs() {
+        let dirs = vec![PathBuf::from("a"), PathBuf::from("b"), PathBuf::from("c")];
+        assert_eq!(num_workers(1, &dirs), 3);
+    }
+
+    // --- worker_probe_env_dirs --------------------------------------------
+
+    #[test]
+    fn worker_probe_env_dirs_expands_one_per_worker() {
+        let env = vec![("CACHE".to_string(), "dir/{worker}".to_string())];
+        let dirs = worker_probe_env_dirs(&env, 2);
+        assert_eq!(dirs, vec![PathBuf::from("dir/0"), PathBuf::from("dir/1")]);
+    }
+
+    #[test]
+    fn worker_probe_env_dirs_skips_values_without_template() {
+        let env = vec![("CACHE".to_string(), "dir/static".to_string())];
+        assert!(worker_probe_env_dirs(&env, 2).is_empty());
+    }
+
+    #[test]
+    fn worker_probe_env_dirs_skips_non_path_values() {
+        let env = vec![("N".to_string(), "n{worker}".to_string())];
+        // "n0"/"n1" are not path-like, so nothing is created.
+        assert!(worker_probe_env_dirs(&env, 2).is_empty());
+    }
+
+    // --- worker_build_cache_arg -------------------------------------------
+
+    #[test]
+    fn worker_build_cache_arg_none_when_empty() {
+        assert!(worker_build_cache_arg(&[]).is_none());
+    }
+
+    #[test]
+    fn worker_build_cache_arg_some_when_present() {
+        let dirs = vec![PathBuf::from("a")];
+        assert_eq!(worker_build_cache_arg(&dirs), Some(dirs.as_slice()));
+    }
+
+    // --- warmup_target ----------------------------------------------------
+
+    #[test]
+    fn warmup_target_prefers_workers() {
+        let dirs = vec![PathBuf::from("a")];
+        let shared = std::path::Path::new("/shared");
+        assert_eq!(warmup_target(&dirs, Some(shared)), WarmupTarget::Workers);
+    }
+
+    #[test]
+    fn warmup_target_falls_back_to_shared() {
+        let shared = std::path::Path::new("/shared");
+        assert_eq!(warmup_target(&[], Some(shared)), WarmupTarget::Shared(shared));
+    }
+
+    #[test]
+    fn warmup_target_nothing_when_no_dirs() {
+        assert_eq!(warmup_target(&[], None), WarmupTarget::Nothing);
+    }
+
+    // --- warmup_status_to_result ------------------------------------------
+
+    #[cfg(unix)]
+    #[test]
+    fn warmup_status_ok_on_success() {
+        use std::os::unix::process::ExitStatusExt;
+        let status = std::process::ExitStatus::from_raw(0);
+        assert!(warmup_status_to_result(status).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn warmup_status_err_on_failure() {
+        use std::os::unix::process::ExitStatusExt;
+        let status = std::process::ExitStatus::from_raw(256); // exit code 1
+        assert!(warmup_status_to_result(status).is_err());
+    }
+
+    // --- progress_enabled -------------------------------------------------
+
+    #[test]
+    fn progress_enabled_truth_table() {
+        assert!(progress_enabled(false, true)); // not quiet, mode allows
+        assert!(!progress_enabled(true, true)); // quiet suppresses
+        assert!(!progress_enabled(false, false)); // mode disallows
+        assert!(!progress_enabled(true, false));
+    }
+
+    // --- wants_json -------------------------------------------------------
+
+    #[test]
+    fn wants_json_matches_only_json() {
+        assert!(wants_json("json"));
+        assert!(!wants_json("human"));
     }
 }
