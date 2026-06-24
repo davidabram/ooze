@@ -4,7 +4,7 @@ use std::path::PathBuf;
 /// A language ooze can parse and mutate. Serializes to the same canonical string
 /// the grammar previously returned from `name()` (e.g. `javascript`, `c_sharp`),
 /// so report/JSON consumers are unaffected by the move to a typed enum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Language {
     Bash,
     C,

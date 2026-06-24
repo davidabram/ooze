@@ -264,3 +264,106 @@ mod discover_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod operator_fixture_tests {
+    use super::*;
+    use crate::core::{Language, OperatorName};
+    use std::collections::BTreeSet;
+    use std::path::Path;
+
+    /// Compact, location-free shape of a discovered candidate. Dropping the
+    /// line/column keeps these assertions stable when a fixture is edited, while
+    /// still pinning down which operator fired and the exact text rewrite. Adding
+    /// a new language is then just: drop a fixture, list its expected mutants.
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+    struct ExpectedMutant {
+        language: Language,
+        function: String,
+        operator: OperatorName,
+        original: String,
+        replacement: String,
+    }
+
+    fn expect(
+        language: Language,
+        function: &str,
+        operator: OperatorName,
+        original: &str,
+        replacement: &str,
+    ) -> ExpectedMutant {
+        ExpectedMutant {
+            language,
+            function: function.to_string(),
+            operator,
+            original: original.to_string(),
+            replacement: replacement.to_string(),
+        }
+    }
+
+    /// Discover every candidate under a fixture directory (all operators enabled,
+    /// so default-disabled ones like `integer_zero_one` are included) and collapse
+    /// them to the compact shape. Duplicate shapes at different locations dedupe.
+    fn discovered(dir: &str) -> BTreeSet<ExpectedMutant> {
+        let functions = crate::lang::scan_directory(Path::new(dir)).expect("scanning fixture");
+        let grammars = crate::lang::supported_languages();
+        let candidates =
+            discover_mutants(&functions, grammars, &OperatorFilter::allow_all()).unwrap();
+        candidates
+            .iter()
+            .map(|c| ExpectedMutant {
+                language: c.language,
+                function: c.function.clone(),
+                operator: c.operator,
+                original: c.original.clone(),
+                replacement: c.replacement.clone(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn rust_operator_fixture_discovers_expected_mutants() {
+        use Language::Rust;
+        use OperatorName::{
+            ComparisonBoundary, ComparisonNegation, IntegerZeroOne, NegateEquality,
+            NegatePredicateMethod, RangeInclusiveExclusive, RemoveNot, ReturnBoolean, SwapBoolean,
+            SwapLogical, SwapPredicateMethod,
+        };
+
+        let got = discovered("tests/fixtures/operators/rust");
+        let want: BTreeSet<ExpectedMutant> = [
+            expect(Rust, "swap_boolean", SwapBoolean, "true", "false"),
+            expect(Rust, "negate_equality", NegateEquality, "==", "!="),
+            // `compare`'s single `<` drives both comparison operators.
+            expect(Rust, "compare", ComparisonBoundary, "<", "<="),
+            expect(Rust, "compare", ComparisonNegation, "<", ">="),
+            expect(Rust, "swap_logical", SwapLogical, "&&", "||"),
+            expect(Rust, "remove_not", RemoveNot, "!flag", "flag"),
+            expect(Rust, "integer_zero_one", IntegerZeroOne, "0", "1"),
+            // `range_bound` has a `0` literal and the `0..n` range bound.
+            expect(Rust, "range_bound", IntegerZeroOne, "0", "1"),
+            expect(Rust, "range_bound", RangeInclusiveExclusive, "..", "..="),
+            expect(
+                Rust,
+                "swap_predicate_method",
+                SwapPredicateMethod,
+                "is_some",
+                "is_none",
+            ),
+            expect(
+                Rust,
+                "negate_predicate_method",
+                NegatePredicateMethod,
+                "s.is_empty()",
+                "!s.is_empty()",
+            ),
+            // The literal in `return true` drives both return_boolean and swap_boolean.
+            expect(Rust, "return_boolean", ReturnBoolean, "true", "false"),
+            expect(Rust, "return_boolean", SwapBoolean, "true", "false"),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(got, want);
+    }
+}

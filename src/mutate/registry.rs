@@ -43,4 +43,15 @@ mod tests {
         let count = implementations_for_language(Language::Rust).count();
         assert_eq!(count, 11, "expected all eleven rust operators");
     }
+
+    #[test]
+    fn all_mutator_queries_compile() {
+        for m in all() {
+            let grammar = crate::lang::grammar_for_language(m.language)
+                .unwrap_or_else(|| panic!("{}: no grammar registered for {}", m.id, m.language));
+            let ts_lang = (grammar.language)();
+            tree_sitter::Query::new(&ts_lang, m.query)
+                .unwrap_or_else(|e| panic!("{} query failed to compile: {e}", m.id));
+        }
+    }
 }

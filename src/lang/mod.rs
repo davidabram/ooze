@@ -84,6 +84,14 @@ pub fn supported_languages() -> &'static [&'static GrammarDef] {
     GRAMMARS
 }
 
+/// The grammar registered for a language, if any. Used by mutator tests to pair
+/// a `MutatorImpl` with the tree-sitter language its query must compile against,
+/// and anywhere else that needs to go from a typed `Language` back to its parser.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn grammar_for_language(language: Language) -> Option<&'static GrammarDef> {
+    GRAMMARS.iter().copied().find(|g| g.id == language)
+}
+
 struct Compiled {
     language: &'static GrammarDef,
     functions: tree_sitter::Query,
