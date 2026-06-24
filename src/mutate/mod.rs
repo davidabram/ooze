@@ -366,4 +366,28 @@ mod operator_fixture_tests {
 
         assert_eq!(got, want);
     }
+
+    #[test]
+    fn javascript_operator_fixture_discovers_expected_mutants() {
+        use Language::JavaScript;
+        use OperatorName::{
+            ComparisonBoundary, ComparisonNegation, NegateEquality, RemoveNot, SwapBoolean,
+            SwapLogical,
+        };
+
+        let got = discovered("tests/fixtures/operators/javascript");
+        let want: BTreeSet<ExpectedMutant> = [
+            expect(JavaScript, "swapBoolean", SwapBoolean, "true", "false"),
+            expect(JavaScript, "negateEquality", NegateEquality, "==", "!="),
+            // `compare`'s single `<` drives both comparison operators.
+            expect(JavaScript, "compare", ComparisonBoundary, "<", "<="),
+            expect(JavaScript, "compare", ComparisonNegation, "<", ">="),
+            expect(JavaScript, "swapLogical", SwapLogical, "&&", "||"),
+            expect(JavaScript, "removeNot", RemoveNot, "!flag", "flag"),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(got, want);
+    }
 }

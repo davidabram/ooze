@@ -9,7 +9,8 @@
 use crate::core::{Language, MutatorImpl};
 
 /// Every language's mutator slice. Add a language by appending its slice here.
-const LANGUAGE_MUTATORS: &[&[MutatorImpl]] = &[crate::lang::rust::MUTATORS];
+const LANGUAGE_MUTATORS: &[&[MutatorImpl]] =
+    &[crate::lang::rust::MUTATORS, crate::lang::javascript::MUTATORS];
 
 /// Every registered mutator implementation across all languages.
 pub fn all() -> impl Iterator<Item = &'static MutatorImpl> {
