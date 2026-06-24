@@ -488,11 +488,11 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
     out.push('\n');
 
     // --- Targets: emit function metrics once, sorted by priority desc ---
-    let mut seen_funcs: BTreeMap<(String, String), bool> = BTreeMap::new();
+    let mut seen_funcs: BTreeSet<(String, String)> = BTreeSet::new();
     let mut targets: Vec<&AgentTask> = Vec::new();
     for (t, _) in &deduped {
         let key = (t.file.to_string_lossy().into_owned(), t.function.clone());
-        if seen_funcs.insert(key, true).is_none() {
+        if seen_funcs.insert(key) {
             targets.push(t);
         }
     }
@@ -598,8 +598,10 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
             }
         }
 
-        // Code context only for High priority, collected above to keep tables uninterrupted
-        if label == "High" && !high_snippets.is_empty() {
+        // Code context only for High priority, collected above to keep tables
+        // uninterrupted. `high_snippets` is only populated in the High section
+        // (see above), so a non-empty vec already implies `label == "High"`.
+        if !high_snippets.is_empty() {
             let _ = writeln!(out, "### Context\n");
             for (line, line_tasks) in &high_snippets {
                 if let Some(ctx) =
@@ -1098,6 +1100,130 @@ mod tests {
         let report = AgentTaskReport { tasks: vec![] };
         let md = agent_tasks_markdown(&report);
         assert!(md.contains("No survived mutants"));
+    }
+
+    fn make_task_ctx(
+        file: &str,
+        line: usize,
+        operator: OperatorName,
+        mutation: &str,
+        priority: f64,
+        prompt: &str,
+    ) -> AgentTask {
+        let mut t = make_task(file, line, operator, mutation, priority);
+        t.prompt = prompt.to_string();
+        t.source_context = Some(SourceContext {
+            start_line: line,
+            end_line: line,
+            snippet: format!("ctx for line {line}\n"),
+        });
+        t
+    }
+
+    #[test]
+    fn dedup_tiebreak_keeps_first_on_equal_priority() {
+        // Kills line 435 `> -> >=`: with equal priority_score, `>` keeps the
+        // first task while `>=` switches to the later one. Both share a dedup
+        // key but differ in operator_hint, which is printed in the table.
+        let mut a = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 5.0);
+        a.operator_hint = "ALPHAHINT".to_string();
+        let mut b = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 5.0);
+        b.operator_hint = "BETAHINT".to_string();
+        let report = AgentTaskReport { tasks: vec![a, b] };
+        let md = agent_tasks_markdown(&report);
+        assert!(md.contains("ALPHAHINT"), "should keep first task's hint:\n{md}");
+        assert!(
+            !md.contains("BETAHINT"),
+            "should not switch to later equal-priority task:\n{md}"
+        );
+    }
+
+    #[test]
+    fn summary_reports_duplicates_and_dup_marker() {
+        // raw_count > unique_mutations prints "Duplicates removed" (line 480) and
+        // dup > 1 prints the "(+N)" marker (line 568).
+        let a = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 5.0);
+        let b = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 5.0);
+        let report = AgentTaskReport { tasks: vec![a, b] };
+        let md = agent_tasks_markdown(&report);
+        assert!(
+            md.contains("Duplicates removed: 1"),
+            "raw>unique should print duplicates line:\n{md}"
+        );
+        assert!(md.contains("(+1)"), "dup>1 should print +N marker:\n{md}");
+    }
+
+    #[test]
+    fn summary_omits_duplicates_when_none() {
+        // raw_count == unique_mutations: no "Duplicates removed" (line 480 `>=`)
+        // and every dup == 1, so no "(+" marker (line 568 `>=`).
+        let a = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 5.0);
+        let b = make_task("src/lib.rs", 20, OperatorName::NegateEquality, "== -> !=", 4.0);
+        let report = AgentTaskReport { tasks: vec![a, b] };
+        let md = agent_tasks_markdown(&report);
+        assert!(
+            !md.contains("Duplicates removed"),
+            "no dups -> no duplicates line:\n{md}"
+        );
+        assert!(!md.contains("(+"), "no dups -> no +N marker:\n{md}");
+    }
+
+    #[test]
+    fn summary_reports_unique_locations_for_multiple_ops_per_line() {
+        // Two mutations on the same line: unique_location_count(1) <
+        // unique_mutations(2) prints the "Unique source locations" line
+        // (line 474 `< -> >=`).
+        let a = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 5.0);
+        let b = make_task("src/lib.rs", 10, OperatorName::ComparisonBoundary, "> -> >=", 4.0);
+        let report = AgentTaskReport { tasks: vec![a, b] };
+        let md = agent_tasks_markdown(&report);
+        assert!(
+            md.contains("Unique source locations"),
+            "multiple ops per line should list unique locations:\n{md}"
+        );
+    }
+
+    #[test]
+    fn summary_omits_unique_locations_for_one_op_per_line() {
+        // One mutation per distinct line: count == unique, line omitted
+        // (line 474 `< -> <=`).
+        let a = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 5.0);
+        let b = make_task("src/lib.rs", 20, OperatorName::NegateEquality, "== -> !=", 4.0);
+        let report = AgentTaskReport { tasks: vec![a, b] };
+        let md = agent_tasks_markdown(&report);
+        assert!(
+            !md.contains("Unique source locations"),
+            "one op per line should omit unique locations:\n{md}"
+        );
+    }
+
+    #[test]
+    fn single_target_suppresses_headers_and_emits_high_context() {
+        // One file+function -> single_target == true, so per-section file/function
+        // headers are suppressed (line 521 `==`, lines 547/552 `!single_target`).
+        // The non-empty High bucket prints its section (line 527) and, since the
+        // High task carries source_context, a Context block with its prompt
+        // (line 593 `==`, line 602 negations).
+        let a = make_task_ctx("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 9.0, "PROMPT_A");
+        let b = make_task_ctx("src/lib.rs", 20, OperatorName::ComparisonBoundary, "> -> >=", 5.0, "PROMPT_B");
+        let c = make_task_ctx("src/lib.rs", 30, OperatorName::ComparisonNegation, "< -> >=", 1.0, "PROMPT_C");
+        let report = AgentTaskReport { tasks: vec![a, b, c] };
+        let md = agent_tasks_markdown(&report);
+
+        assert!(md.contains("## High Priority"), "high section present (527):\n{md}");
+        assert!(
+            !md.contains("### `src/lib.rs`\n"),
+            "file header suppressed for single target:\n{md}"
+        );
+        assert!(
+            !md.contains("#### "),
+            "function header suppressed for single target:\n{md}"
+        );
+        assert!(md.contains("### Context"), "high context section emitted:\n{md}");
+        assert!(
+            md.contains("PROMPT_A"),
+            "high task's prompt appears in its Context block:\n{md}"
+        );
     }
 
     fn make_outcome(status: MutantStatus) -> EnrichedOutcome {

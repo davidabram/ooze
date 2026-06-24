@@ -375,4 +375,58 @@ mod tests {
         assert!(is_gitignore_pattern("*.log"));
         assert!(is_gitignore_pattern("  target/  "));
     }
+
+    #[test]
+    fn run_operators_check_ok_when_all_known() {
+        // All configured operators parse, so `unknown` is empty and the check is
+        // Ok. Distinguishes `is_none`/`is_some` (line 278) and
+        // `is_empty`/`!is_empty` (line 280): either mutation flips this to Fail.
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join(config::DEFAULT_CONFIG_NAME),
+            "[mutation]\noperators = [\"negate_equality\", \"comparison_boundary\"]\n",
+        )
+        .expect("write config");
+
+        let report = run(dir.path());
+        let op = report
+            .checks
+            .iter()
+            .find(|c| c.name == "operators")
+            .expect("operators check present");
+        assert!(
+            matches!(op.status, CheckStatus::Ok),
+            "all-known operators should be Ok, got {:?}: {}",
+            op.status,
+            op.message
+        );
+        assert!(op.message.contains("all known"));
+    }
+
+    #[test]
+    fn run_operators_check_fails_on_unknown() {
+        // An unconfigured operator name makes `unknown` non-empty, so the check
+        // is Fail. Kills the `is_empty -> !is_empty` mutation (line 280) in the
+        // opposite direction from the all-known case.
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join(config::DEFAULT_CONFIG_NAME),
+            "[mutation]\noperators = [\"negate_equality\", \"definitely_not_an_operator\"]\n",
+        )
+        .expect("write config");
+
+        let report = run(dir.path());
+        let op = report
+            .checks
+            .iter()
+            .find(|c| c.name == "operators")
+            .expect("operators check present");
+        assert!(
+            matches!(op.status, CheckStatus::Fail),
+            "unknown operator should Fail, got {:?}: {}",
+            op.status,
+            op.message
+        );
+        assert!(op.message.contains("unknown operator"));
+    }
 }

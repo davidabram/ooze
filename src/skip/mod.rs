@@ -303,3 +303,57 @@ pub fn partition(
 
     (kept, skipped)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names(source: &str) -> Vec<String> {
+        find_macro_ranges(source)
+            .into_iter()
+            .map(|m| m.name)
+            .collect()
+    }
+
+    #[test]
+    fn detects_simple_macro() {
+        assert_eq!(names("vec![1, 2, 3];"), vec!["vec".to_string()]);
+    }
+
+    #[test]
+    fn macro_like_text_inside_string_is_ignored() {
+        // Kills line 100 (`c == b'"'`): the string literal must be skipped,
+        // otherwise the `a!(b)` inside it is mis-detected as a macro. With the
+        // comparison negated the whole scan derails and no macro is found.
+        assert_eq!(
+            names(r#"let s = "a!(b)"; vec![1];"#),
+            vec!["vec".to_string()]
+        );
+    }
+
+    #[test]
+    fn macro_in_line_comment_is_ignored() {
+        // Kills line 104 `== -> !=` and `< -> >=`: the `//` must be recognized as
+        // a comment and skipped, otherwise `foo!(bar)` is detected as a macro.
+        assert_eq!(names("// foo!(bar)\nvec![1];"), vec!["vec".to_string()]);
+    }
+
+    #[test]
+    fn macro_in_block_comment_is_ignored() {
+        assert_eq!(names("/* foo!(bar) */ vec![1];"), vec!["vec".to_string()]);
+    }
+
+    #[test]
+    fn trailing_slash_is_safe() {
+        // Kills line 104 `< -> <=` / `< -> >=`: those let `i + 1` reach `n` and
+        // read `bytes[i + 1]` out of bounds (panic) when `/` is the final byte.
+        assert_eq!(names("vec![1]; /"), vec!["vec".to_string()]);
+    }
+
+    #[test]
+    fn slash_before_ident_is_not_a_comment() {
+        // Kills line 104 `&& -> ||`: with `||` the lone `/` (not followed by
+        // `/` or `*`) would wrongly start a line comment and swallow `vec!`.
+        assert_eq!(names("x/vec![1]"), vec!["vec".to_string()]);
+    }
+}
