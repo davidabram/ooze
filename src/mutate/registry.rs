@@ -13,6 +13,7 @@ const LANGUAGE_MUTATORS: &[&[MutatorImpl]] = &[
     crate::lang::rust::MUTATORS,
     crate::lang::javascript::MUTATORS,
     crate::lang::typescript::MUTATORS,
+    crate::lang::python::MUTATORS,
 ];
 
 /// Every registered mutator implementation across all languages.

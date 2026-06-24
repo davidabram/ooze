@@ -1,0 +1,7 @@
+(comparison_operator
+  [
+    ">"
+    "<"
+    ">="
+    "<="
+  ] @target)

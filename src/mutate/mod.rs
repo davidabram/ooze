@@ -392,6 +392,30 @@ mod operator_fixture_tests {
     }
 
     #[test]
+    fn python_operator_fixture_discovers_expected_mutants() {
+        use Language::Python;
+        use OperatorName::{
+            ComparisonBoundary, ComparisonNegation, IntegerZeroOne, NegateEquality, SwapBoolean,
+            SwapLogical,
+        };
+
+        let got = discovered("tests/fixtures/operators/python");
+        let want: BTreeSet<ExpectedMutant> = [
+            expect(Python, "swap_boolean", SwapBoolean, "True", "False"),
+            expect(Python, "negate_equality", NegateEquality, "==", "!="),
+            // `compare`'s single `<` drives both comparison operators.
+            expect(Python, "compare", ComparisonBoundary, "<", "<="),
+            expect(Python, "compare", ComparisonNegation, "<", ">="),
+            expect(Python, "swap_logical", SwapLogical, "and", "or"),
+            expect(Python, "integer_zero_one", IntegerZeroOne, "0", "1"),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(got, want);
+    }
+
+    #[test]
     fn typescript_operator_fixture_discovers_expected_mutants() {
         use Language::TypeScript;
         use OperatorName::{
