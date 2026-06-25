@@ -175,6 +175,83 @@ pub const MUTATORS: &[MutatorImpl] = &[
         },
         default_enabled_override: None,
     },
+    MutatorImpl {
+        id: "rust.iterator_any_all",
+        operator: OperatorName::IteratorAnyAll,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/iterator-any-all.scm"),
+        replacement: |original| match original {
+            "any" => Some("all".to_string()),
+            "all" => Some("any".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Swap iterator quantifier {original}(...) -> {replacement}(...)")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "rust.match_bool_pattern",
+        operator: OperatorName::MatchBoolPattern,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/match-bool-pattern.scm"),
+        replacement: |original| match original {
+            "true" => Some("false".to_string()),
+            "false" => Some("true".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Flip match-arm boolean pattern {original} -> {replacement}")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "rust.ok_err_boolean",
+        operator: OperatorName::OkErrBoolean,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/ok-err-boolean.scm"),
+        replacement: |original| match original {
+            "true" => Some("false".to_string()),
+            "false" => Some("true".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Flip wrapped boolean {original} -> {replacement}")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "rust.some_boolean",
+        operator: OperatorName::SomeBoolean,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/some-boolean.scm"),
+        replacement: |original| match original {
+            "true" => Some("false".to_string()),
+            "false" => Some("true".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Flip wrapped boolean {original} -> {replacement}")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "rust.option_some_none",
+        operator: OperatorName::OptionSomeNone,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/option-some-none.scm"),
+        // The whole `Some(value)` call expression is the @target; replace it
+        // with `None`. The query already scopes matches to the `Some` ctor.
+        replacement: |original| {
+            if original.starts_with("Some") {
+                Some("None".to_string())
+            } else {
+                None
+            }
+        },
+        description: |original, _replacement| format!("Replace `{original}` with `None`"),
+        default_enabled_override: None,
+    },
 ];
 
 pub const GRAMMAR: GrammarDef = GrammarDef {

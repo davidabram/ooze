@@ -35,9 +35,13 @@ Built-in operators: `comparison_boundary`, `comparison_negation`,
 `range_inclusive_exclusive` (`..` <-> `..=`), `swap_predicate_method`
 (`is_some` <-> `is_none`, `is_ok` <-> `is_err`), and
 `negate_predicate_method` (`is_empty()` -> `!is_empty()`,
-`contains(x)` -> `!contains(x)`). All are on by default except
-`integer_zero_one`, which is off by default and must be opted in via
-`operators`. An operator only runs for languages that implement it.
+`contains(x)` -> `!contains(x)`), `iterator_any_all` (`any(..)` <-> `all(..)`),
+`match_bool_pattern` (`true =>` <-> `false =>`), `ok_err_boolean`
+(`Ok(true)` <-> `Ok(false)`, `Err(..)` likewise), `some_boolean`
+(`Some(true)` <-> `Some(false)`), and `option_some_none` (`Some(x)` -> `None`).
+All are on by default except `integer_zero_one` and `option_some_none`, which
+are off by default and must be opted in via `operators`. An operator only runs
+for languages that implement it.
 
 `operators` / `exclude_operators` filter by **semantic operator**, so they apply
 to every language being scanned. Each operator is realized by one or more

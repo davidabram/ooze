@@ -809,6 +809,21 @@ pub fn suggest(candidate: &MutationCandidate) -> TestSuggestion {
         OperatorName::EmptyCollectionLiteral => format!(
             "Add a test for `{func}` in `{file}` that asserts the contents of the collection at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
         ),
+        OperatorName::IteratorAnyAll => format!(
+            "Add a test for `{func}` in `{file}` with a mix of matching and non-matching elements so `{original}` and `{replacement}` differ at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::MatchBoolPattern => format!(
+            "Add a test for `{func}` in `{file}` that drives the match scrutinee at line {line} both true and false. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::OkErrBoolean => format!(
+            "Add a test for `{func}` in `{file}` that asserts the boolean wrapped at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::SomeBoolean => format!(
+            "Add a test for `{func}` in `{file}` that asserts the boolean wrapped in the option at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::OptionSomeNone => format!(
+            "Add a test for `{func}` in `{file}` that distinguishes a present value from None at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
     };
 
     TestSuggestion {

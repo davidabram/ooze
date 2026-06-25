@@ -59,3 +59,34 @@ fn return_boolean() -> bool {
     // swap_boolean, which matches every boolean literal.
     return true;
 }
+
+fn iterator_any_all(xs: &[i32]) -> bool {
+    // `any` drives iterator_any_all (any -> all). The `is_positive` method name is
+    // outside every predicate operator's curated set, so nothing else fires.
+    xs.iter().any(|n| n.is_positive())
+}
+
+fn match_bool_pattern(flag: bool) -> i32 {
+    // `true`/`false` patterns drive match_bool_pattern, and swap_boolean matches
+    // each boolean literal too. The 10/20 arms avoid integer_zero_one.
+    match flag {
+        true => 10,
+        false => 20,
+    }
+}
+
+fn ok_err_boolean() -> Result<bool, ()> {
+    // `Ok(true)` drives ok_err_boolean (true -> false) and swap_boolean.
+    Ok(true)
+}
+
+fn some_boolean() -> Option<bool> {
+    // `Some(true)` drives some_boolean and swap_boolean on the literal, plus
+    // option_some_none on the whole `Some(true)` call.
+    Some(true)
+}
+
+fn option_some_none(x: i32) -> Option<i32> {
+    // `Some(x)` drives option_some_none (Some(x) -> None) only.
+    Some(x)
+}

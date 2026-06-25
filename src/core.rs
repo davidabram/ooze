@@ -246,6 +246,12 @@ pub enum OperatorName {
     ComprehensionFilterRemoval,
     NoneReturn,
     EmptyCollectionLiteral,
+    // Rust-specific operators.
+    IteratorAnyAll,
+    MatchBoolPattern,
+    OkErrBoolean,
+    SomeBoolean,
+    OptionSomeNone,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -384,6 +390,11 @@ impl OperatorName {
         OperatorName::ComprehensionFilterRemoval,
         OperatorName::NoneReturn,
         OperatorName::EmptyCollectionLiteral,
+        OperatorName::IteratorAnyAll,
+        OperatorName::MatchBoolPattern,
+        OperatorName::OkErrBoolean,
+        OperatorName::SomeBoolean,
+        OperatorName::OptionSomeNone,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -407,6 +418,11 @@ impl OperatorName {
             OperatorName::ComprehensionFilterRemoval => "comprehension_filter_removal",
             OperatorName::NoneReturn => "none_return",
             OperatorName::EmptyCollectionLiteral => "empty_collection_literal",
+            OperatorName::IteratorAnyAll => "iterator_any_all",
+            OperatorName::MatchBoolPattern => "match_bool_pattern",
+            OperatorName::OkErrBoolean => "ok_err_boolean",
+            OperatorName::SomeBoolean => "some_boolean",
+            OperatorName::OptionSomeNone => "option_some_none",
         }
     }
 
@@ -548,6 +564,41 @@ impl OperatorName {
                 default_enabled: false,
                 description: "Empty a collection literal ([a, b] -> [], {a: b} -> {}, {a, b} -> set()).",
                 test_hint: "Assert the collection's contents, not just that it is returned.",
+            },
+            OperatorName::IteratorAnyAll => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Method,
+                default_enabled: true,
+                description: "Swap an iterator predicate quantifier (any(...) <-> all(...)).",
+                test_hint: "Add tests with a mix of matching and non-matching elements.",
+            },
+            OperatorName::MatchBoolPattern => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::PatternMatching,
+                default_enabled: true,
+                description: "Flip a boolean literal in a match arm pattern (true => <-> false =>).",
+                test_hint: "Add tests that drive the scrutinee both true and false.",
+            },
+            OperatorName::OkErrBoolean => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::ErrorHandling,
+                default_enabled: true,
+                description: "Flip a boolean wrapped in Ok/Err (Ok(true) <-> Ok(false), Err(true) <-> Err(false)).",
+                test_hint: "Assert the wrapped boolean, not just that the call returned Ok/Err.",
+            },
+            OperatorName::SomeBoolean => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Nullability,
+                default_enabled: true,
+                description: "Flip a boolean wrapped in Some (Some(true) <-> Some(false)).",
+                test_hint: "Assert the wrapped boolean, not just that the option was Some.",
+            },
+            OperatorName::OptionSomeNone => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Nullability,
+                default_enabled: false,
+                description: "Replace a Some(value) with None (Some(x) -> None).",
+                test_hint: "Add a test that distinguishes a present value from None.",
             },
         }
     }

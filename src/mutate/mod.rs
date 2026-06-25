@@ -338,8 +338,9 @@ mod operator_fixture_tests {
     fn rust_operator_fixture_discovers_expected_mutants() {
         use Language::Rust;
         use OperatorName::{
-            ComparisonBoundary, ComparisonNegation, IntegerZeroOne, NegateEquality,
-            NegatePredicateMethod, RangeInclusiveExclusive, RemoveNot, ReturnBoolean, SwapBoolean,
+            ComparisonBoundary, ComparisonNegation, IntegerZeroOne, IteratorAnyAll,
+            MatchBoolPattern, NegateEquality, NegatePredicateMethod, OkErrBoolean, OptionSomeNone,
+            RangeInclusiveExclusive, RemoveNot, ReturnBoolean, SomeBoolean, SwapBoolean,
             SwapLogical, SwapPredicateMethod,
         };
 
@@ -373,6 +374,21 @@ mod operator_fixture_tests {
             // The literal in `return true` drives both return_boolean and swap_boolean.
             expect(Rust, "return_boolean", ReturnBoolean, "true", "false"),
             expect(Rust, "return_boolean", SwapBoolean, "true", "false"),
+            expect(Rust, "iterator_any_all", IteratorAnyAll, "any", "all"),
+            // Each match-arm boolean pattern drives match_bool_pattern and swap_boolean.
+            expect(Rust, "match_bool_pattern", MatchBoolPattern, "true", "false"),
+            expect(Rust, "match_bool_pattern", MatchBoolPattern, "false", "true"),
+            expect(Rust, "match_bool_pattern", SwapBoolean, "true", "false"),
+            expect(Rust, "match_bool_pattern", SwapBoolean, "false", "true"),
+            // `Ok(true)` drives ok_err_boolean and swap_boolean on the literal.
+            expect(Rust, "ok_err_boolean", OkErrBoolean, "true", "false"),
+            expect(Rust, "ok_err_boolean", SwapBoolean, "true", "false"),
+            // `Some(true)` drives some_boolean and swap_boolean on the literal, plus
+            // option_some_none on the whole call.
+            expect(Rust, "some_boolean", SomeBoolean, "true", "false"),
+            expect(Rust, "some_boolean", SwapBoolean, "true", "false"),
+            expect(Rust, "some_boolean", OptionSomeNone, "Some(true)", "None"),
+            expect(Rust, "option_some_none", OptionSomeNone, "Some(x)", "None"),
         ]
         .into_iter()
         .collect();
