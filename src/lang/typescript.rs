@@ -107,6 +107,62 @@ pub const MUTATORS: &[MutatorImpl] = &[
         },
         default_enabled_override: None,
     },
+    MutatorImpl {
+        id: "typescript.return_boolean",
+        operator: OperatorName::ReturnBoolean,
+        language: Language::TypeScript,
+        query: include_str!("../../queries/typescript/return-boolean.scm"),
+        replacement: |original| match original {
+            "true" => Some("false".to_string()),
+            "false" => Some("true".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Flip returned boolean {original} -> {replacement}")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "typescript.iterator_any_all",
+        operator: OperatorName::IteratorAnyAll,
+        language: Language::TypeScript,
+        query: include_str!("../../queries/typescript/iterator-any-all.scm"),
+        replacement: |original| match original {
+            "some" => Some("every".to_string()),
+            "every" => Some("some".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Swap iterator quantifier {original}(...) -> {replacement}(...)")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "typescript.string_boundary_method_swap",
+        operator: OperatorName::StringBoundaryMethodSwap,
+        language: Language::TypeScript,
+        query: include_str!("../../queries/typescript/string-boundary-method-swap.scm"),
+        replacement: |original| match original {
+            "startsWith" => Some("endsWith".to_string()),
+            "endsWith" => Some("startsWith".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Swap string boundary method {original}(...) -> {replacement}(...)")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "typescript.includes_negation",
+        operator: OperatorName::IncludesNegation,
+        language: Language::TypeScript,
+        query: include_str!("../../queries/typescript/includes-negation.scm"),
+        replacement: crate::lang::javascript::negate_js_expression,
+        description: |original, replacement| {
+            format!("Negate membership `{original}` -> `{replacement}`")
+        },
+        default_enabled_override: None,
+    },
 ];
 
 pub const GRAMMAR: GrammarDef = GrammarDef {

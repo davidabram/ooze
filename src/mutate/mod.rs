@@ -436,7 +436,7 @@ mod operator_fixture_tests {
             SwapLogical,
         };
 
-        let got = discovered("tests/fixtures/operators/javascript");
+        let got = discovered("tests/fixtures/operators/javascript/sample.js");
         let want: BTreeSet<ExpectedMutant> = [
             expect(JavaScript, "swapBoolean", SwapBoolean, "true", "false"),
             expect(JavaScript, "negateEquality", NegateEquality, "==", "!="),
@@ -590,7 +590,7 @@ mod operator_fixture_tests {
             SwapLogical,
         };
 
-        let got = discovered("tests/fixtures/operators/typescript");
+        let got = discovered("tests/fixtures/operators/typescript/sample.ts");
         let want: BTreeSet<ExpectedMutant> = [
             expect(TypeScript, "swapBoolean", SwapBoolean, "true", "false"),
             expect(TypeScript, "negateEquality", NegateEquality, "==", "!="),

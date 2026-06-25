@@ -259,7 +259,89 @@ pub const MUTATORS: &[MutatorImpl] = &[
         description: |original, replacement| format!("Swap {original}(...) -> {replacement}(...)"),
         default_enabled_override: None,
     },
+    MutatorImpl {
+        id: "python.sorted_reverse_flip",
+        operator: OperatorName::SortedReverseFlip,
+        language: Language::Python,
+        query: include_str!("../../queries/python/sorted-reverse-flip.scm"),
+        replacement: sorted_reverse_flip,
+        description: |original, replacement| {
+            format!("Flip sorted ordering `{original}` -> `{replacement}`")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "python.dict_get_to_index",
+        operator: OperatorName::DictGetToIndex,
+        language: Language::Python,
+        query: include_str!("../../queries/python/dict-get-to-index.scm"),
+        replacement: dict_get_to_index,
+        description: |original, replacement| {
+            format!("Replace get with indexing `{original}` -> `{replacement}`")
+        },
+        default_enabled_override: None,
+    },
 ];
+
+/// `sorted_reverse_flip`: flip a `sorted(...)` call's ordering. An existing
+/// `reverse=True`/`reverse=False` keyword is toggled in place; a call with no
+/// `reverse=` keyword gets `reverse=True` appended. Unrecognised `reverse=`
+/// values (e.g. a variable) yield no mutant.
+fn sorted_reverse_flip(original: &str) -> Option<String> {
+    let trimmed = original.trim();
+    let inner = trimmed.strip_prefix("sorted(")?.strip_suffix(')')?;
+    let args = split_top_level_commas(inner);
+    let mut out: Vec<String> = Vec::with_capacity(args.len() + 1);
+    let mut flipped = false;
+    for arg in &args {
+        let a = arg.trim();
+        if let Some(val) = a.strip_prefix("reverse") {
+            if let Some(v) = val.trim_start().strip_prefix('=') {
+                let new = match v.trim() {
+                    "True" => "False",
+                    "False" => "True",
+                    _ => return None,
+                };
+                out.push(format!("reverse={new}"));
+                flipped = true;
+                continue;
+            }
+        }
+        out.push(a.to_string());
+    }
+    if !flipped {
+        let mut base: Vec<String> = out.into_iter().filter(|s| !s.is_empty()).collect();
+        if base.is_empty() {
+            return None;
+        }
+        base.push("reverse=True".to_string());
+        return Some(format!("sorted({})", base.join(", ")));
+    }
+    Some(format!("sorted({})", out.join(", ")))
+}
+
+/// `dict_get_to_index`: rewrite a single-argument `recv.get(key)` to `recv[key]`.
+/// The query matches any `.get(...)` call; this confirms the method is `get` and
+/// that there is exactly one top-level argument before subscripting. Two-argument
+/// `.get(key, default)` is left to `dict_get_default_removal`.
+fn dict_get_to_index(original: &str) -> Option<String> {
+    let open = original.find('(')?;
+    let head = &original[..open];
+    let receiver = head.strip_suffix(".get")?.trim();
+    if receiver.is_empty() || !original.ends_with(')') {
+        return None;
+    }
+    let inner = &original[open + 1..original.len() - 1];
+    let args = split_top_level_commas(inner);
+    if args.len() != 1 {
+        return None;
+    }
+    let key = args[0].trim();
+    if key.is_empty() {
+        return None;
+    }
+    Some(format!("{receiver}[{key}]"))
+}
 
 /// `negate_predicate_method`: flip a boolean-returning string predicate call by
 /// wrapping it in `not (...)`. An existing leading `not` is unwrapped so the

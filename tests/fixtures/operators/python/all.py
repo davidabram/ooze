@@ -99,3 +99,19 @@ def string_predicate(value):
 def bounds(values):
     # `min`/`max` drive min_max_swap (default-disabled); the returned tuple feeds none_return.
     return min(values), max(values)
+
+
+def ordering(xs):
+    # `sorted(xs)` drives sorted_reverse_flip (append reverse=True); the call also
+    # feeds none_return.
+    return sorted(xs)
+
+
+def ordering_explicit(xs):
+    # `sorted(xs, reverse=True)` drives sorted_reverse_flip (toggle to False).
+    return sorted(xs, reverse=True)
+
+
+def lookup(d, key):
+    # `d.get(key)` drives dict_get_to_index (d[key]); the call also feeds none_return.
+    return d.get(key)

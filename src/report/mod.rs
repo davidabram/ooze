@@ -845,6 +845,18 @@ pub fn suggest(candidate: &MutationCandidate) -> TestSuggestion {
         OperatorName::ExpectToUnwrapOrDefault => format!(
             "Add a test for `{func}` in `{file}` that exercises the None/Err case at line {line} so the panic-vs-default behavior differs. The test should fail if `{original}` is changed to `{replacement}`."
         ),
+        OperatorName::StringBoundaryMethodSwap => format!(
+            "Add a test for `{func}` in `{file}` covering both matching and non-matching prefixes/suffixes so `{original}` and `{replacement}` differ at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::IncludesNegation => format!(
+            "Add a test for `{func}` in `{file}` covering both a present and an absent value at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::SortedReverseFlip => format!(
+            "Add a test for `{func}` in `{file}` that asserts the exact ordering at line {line}, not just membership. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::DictGetToIndex => format!(
+            "Add a test for `{func}` in `{file}` that distinguishes missing-key from present-key behavior at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
     };
 
     TestSuggestion {

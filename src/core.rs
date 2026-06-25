@@ -259,6 +259,11 @@ pub enum OperatorName {
     EmptyVecMacro,
     SaturatingCheckedSwap,
     ExpectToUnwrapOrDefault,
+    // Cross-language method/collection operators.
+    StringBoundaryMethodSwap,
+    IncludesNegation,
+    SortedReverseFlip,
+    DictGetToIndex,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -409,6 +414,10 @@ impl OperatorName {
         OperatorName::EmptyVecMacro,
         OperatorName::SaturatingCheckedSwap,
         OperatorName::ExpectToUnwrapOrDefault,
+        OperatorName::StringBoundaryMethodSwap,
+        OperatorName::IncludesNegation,
+        OperatorName::SortedReverseFlip,
+        OperatorName::DictGetToIndex,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -444,6 +453,10 @@ impl OperatorName {
             OperatorName::EmptyVecMacro => "empty_vec_macro",
             OperatorName::SaturatingCheckedSwap => "saturating_checked_swap",
             OperatorName::ExpectToUnwrapOrDefault => "expect_to_unwrap_or_default",
+            OperatorName::StringBoundaryMethodSwap => "string_boundary_method_swap",
+            OperatorName::IncludesNegation => "includes_negation",
+            OperatorName::SortedReverseFlip => "sorted_reverse_flip",
+            OperatorName::DictGetToIndex => "dict_get_to_index",
         }
     }
 
@@ -669,6 +682,34 @@ impl OperatorName {
                 default_enabled: false,
                 description: "Replace expect(msg) with unwrap_or_default() (x.expect(\"..\") -> x.unwrap_or_default()).",
                 test_hint: "Add a test on the None/Err case so the panic-vs-default difference shows.",
+            },
+            OperatorName::StringBoundaryMethodSwap => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Method,
+                default_enabled: true,
+                description: "Swap string boundary methods (startsWith <-> endsWith, starts_with <-> ends_with, startswith <-> endswith).",
+                test_hint: "Add tests for both matching and non-matching prefixes/suffixes.",
+            },
+            OperatorName::IncludesNegation => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Membership,
+                default_enabled: true,
+                description: "Negate an includes/membership predicate.",
+                test_hint: "Add tests covering both present and absent values.",
+            },
+            OperatorName::SortedReverseFlip => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Method,
+                default_enabled: false,
+                description: "Flip sorted ordering by adding or toggling reverse=...",
+                test_hint: "Add tests that assert exact ordering, not just membership.",
+            },
+            OperatorName::DictGetToIndex => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Dict,
+                default_enabled: false,
+                description: "Replace d.get(k) with d[k].",
+                test_hint: "Add tests that distinguish missing-key behavior from present-key behavior.",
             },
         }
     }

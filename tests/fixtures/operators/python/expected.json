@@ -322,5 +322,68 @@
     "original": "max",
     "replacement": "min",
     "line": 101
+  },
+  {
+    "language": "python",
+    "operator": "none_return",
+    "implementation": "python.none_return",
+    "function": "ordering",
+    "original": "sorted(xs)",
+    "replacement": "None",
+    "line": 107
+  },
+  {
+    "language": "python",
+    "operator": "sorted_reverse_flip",
+    "implementation": "python.sorted_reverse_flip",
+    "function": "ordering",
+    "original": "sorted(xs)",
+    "replacement": "sorted(xs, reverse=True)",
+    "line": 107
+  },
+  {
+    "language": "python",
+    "operator": "swap_boolean",
+    "implementation": "python.swap_boolean",
+    "function": "ordering_explicit",
+    "original": "True",
+    "replacement": "False",
+    "line": 112
+  },
+  {
+    "language": "python",
+    "operator": "none_return",
+    "implementation": "python.none_return",
+    "function": "ordering_explicit",
+    "original": "sorted(xs, reverse=True)",
+    "replacement": "None",
+    "line": 112
+  },
+  {
+    "language": "python",
+    "operator": "sorted_reverse_flip",
+    "implementation": "python.sorted_reverse_flip",
+    "function": "ordering_explicit",
+    "original": "sorted(xs, reverse=True)",
+    "replacement": "sorted(xs, reverse=False)",
+    "line": 112
+  },
+  {
+    "language": "python",
+    "operator": "none_return",
+    "implementation": "python.none_return",
+    "function": "lookup",
+    "original": "d.get(key)",
+    "replacement": "None",
+    "line": 117
+  },
+  {
+    "language": "python",
+    "operator": "dict_get_to_index",
+    "implementation": "python.dict_get_to_index",
+    "function": "lookup",
+    "original": "d.get(key)",
+    "replacement": "d[key]",
+    "line": 117
   }
 ]

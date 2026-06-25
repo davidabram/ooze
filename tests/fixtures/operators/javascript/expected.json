@@ -1,0 +1,128 @@
+[
+  {
+    "language": "javascript",
+    "operator": "swap_boolean",
+    "implementation": "javascript.swap_boolean",
+    "function": "core",
+    "original": "false",
+    "replacement": "true",
+    "line": 15
+  },
+  {
+    "language": "javascript",
+    "operator": "swap_boolean",
+    "implementation": "javascript.swap_boolean",
+    "function": "core",
+    "original": "true",
+    "replacement": "false",
+    "line": 19
+  },
+  {
+    "language": "javascript",
+    "operator": "negate_equality",
+    "implementation": "javascript.negate_equality",
+    "function": "core",
+    "original": "===",
+    "replacement": "!==",
+    "line": 18
+  },
+  {
+    "language": "javascript",
+    "operator": "comparison_boundary",
+    "implementation": "javascript.comparison_boundary",
+    "function": "core",
+    "original": "<",
+    "replacement": "<=",
+    "line": 22
+  },
+  {
+    "language": "javascript",
+    "operator": "comparison_negation",
+    "implementation": "javascript.comparison_negation",
+    "function": "core",
+    "original": "<",
+    "replacement": ">=",
+    "line": 22
+  },
+  {
+    "language": "javascript",
+    "operator": "swap_logical",
+    "implementation": "javascript.swap_logical",
+    "function": "core",
+    "original": "&&",
+    "replacement": "||",
+    "line": 18
+  },
+  {
+    "language": "javascript",
+    "operator": "remove_not",
+    "implementation": "javascript.remove_not",
+    "function": "core",
+    "original": "!flag",
+    "replacement": "flag",
+    "line": 14
+  },
+  {
+    "language": "javascript",
+    "operator": "return_boolean",
+    "implementation": "javascript.return_boolean",
+    "function": "core",
+    "original": "false",
+    "replacement": "true",
+    "line": 15
+  },
+  {
+    "language": "javascript",
+    "operator": "return_boolean",
+    "implementation": "javascript.return_boolean",
+    "function": "core",
+    "original": "true",
+    "replacement": "false",
+    "line": 19
+  },
+  {
+    "language": "javascript",
+    "operator": "iterator_any_all",
+    "implementation": "javascript.iterator_any_all",
+    "function": "quantifier",
+    "original": "some",
+    "replacement": "every",
+    "line": 27
+  },
+  {
+    "language": "javascript",
+    "operator": "swap_logical",
+    "implementation": "javascript.swap_logical",
+    "function": "boundary",
+    "original": "||",
+    "replacement": "&&",
+    "line": 33
+  },
+  {
+    "language": "javascript",
+    "operator": "string_boundary_method_swap",
+    "implementation": "javascript.string_boundary_method_swap",
+    "function": "boundary",
+    "original": "startsWith",
+    "replacement": "endsWith",
+    "line": 33
+  },
+  {
+    "language": "javascript",
+    "operator": "string_boundary_method_swap",
+    "implementation": "javascript.string_boundary_method_swap",
+    "function": "boundary",
+    "original": "endsWith",
+    "replacement": "startsWith",
+    "line": 33
+  },
+  {
+    "language": "javascript",
+    "operator": "includes_negation",
+    "implementation": "javascript.includes_negation",
+    "function": "membership",
+    "original": "items.includes(item)",
+    "replacement": "!(items.includes(item))",
+    "line": 38
+  }
+]

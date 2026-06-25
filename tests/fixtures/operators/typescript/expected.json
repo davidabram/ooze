@@ -1,0 +1,128 @@
+[
+  {
+    "language": "typescript",
+    "operator": "swap_boolean",
+    "implementation": "typescript.swap_boolean",
+    "function": "core",
+    "original": "false",
+    "replacement": "true",
+    "line": 15
+  },
+  {
+    "language": "typescript",
+    "operator": "swap_boolean",
+    "implementation": "typescript.swap_boolean",
+    "function": "core",
+    "original": "true",
+    "replacement": "false",
+    "line": 19
+  },
+  {
+    "language": "typescript",
+    "operator": "negate_equality",
+    "implementation": "typescript.negate_equality",
+    "function": "core",
+    "original": "===",
+    "replacement": "!==",
+    "line": 18
+  },
+  {
+    "language": "typescript",
+    "operator": "comparison_boundary",
+    "implementation": "typescript.comparison_boundary",
+    "function": "core",
+    "original": "<",
+    "replacement": "<=",
+    "line": 22
+  },
+  {
+    "language": "typescript",
+    "operator": "comparison_negation",
+    "implementation": "typescript.comparison_negation",
+    "function": "core",
+    "original": "<",
+    "replacement": ">=",
+    "line": 22
+  },
+  {
+    "language": "typescript",
+    "operator": "swap_logical",
+    "implementation": "typescript.swap_logical",
+    "function": "core",
+    "original": "&&",
+    "replacement": "||",
+    "line": 18
+  },
+  {
+    "language": "typescript",
+    "operator": "remove_not",
+    "implementation": "typescript.remove_not",
+    "function": "core",
+    "original": "!flag",
+    "replacement": "flag",
+    "line": 14
+  },
+  {
+    "language": "typescript",
+    "operator": "return_boolean",
+    "implementation": "typescript.return_boolean",
+    "function": "core",
+    "original": "false",
+    "replacement": "true",
+    "line": 15
+  },
+  {
+    "language": "typescript",
+    "operator": "return_boolean",
+    "implementation": "typescript.return_boolean",
+    "function": "core",
+    "original": "true",
+    "replacement": "false",
+    "line": 19
+  },
+  {
+    "language": "typescript",
+    "operator": "iterator_any_all",
+    "implementation": "typescript.iterator_any_all",
+    "function": "quantifier",
+    "original": "some",
+    "replacement": "every",
+    "line": 27
+  },
+  {
+    "language": "typescript",
+    "operator": "swap_logical",
+    "implementation": "typescript.swap_logical",
+    "function": "boundary",
+    "original": "||",
+    "replacement": "&&",
+    "line": 33
+  },
+  {
+    "language": "typescript",
+    "operator": "string_boundary_method_swap",
+    "implementation": "typescript.string_boundary_method_swap",
+    "function": "boundary",
+    "original": "startsWith",
+    "replacement": "endsWith",
+    "line": 33
+  },
+  {
+    "language": "typescript",
+    "operator": "string_boundary_method_swap",
+    "implementation": "typescript.string_boundary_method_swap",
+    "function": "boundary",
+    "original": "endsWith",
+    "replacement": "startsWith",
+    "line": 33
+  },
+  {
+    "language": "typescript",
+    "operator": "includes_negation",
+    "implementation": "typescript.includes_negation",
+    "function": "membership",
+    "original": "items.includes(item)",
+    "replacement": "!(items.includes(item))",
+    "line": 38
+  }
+]
