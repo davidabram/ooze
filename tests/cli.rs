@@ -368,6 +368,41 @@ fn rust_operator_fixture_matches_snapshot() {
     );
 }
 
+#[test]
+fn python_operator_fixture_matches_snapshot() {
+    let out = ooze()
+        .args(["mutants", "--path", "tests/fixtures/operators/python/all.py", "--format", "json"])
+        .output()
+        .expect("failed to run ooze");
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+
+    let discovered: Vec<serde_json::Value> =
+        serde_json::from_slice(&out.stdout).expect("mutants output should be JSON");
+    let got = snapshot_sorted(discovered.iter().map(stable_fields).collect());
+
+    let expected_raw = std::fs::read_to_string("tests/fixtures/operators/python/expected.json")
+        .expect("expected.json fixture should exist");
+    let expected: Vec<serde_json::Value> =
+        serde_json::from_str(&expected_raw).expect("expected.json should be valid JSON");
+    let want = snapshot_sorted(expected);
+
+    assert_eq!(
+        got, want,
+        "discovered Python mutants drifted from tests/fixtures/operators/python/expected.json"
+    );
+
+    // Guard the headline promise: every one of the 18 Python operators still fires.
+    let operators: std::collections::BTreeSet<&str> = discovered
+        .iter()
+        .map(|c| c["operator"].as_str().expect("operator should be a string"))
+        .collect();
+    assert_eq!(
+        operators.len(),
+        18,
+        "expected all 18 Python operators to fire, got: {operators:?}"
+    );
+}
+
 // ── crap ──────────────────────────────────────────────────────────────────────
 
 #[test]

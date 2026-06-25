@@ -461,7 +461,7 @@ mod operator_fixture_tests {
             SwapLogical, TruthinessNegation,
         };
 
-        let got = discovered("tests/fixtures/operators/python");
+        let got = discovered("tests/fixtures/operators/python/sample.py");
         let want: BTreeSet<ExpectedMutant> = [
             expect(Python, "swap_boolean", SwapBoolean, "True", "False"),
             expect(Python, "negate_equality", NegateEquality, "==", "!="),

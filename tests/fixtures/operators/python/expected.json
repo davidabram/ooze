@@ -1,0 +1,326 @@
+[
+  {
+    "language": "python",
+    "operator": "swap_boolean",
+    "implementation": "python.swap_boolean",
+    "function": "swap_boolean",
+    "original": "True",
+    "replacement": "False",
+    "line": 14
+  },
+  {
+    "language": "python",
+    "operator": "none_return",
+    "implementation": "python.none_return",
+    "function": "swap_boolean",
+    "original": "enabled",
+    "replacement": "None",
+    "line": 15
+  },
+  {
+    "language": "python",
+    "operator": "negate_equality",
+    "implementation": "python.negate_equality",
+    "function": "negate_equality",
+    "original": "==",
+    "replacement": "!=",
+    "line": 19
+  },
+  {
+    "language": "python",
+    "operator": "none_return",
+    "implementation": "python.none_return",
+    "function": "negate_equality",
+    "original": "a == b",
+    "replacement": "None",
+    "line": 19
+  },
+  {
+    "language": "python",
+    "operator": "comparison_boundary",
+    "implementation": "python.comparison_boundary",
+    "function": "compare",
+    "original": "<",
+    "replacement": "<=",
+    "line": 25
+  },
+  {
+    "language": "python",
+    "operator": "comparison_negation",
+    "implementation": "python.comparison_negation",
+    "function": "compare",
+    "original": "<",
+    "replacement": ">=",
+    "line": 25
+  },
+  {
+    "language": "python",
+    "operator": "none_return",
+    "implementation": "python.none_return",
+    "function": "compare",
+    "original": "a < b",
+    "replacement": "None",
+    "line": 25
+  },
+  {
+    "language": "python",
+    "operator": "swap_logical",
+    "implementation": "python.swap_logical",
+    "function": "swap_logical",
+    "original": "and",
+    "replacement": "or",
+    "line": 29
+  },
+  {
+    "language": "python",
+    "operator": "none_return",
+    "implementation": "python.none_return",
+    "function": "swap_logical",
+    "original": "x and y",
+    "replacement": "None",
+    "line": 29
+  },
+  {
+    "language": "python",
+    "operator": "integer_zero_one",
+    "implementation": "python.integer_zero_one",
+    "function": "integer_zero_one",
+    "original": "0",
+    "replacement": "1",
+    "line": 34
+  },
+  {
+    "language": "python",
+    "operator": "none_return",
+    "implementation": "python.none_return",
+    "function": "integer_zero_one",
+    "original": "n",
+    "replacement": "None",
+    "line": 35
+  },
+  {
+    "language": "python",
+    "operator": "is_none_negation",
+    "implementation": "python.is_none_negation",
+    "function": "is_none",
+    "original": "is",
+    "replacement": "is not",
+    "line": 39
+  },
+  {
+    "language": "python",
+    "operator": "in_negation",
+    "implementation": "python.in_negation",
+    "function": "membership",
+    "original": "in",
+    "replacement": "not in",
+    "line": 44
+  },
+  {
+    "language": "python",
+    "operator": "truthiness_negation",
+    "implementation": "python.truthiness_negation",
+    "function": "truthiness",
+    "original": "x",
+    "replacement": "not (x)",
+    "line": 49
+  },
+  {
+    "language": "python",
+    "operator": "negate_equality",
+    "implementation": "python.negate_equality",
+    "function": "len_boundary",
+    "original": "==",
+    "replacement": "!=",
+    "line": 57
+  },
+  {
+    "language": "python",
+    "operator": "integer_zero_one",
+    "implementation": "python.integer_zero_one",
+    "function": "len_boundary",
+    "original": "0",
+    "replacement": "1",
+    "line": 57
+  },
+  {
+    "language": "python",
+    "operator": "len_zero_boundary",
+    "implementation": "python.len_zero_boundary",
+    "function": "len_boundary",
+    "original": "len(xs) == 0",
+    "replacement": "len(xs) != 0",
+    "line": 57
+  },
+  {
+    "language": "python",
+    "operator": "integer_zero_one",
+    "implementation": "python.integer_zero_one",
+    "function": "dict_default",
+    "original": "0",
+    "replacement": "1",
+    "line": 63
+  },
+  {
+    "language": "python",
+    "operator": "dict_get_default_removal",
+    "implementation": "python.dict_get_default_removal",
+    "function": "dict_default",
+    "original": "d.get(k, 0)",
+    "replacement": "d.get(k)",
+    "line": 63
+  },
+  {
+    "language": "python",
+    "operator": "comprehension_filter_removal",
+    "implementation": "python.comprehension_filter_removal",
+    "function": "comprehension",
+    "original": " if keep(x)",
+    "replacement": "",
+    "line": 68
+  },
+  {
+    "language": "python",
+    "operator": "none_return",
+    "implementation": "python.none_return",
+    "function": "none_return",
+    "original": "value",
+    "replacement": "None",
+    "line": 73
+  },
+  {
+    "language": "python",
+    "operator": "empty_collection_literal",
+    "implementation": "python.empty_collection_literal",
+    "function": "empty_list",
+    "original": "[a, b]",
+    "replacement": "[]",
+    "line": 77
+  },
+  {
+    "language": "python",
+    "operator": "none_return",
+    "implementation": "python.none_return",
+    "function": "quantifier",
+    "original": "any(x.active for x in items)",
+    "replacement": "None",
+    "line": 83
+  },
+  {
+    "language": "python",
+    "operator": "iterator_any_all",
+    "implementation": "python.iterator_any_all",
+    "function": "quantifier",
+    "original": "any",
+    "replacement": "all",
+    "line": 83
+  },
+  {
+    "language": "python",
+    "operator": "swap_boolean",
+    "implementation": "python.swap_boolean",
+    "function": "returns_boolean",
+    "original": "True",
+    "replacement": "False",
+    "line": 90
+  },
+  {
+    "language": "python",
+    "operator": "swap_boolean",
+    "implementation": "python.swap_boolean",
+    "function": "returns_boolean",
+    "original": "False",
+    "replacement": "True",
+    "line": 91
+  },
+  {
+    "language": "python",
+    "operator": "truthiness_negation",
+    "implementation": "python.truthiness_negation",
+    "function": "returns_boolean",
+    "original": "flag",
+    "replacement": "not (flag)",
+    "line": 89
+  },
+  {
+    "language": "python",
+    "operator": "none_return",
+    "implementation": "python.none_return",
+    "function": "returns_boolean",
+    "original": "True",
+    "replacement": "None",
+    "line": 90
+  },
+  {
+    "language": "python",
+    "operator": "none_return",
+    "implementation": "python.none_return",
+    "function": "returns_boolean",
+    "original": "False",
+    "replacement": "None",
+    "line": 91
+  },
+  {
+    "language": "python",
+    "operator": "return_boolean",
+    "implementation": "python.return_boolean",
+    "function": "returns_boolean",
+    "original": "True",
+    "replacement": "False",
+    "line": 90
+  },
+  {
+    "language": "python",
+    "operator": "return_boolean",
+    "implementation": "python.return_boolean",
+    "function": "returns_boolean",
+    "original": "False",
+    "replacement": "True",
+    "line": 91
+  },
+  {
+    "language": "python",
+    "operator": "none_return",
+    "implementation": "python.none_return",
+    "function": "string_predicate",
+    "original": "value.isdigit()",
+    "replacement": "None",
+    "line": 96
+  },
+  {
+    "language": "python",
+    "operator": "negate_predicate_method",
+    "implementation": "python.negate_predicate_method",
+    "function": "string_predicate",
+    "original": "value.isdigit()",
+    "replacement": "not (value.isdigit())",
+    "line": 96
+  },
+  {
+    "language": "python",
+    "operator": "none_return",
+    "implementation": "python.none_return",
+    "function": "bounds",
+    "original": "min(values), max(values)",
+    "replacement": "None",
+    "line": 101
+  },
+  {
+    "language": "python",
+    "operator": "min_max_swap",
+    "implementation": "python.min_max_swap",
+    "function": "bounds",
+    "original": "min",
+    "replacement": "max",
+    "line": 101
+  },
+  {
+    "language": "python",
+    "operator": "min_max_swap",
+    "implementation": "python.min_max_swap",
+    "function": "bounds",
+    "original": "max",
+    "replacement": "min",
+    "line": 101
+  }
+]
