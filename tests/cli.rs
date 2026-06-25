@@ -307,6 +307,67 @@ fn init_config_overwrites_with_force() {
     assert_ne!(content, "old-content", "file should have been overwritten");
 }
 
+// ── operator fixture snapshot ─────────────────────────────────────────────────
+
+/// Project a discovered mutant down to the fields that are stable across
+/// refactors: language, operator, implementation, function, original,
+/// replacement, and line. Everything path- or offset-dependent (`id`, `file`,
+/// `start_byte`/`end_byte`, `column`) is dropped so the snapshot only breaks
+/// when an operator's *behaviour* changes, not when the fixture moves on disk.
+fn stable_fields(c: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "language": c["language"],
+        "operator": c["operator"],
+        "implementation": c["implementation"],
+        "function": c["function"],
+        "original": c["original"],
+        "replacement": c["replacement"],
+        "line": c["line"],
+    })
+}
+
+/// Sort key that is total over the stable projection, so two runs (and the
+/// golden file) compare order-independently.
+fn snapshot_sorted(mut mutants: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+    mutants.sort_by_key(|c| c.to_string());
+    mutants
+}
+
+#[test]
+fn rust_operator_fixture_matches_snapshot() {
+    let out = ooze()
+        .args(["mutants", "--path", "tests/fixtures/operators/rust/all.rs", "--format", "json"])
+        .output()
+        .expect("failed to run ooze");
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+
+    let discovered: Vec<serde_json::Value> =
+        serde_json::from_slice(&out.stdout).expect("mutants output should be JSON");
+    let got = snapshot_sorted(discovered.iter().map(stable_fields).collect());
+
+    let expected_raw = std::fs::read_to_string("tests/fixtures/operators/rust/expected.json")
+        .expect("expected.json fixture should exist");
+    let expected: Vec<serde_json::Value> =
+        serde_json::from_str(&expected_raw).expect("expected.json should be valid JSON");
+    let want = snapshot_sorted(expected);
+
+    assert_eq!(
+        got, want,
+        "discovered Rust mutants drifted from tests/fixtures/operators/rust/expected.json"
+    );
+
+    // Guard the headline promise: every one of the 23 Rust operators still fires.
+    let operators: std::collections::BTreeSet<&str> = discovered
+        .iter()
+        .map(|c| c["operator"].as_str().expect("operator should be a string"))
+        .collect();
+    assert_eq!(
+        operators.len(),
+        23,
+        "expected all 23 Rust operators to fire, got: {operators:?}"
+    );
+}
+
 // ── crap ──────────────────────────────────────────────────────────────────────
 
 #[test]

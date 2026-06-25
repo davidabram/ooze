@@ -345,7 +345,7 @@ mod operator_fixture_tests {
             SomeBoolean, SwapBoolean, SwapLogical, SwapPredicateMethod, UnwrapToUnwrapOrDefault,
         };
 
-        let got = discovered("tests/fixtures/operators/rust");
+        let got = discovered("tests/fixtures/operators/rust/sample.rs");
         let want: BTreeSet<ExpectedMutant> = [
             expect(Rust, "swap_boolean", SwapBoolean, "true", "false"),
             expect(Rust, "negate_equality", NegateEquality, "==", "!="),

@@ -1,0 +1,290 @@
+[
+  {
+    "language": "rust",
+    "operator": "swap_boolean",
+    "implementation": "rust.swap_boolean",
+    "function": "swap_boolean",
+    "original": "true",
+    "replacement": "false",
+    "line": 13
+  },
+  {
+    "language": "rust",
+    "operator": "negate_equality",
+    "implementation": "rust.negate_equality",
+    "function": "negate_equality",
+    "original": "==",
+    "replacement": "!=",
+    "line": 18
+  },
+  {
+    "language": "rust",
+    "operator": "comparison_boundary",
+    "implementation": "rust.comparison_boundary",
+    "function": "compare",
+    "original": "<",
+    "replacement": "<=",
+    "line": 24
+  },
+  {
+    "language": "rust",
+    "operator": "comparison_negation",
+    "implementation": "rust.comparison_negation",
+    "function": "compare",
+    "original": "<",
+    "replacement": ">=",
+    "line": 24
+  },
+  {
+    "language": "rust",
+    "operator": "swap_logical",
+    "implementation": "rust.swap_logical",
+    "function": "swap_logical",
+    "original": "&&",
+    "replacement": "||",
+    "line": 28
+  },
+  {
+    "language": "rust",
+    "operator": "remove_not",
+    "implementation": "rust.remove_not",
+    "function": "remove_not",
+    "original": "!flag",
+    "replacement": "flag",
+    "line": 32
+  },
+  {
+    "language": "rust",
+    "operator": "integer_zero_one",
+    "implementation": "rust.integer_zero_one",
+    "function": "integer_zero_one",
+    "original": "0",
+    "replacement": "1",
+    "line": 37
+  },
+  {
+    "language": "rust",
+    "operator": "integer_zero_one",
+    "implementation": "rust.integer_zero_one",
+    "function": "range_inclusive_exclusive",
+    "original": "0",
+    "replacement": "1",
+    "line": 44
+  },
+  {
+    "language": "rust",
+    "operator": "integer_zero_one",
+    "implementation": "rust.integer_zero_one",
+    "function": "range_inclusive_exclusive",
+    "original": "1",
+    "replacement": "0",
+    "line": 45
+  },
+  {
+    "language": "rust",
+    "operator": "range_inclusive_exclusive",
+    "implementation": "rust.range_inclusive_exclusive",
+    "function": "range_inclusive_exclusive",
+    "original": "..",
+    "replacement": "..=",
+    "line": 45
+  },
+  {
+    "language": "rust",
+    "operator": "swap_predicate_method",
+    "implementation": "rust.swap_predicate_method",
+    "function": "swap_predicate_method",
+    "original": "is_some",
+    "replacement": "is_none",
+    "line": 52
+  },
+  {
+    "language": "rust",
+    "operator": "negate_predicate_method",
+    "implementation": "rust.negate_predicate_method",
+    "function": "negate_predicate_method",
+    "original": "s.is_empty()",
+    "replacement": "!s.is_empty()",
+    "line": 56
+  },
+  {
+    "language": "rust",
+    "operator": "return_boolean",
+    "implementation": "rust.return_boolean",
+    "function": "return_boolean",
+    "original": "true",
+    "replacement": "false",
+    "line": 62
+  },
+  {
+    "language": "rust",
+    "operator": "swap_boolean",
+    "implementation": "rust.swap_boolean",
+    "function": "return_boolean",
+    "original": "true",
+    "replacement": "false",
+    "line": 62
+  },
+  {
+    "language": "rust",
+    "operator": "iterator_any_all",
+    "implementation": "rust.iterator_any_all",
+    "function": "iterator_any_all",
+    "original": "any",
+    "replacement": "all",
+    "line": 68
+  },
+  {
+    "language": "rust",
+    "operator": "match_bool_pattern",
+    "implementation": "rust.match_bool_pattern",
+    "function": "match_bool_pattern",
+    "original": "true",
+    "replacement": "false",
+    "line": 75
+  },
+  {
+    "language": "rust",
+    "operator": "swap_boolean",
+    "implementation": "rust.swap_boolean",
+    "function": "match_bool_pattern",
+    "original": "true",
+    "replacement": "false",
+    "line": 75
+  },
+  {
+    "language": "rust",
+    "operator": "match_bool_pattern",
+    "implementation": "rust.match_bool_pattern",
+    "function": "match_bool_pattern",
+    "original": "false",
+    "replacement": "true",
+    "line": 76
+  },
+  {
+    "language": "rust",
+    "operator": "swap_boolean",
+    "implementation": "rust.swap_boolean",
+    "function": "match_bool_pattern",
+    "original": "false",
+    "replacement": "true",
+    "line": 76
+  },
+  {
+    "language": "rust",
+    "operator": "ok_err_boolean",
+    "implementation": "rust.ok_err_boolean",
+    "function": "ok_err_boolean",
+    "original": "true",
+    "replacement": "false",
+    "line": 82
+  },
+  {
+    "language": "rust",
+    "operator": "swap_boolean",
+    "implementation": "rust.swap_boolean",
+    "function": "ok_err_boolean",
+    "original": "true",
+    "replacement": "false",
+    "line": 82
+  },
+  {
+    "language": "rust",
+    "operator": "option_some_none",
+    "implementation": "rust.option_some_none",
+    "function": "some_boolean",
+    "original": "Some(true)",
+    "replacement": "None",
+    "line": 88
+  },
+  {
+    "language": "rust",
+    "operator": "some_boolean",
+    "implementation": "rust.some_boolean",
+    "function": "some_boolean",
+    "original": "true",
+    "replacement": "false",
+    "line": 88
+  },
+  {
+    "language": "rust",
+    "operator": "swap_boolean",
+    "implementation": "rust.swap_boolean",
+    "function": "some_boolean",
+    "original": "true",
+    "replacement": "false",
+    "line": 88
+  },
+  {
+    "language": "rust",
+    "operator": "option_some_none",
+    "implementation": "rust.option_some_none",
+    "function": "option_some_none",
+    "original": "Some(x)",
+    "replacement": "None",
+    "line": 93
+  },
+  {
+    "language": "rust",
+    "operator": "remove_try",
+    "implementation": "rust.remove_try",
+    "function": "remove_try",
+    "original": "r?",
+    "replacement": "r",
+    "line": 99
+  },
+  {
+    "language": "rust",
+    "operator": "unwrap_to_unwrap_or_default",
+    "implementation": "rust.unwrap_to_unwrap_or_default",
+    "function": "unwrap_to_unwrap_or_default",
+    "original": "unwrap",
+    "replacement": "unwrap_or_default",
+    "line": 106
+  },
+  {
+    "language": "rust",
+    "operator": "min_max_swap",
+    "implementation": "rust.min_max_swap",
+    "function": "min_max_swap",
+    "original": "min",
+    "replacement": "max",
+    "line": 110
+  },
+  {
+    "language": "rust",
+    "operator": "match_wildcard_to_panic",
+    "implementation": "rust.match_wildcard_to_panic",
+    "function": "match_wildcard_to_panic",
+    "original": "200",
+    "replacement": "panic!(\"ooze mutant\")",
+    "line": 118
+  },
+  {
+    "language": "rust",
+    "operator": "empty_vec_macro",
+    "implementation": "rust.empty_vec_macro",
+    "function": "empty_vec_macro",
+    "original": "vec![3, 4, 5]",
+    "replacement": "vec![]",
+    "line": 125
+  },
+  {
+    "language": "rust",
+    "operator": "saturating_checked_swap",
+    "implementation": "rust.saturating_checked_swap",
+    "function": "saturating_checked_swap",
+    "original": "checked_add",
+    "replacement": "saturating_add",
+    "line": 129
+  },
+  {
+    "language": "rust",
+    "operator": "expect_to_unwrap_or_default",
+    "implementation": "rust.expect_to_unwrap_or_default",
+    "function": "expect_to_unwrap_or_default",
+    "original": "opt.expect(\"must be present\")",
+    "replacement": "opt.unwrap_or_default()",
+    "line": 135
+  }
+]
