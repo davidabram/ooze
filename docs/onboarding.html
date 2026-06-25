@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ooze — Onboarding into an Existing Project</title>
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --panel: #ffffff;
+    --ink: #1c2330;
+    --ink-soft: #4a5568;
+    --muted: #6b7686;
+    --line: #e1e6ec;
+    --accent: #2f6f5e;
+    --accent-soft: #e6f1ed;
+    --accent-ink: #1d4d40;
+    --warn-bg: #fff6e6;
+    --warn-line: #e8b339;
+    --warn-ink: #7a5300;
+    --unknown-bg: #f0eefb;
+    --unknown-line: #8d7ad6;
+    --unknown-ink: #4b3b8f;
+    --note-bg: #e9f1fb;
+    --note-line: #4f8ad6;
+    --note-ink: #234e85;
+    --code-bg: #f3f4f6;
+    --shadow: 0 1px 2px rgba(20,30,50,.05), 0 4px 14px rgba(20,30,50,.06);
+    --radius: 12px;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.6;
+    font-size: 16px;
+  }
+  a { color: var(--accent); }
+  .layout { display: grid; grid-template-columns: 290px 1fr; align-items: start; }
+
+  /* Sidebar */
+  aside {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    padding: 22px 18px 60px;
+  }
+  aside .brand { font-weight: 700; font-size: 1.25rem; letter-spacing: -.01em; }
+  aside .brand small { display:block; font-weight: 500; color: var(--muted); font-size: .72rem; margin-top: 4px; letter-spacing: .02em; text-transform: uppercase; }
+  nav ol { list-style: none; counter-reset: s; margin: 18px 0 0; padding: 0; }
+  nav li { counter-increment: s; }
+  nav a {
+    display: block;
+    padding: 5px 10px 5px 34px;
+    margin: 1px 0;
+    border-radius: 7px;
+    color: var(--ink-soft);
+    text-decoration: none;
+    font-size: .86rem;
+    position: relative;
+  }
+  nav a::before {
+    content: counter(s);
+    position: absolute; left: 8px; top: 5px;
+    width: 20px; text-align: right;
+    color: var(--muted); font-size: .72rem; font-variant-numeric: tabular-nums;
+  }
+  nav a:hover { background: var(--accent-soft); color: var(--accent-ink); }
+
+  /* Main */
+  main { padding: 40px 48px 120px; max-width: 980px; }
+  header.page {
+    background: linear-gradient(135deg, #2f6f5e, #214b56);
+    color: #fff; border-radius: var(--radius); padding: 32px 34px; box-shadow: var(--shadow);
+  }
+  header.page h1 { margin: 0 0 6px; font-size: 2.1rem; letter-spacing: -.02em; }
+  header.page p { margin: 0; color: #d8eee7; max-width: 70ch; }
+  header.page .tags { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+  header.page .tags span {
+    background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.22);
+    padding: 3px 10px; border-radius: 999px; font-size: .76rem; font-family: var(--mono);
+  }
+
+  section { margin-top: 46px; scroll-margin-top: 16px; }
+  section > h2 {
+    font-size: 1.4rem; letter-spacing: -.01em; margin: 0 0 4px;
+    padding-bottom: 8px; border-bottom: 2px solid var(--accent-soft);
+  }
+  section > h2 .num { color: var(--accent); font-family: var(--mono); font-size: .9rem; margin-right: 8px; }
+  h3 { font-size: 1.08rem; margin: 26px 0 8px; }
+  p { color: var(--ink-soft); }
+
+  code {
+    font-family: var(--mono); font-size: .86em;
+    background: var(--code-bg); padding: 1px 5px; border-radius: 5px; color: #b34;
+  }
+  pre {
+    background: #1d2430; color: #e6edf3; padding: 16px 18px; border-radius: 10px;
+    overflow-x: auto; font-family: var(--mono); font-size: .82rem; line-height: 1.5;
+  }
+  pre code { background: none; color: inherit; padding: 0; }
+
+  table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: .88rem; background: var(--panel); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #eef2f1; color: var(--ink); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  td code { white-space: nowrap; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin: 16px 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .card h4 { margin: 0 0 6px; font-size: .98rem; color: var(--accent-ink); }
+  .card p { margin: 0; font-size: .85rem; }
+
+  .callout { border-radius: 10px; padding: 13px 16px 13px 16px; margin: 16px 0; border-left: 4px solid; font-size: .9rem; }
+  .callout p { margin: 0; color: inherit; }
+  .callout p + p { margin-top: 8px; }
+  .callout .label { font-weight: 700; font-size: .74rem; text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: 3px; }
+  .warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn-ink); }
+  .unknown { background: var(--unknown-bg); border-color: var(--unknown-line); color: var(--unknown-ink); }
+  .note { background: var(--note-bg); border-color: var(--note-line); color: var(--note-ink); }
+  .conv { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
+
+  .pill { display:inline-block; font-family: var(--mono); font-size: .72rem; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); border: 1px solid #cfe3db; }
+  .phase-meta { display:flex; flex-wrap:wrap; gap:8px; margin: 4px 0 6px; }
+  .phase-meta .pill.goal { background: var(--note-bg); color: var(--note-ink); border-color: #cfe0f3; }
+  ul.tight li, ol.tight li { margin: 3px 0; }
+  .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0; }
+  .twocol .card h4.good { color: var(--accent-ink); }
+  .twocol .card h4.bad { color: #a33; }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    aside { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--line); }
+    main { padding: 24px; }
+    .twocol { grid-template-columns: 1fr; }
+  }
+  footer.page { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: .82rem; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <div class="brand">ooze<small>Onboarding Guide</small></div>
+    <nav>
+      <ol>
+        <li><a href="#principle">Guiding principle</a></li>
+        <li><a href="#operators">What ooze mutates</a></li>
+        <li><a href="#phase1">Phase 1 — Baseline</a></li>
+        <li><a href="#phase2">Phase 2 — Changed code only</a></li>
+        <li><a href="#phase3">Phase 3 — Exclude bad targets</a></li>
+        <li><a href="#phase4">Phase 4 — Coverage to rank</a></li>
+        <li><a href="#phase5">Phase 5 — Generate agent tasks</a></li>
+        <li><a href="#phase6">Phase 6 — CI in advisory mode</a></li>
+        <li><a href="#phase7">Phase 7 — Soft team policy</a></li>
+        <li><a href="#phase8">Phase 8 — Gate changed code</a></li>
+        <li><a href="#phase9">Phase 9 — Widen scope</a></li>
+        <li><a href="#refconfig">Reference config</a></li>
+        <li><a href="#adoption">Tracking adoption</a></li>
+        <li><a href="#rollout">Rollout in one place</a></li>
+      </ol>
+    </nav>
+  </aside>
+
+  <main>
+    <header class="page" id="top">
+      <h1>Onboarding ooze into an existing project</h1>
+      <p>A practical strategy for introducing mutation testing into a brown-field codebase
+      without making the team resent it. Start ooze as a test-improvement advisor scoped to
+      changed code, generate concrete test-writing tasks, and tighten into a gate only once
+      the signal is trusted.</p>
+      <div class="tags">
+        <span>brown-field rollout</span>
+        <span>advisory → gate</span>
+        <span>changed-only scope</span>
+        <span>9 phases</span>
+      </div>
+    </header>
+
+    <div class="callout note">
+      <span class="label">How this document was produced</span>
+      <p>Every command, flag, and config key below was verified against the ooze source in
+      this repository — <code>src/main.rs</code>, <code>src/core.rs</code>,
+      <code>src/scheduler.rs</code>, <code>src/config/schema.rs</code>, and
+      <code>docs/config.md</code>. Run <code>ooze --help</code>,
+      <code>ooze &lt;command&gt; --help</code>, and <code>ooze operators</code> to confirm the
+      surface for your build. A Markdown version lives at
+      <a href="./onboarding.md"><code>docs/onboarding.md</code></a>.</p>
+    </div>
+
+    <section id="principle">
+      <h2><span class="num">00</span>Guiding principle</h2>
+      <p>Do <strong>not</strong> start by mutating the whole repo. For brown-field code, the
+      goal of the first few weeks is not a coverage gate — it is to surface a small number of
+      high-value survived mutants and turn them into concrete test-writing tasks. Start ooze
+      as a <strong>test-improvement advisor</strong>, scoped to code the team is already
+      changing, in advisory (non-gating) mode. Tighten only once the signal is trusted.</p>
+      <div class="cards">
+        <div class="card"><h4>Killed</h4><p>A test failed — the suite caught the mutation. Good.</p></div>
+        <div class="card"><h4>Survived</h4><p>Tests still passed — a gap in the suite. This is the actionable signal.</p></div>
+        <div class="card"><h4>Timeout / Error</h4><p>Infrastructure problems. Keep these visible and separate from survivors.</p></div>
+      </div>
+    </section>
+
+    <section id="operators">
+      <h2><span class="num">01</span>What ooze actually mutates</h2>
+      <p>ooze ships a fixed set of small, high-signal operators — boolean, comparison,
+      equality, <code>None</code>/null, and empty-collection mutations. List the ones built
+      into your binary with:</p>
+      <pre><code>ooze operators</code></pre>
+      <div class="callout warn">
+        <span class="label">Myth to drop</span>
+        <p>There are <strong>no</strong> arithmetic, string, regex, or statement-removal
+        operators in ooze, so there is nothing of that kind to "turn off." The only
+        default-off operator is <code>integer_zero_one</code> — opt into it explicitly via
+        the <code>operators</code> allow-list if you want it. An operator only runs for
+        languages that implement it; see <a href="./config.md"><code>docs/config.md</code></a>
+        for the per-language breakdown.</p>
+      </div>
+    </section>
+
+    <section id="phase1">
+      <h2><span class="num">02</span>Phase 1 — Baseline</h2>
+      <div class="phase-meta">
+        <span class="pill goal">Goal: prove the probe is stable</span>
+        <span class="pill">scope: local</span>
+        <span class="pill">gating: none</span>
+      </div>
+      <p>Confirm the existing test command is stable and ooze's preconditions pass.</p>
+      <pre><code>ooze doctor --path .</code></pre>
+      <p>Generate a starter config:</p>
+      <pre><code>ooze init-config --language rust</code></pre>
+      <p>Edit <code>ooze.toml</code> so the probe runs your normal test command:</p>
+      <pre><code>[probe]
+command = ["cargo", "test", "--jobs", "1"]
+
+[runner]
+preflight = true
+timeout_seconds = 120
+jobs = 1
+workspace_backend = "auto"
+cache_dir = ".ooze/cache"
+runs_dir = ".ooze/runs"
+
+[report]
+format = "human"
+fail_on_survivors = false
+allow_incomplete = false</code></pre>
+      <p>Smoke-test a single mutant:</p>
+      <pre><code>ooze test-mutants --limit 1</code></pre>
+      <p>Expected: preflight passes, one mutant runs, the original tree is left unchanged. Fix
+      any runner/probe/config issues before widening scope.</p>
+      <div class="callout note">
+        <span class="label">test-mutants vs test-mutant</span>
+        <p><code>test-mutants</code> (plural) runs a batch and produces a report.
+        <code>test-mutant</code> (singular) runs exactly one mutant by id — handy for
+        debugging, not for normal runs.</p>
+      </div>
+    </section>
+
+    <section id="phase2">
+      <h2><span class="num">03</span>Phase 2 — Changed code only</h2>
+      <div class="phase-meta">
+        <span class="pill goal">Goal: focus on code the team is editing</span>
+        <span class="pill">scope: diff vs base</span>
+        <span class="pill">gating: none</span>
+      </div>
+      <p>For brown-field repos, scope to what the team is editing:</p>
+      <pre><code>[scope]
+changed_only = "main"</code></pre>
+      <p>or per-invocation:</p>
+      <pre><code>ooze plan-mutants --changed-only main --limit 20</code></pre>
+      <p><code>plan-mutants</code> shows the selection, scores, and applied excludes
+      <strong>without</strong> running any probes — use it to sanity-check scope before
+      spending test time. A good first real run:</p>
+      <pre><code>ooze test-mutants \
+  --changed-only main \
+  --strategy actionable \
+  --limit 10 \
+  --format agent-tasks-markdown \
+  --output ooze-tasks.md \
+  --no-fail-on-survivors</code></pre>
+    </section>
+
+    <section id="phase3">
+      <h2><span class="num">04</span>Phase 3 — Exclude bad mutation targets</h2>
+      <div class="phase-meta">
+        <span class="pill goal">Goal: mutate business logic, not codegen</span>
+      </div>
+      <p>Keep ooze on business logic, not generated code, fixtures, or snapshots.
+      <code>DEFAULT_EXCLUDES</code> (<code>.git</code>, <code>target</code>,
+      <code>.ooze</code>, <code>node_modules</code>, <code>vendor</code>,
+      <code>__pycache__</code>, <code>.gradle</code>) and <code>.gitignore</code> are always
+      applied; add the rest:</p>
+      <pre><code>[scope]
+exclude = [
+  "dist/**",
+  "build/**",
+  "coverage/**",
+  "**/generated/**",
+  "**/*.generated.*",
+  "**/*_pb2.py",
+  "**/*.pb.go",
+  "**/fixtures/**",
+  "**/testdata/**",
+  "**/__snapshots__/**",
+  "**/snapshots/**",
+]</code></pre>
+    </section>
+
+    <section id="phase4">
+      <h2><span class="num">05</span>Phase 4 — Use coverage to rank, not to punish</h2>
+      <div class="phase-meta">
+        <span class="pill goal">Goal: prioritize, don't gate</span>
+      </div>
+      <p>Feed coverage in so ooze can prioritize; don't turn it into a gate yet. Each
+      <code>--coverage</code> entry is <code>format:path</code> (<code>lcov</code>,
+      <code>cobertura</code>, <code>jacoco</code>, <code>go-cover</code>) or a bare path to
+      auto-detect; multiple entries merge.</p>
+      <pre><code>ooze test-mutants --coverage lcov:coverage/lcov.info
+ooze test-mutants --coverage cobertura:coverage.xml
+ooze test-mutants --coverage go-cover:coverage.out
+ooze test-mutants --coverage jacoco:build/reports/jacoco/test/jacocoTestReport.xml</code></pre>
+      <p>With the <code>actionable</code> strategy, the sweet-spot targets are functions with
+      moderate CRAP, some existing coverage, small enough to understand, and fast tests.</p>
+      <div class="twocol">
+        <div class="card"><h4 class="good">Good first targets</h4>
+          <p>Moderate CRAP, partial coverage, small business-logic functions, fast tests.</p></div>
+        <div class="card"><h4 class="bad">Avoid at first</h4>
+          <p>CRAP-100 god-functions, 0%-coverage code, framework wiring, slow
+          database/network-heavy integration flows.</p></div>
+      </div>
+    </section>
+
+    <section id="phase5">
+      <h2><span class="num">06</span>Phase 5 — Generate agent tasks</h2>
+      <div class="phase-meta">
+        <span class="pill goal">Goal: turn survivors into work</span>
+      </div>
+      <p>The strongest brown-field workflow turns survivors into specific test-writing tasks:</p>
+      <pre><code>ooze test-mutants \
+  --changed-only main \
+  --strategy actionable \
+  --limit 25 \
+  --format agent-tasks-markdown \
+  --output ooze-tasks.md \
+  --no-fail-on-survivors</code></pre>
+      <p>Hand <code>ooze-tasks.md</code> to a developer or an AI agent. Each task names the
+      file, function, line, the surviving mutation, source context, and CRAP/coverage — i.e.
+      exactly what's needed to write a targeted test.</p>
+    </section>
+
+    <section id="phase6">
+      <h2><span class="num">07</span>Phase 6 — CI in advisory mode</h2>
+      <div class="phase-meta">
+        <span class="pill goal">Goal: PR feedback without blocking</span>
+        <span class="pill">gating: none</span>
+      </div>
+      <p>Start CI non-blocking with GitHub annotations:</p>
+      <pre><code>name: ooze
+
+on:
+  pull_request:
+
+jobs:
+  mutation-advice:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build ooze
+        run: cargo build --release
+
+      - name: Run ooze
+        run: |
+          ./target/release/ooze test-mutants \
+            --changed-only origin/main \
+            --strategy actionable \
+            --limit 25 \
+            --jobs 2 \
+            --timeout-seconds 120 \
+            --format github-annotations \
+            --no-fail-on-survivors \
+            -- cargo test --jobs 1</code></pre>
+      <p>Prefer SARIF? Swap the format and upload it:</p>
+      <pre><code>      - name: Run ooze (SARIF)
+        run: |
+          ./target/release/ooze test-mutants \
+            --changed-only origin/main \
+            --strategy actionable \
+            --limit 25 \
+            --jobs 2 \
+            --timeout-seconds 120 \
+            --format sarif \
+            --output ooze.sarif \
+            --no-fail-on-survivors \
+            -- cargo test --jobs 1
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ooze.sarif</code></pre>
+      <p>Everything after <code>--</code> is the probe command. See
+      <a href="./ci.md"><code>docs/ci.md</code></a> for more.</p>
+    </section>
+
+    <section id="phase7">
+      <h2><span class="num">08</span>Phase 7 — Soft team policy</h2>
+      <div class="phase-meta">
+        <span class="pill goal">Goal: a norm, not a gate</span>
+      </div>
+      <p>Once the output is trusted, agree on a rule (still without failing CI):</p>
+      <div class="callout conv">
+        <span class="label">Team rule</span>
+        <p>If ooze finds a survived mutant in changed business logic, either add a test, mark
+        it intentionally ignored, or explain why the survivor is acceptable.</p>
+      </div>
+      <p>Keep <code>--no-fail-on-survivors</code> on and require humans to review the tasks.</p>
+    </section>
+
+    <section id="phase8">
+      <h2><span class="num">09</span>Phase 8 — Gate changed code only</h2>
+      <div class="phase-meta">
+        <span class="pill goal">Goal: new work kills its mutants</span>
+        <span class="pill">gating: changed code</span>
+      </div>
+      <p>When the team is ready, drop <code>--no-fail-on-survivors</code> for changed code so
+      new work must kill its mutants:</p>
+      <pre><code>ooze test-mutants \
+  --changed-only origin/main \
+  --strategy actionable \
+  --limit 50 \
+  --format human</code></pre>
+      <p>Keep <code>allow_incomplete = false</code> so infrastructure failures
+      (timeouts/errors) still surface separately from survivors. Do not gate the historical
+      repo yet.</p>
+    </section>
+
+    <section id="phase9">
+      <h2><span class="num">10</span>Phase 9 — Widen scope in slices</h2>
+      <div class="phase-meta">
+        <span class="pill goal">Goal: expand without a cliff</span>
+      </div>
+      <p>Expand module by module, not all at once:</p>
+      <pre><code>ooze test-mutants --path crates/domain --strategy actionable --limit 50
+# later
+ooze test-mutants --path crates/domain --strategy actionable --limit 100</code></pre>
+    </section>
+
+    <section id="refconfig">
+      <h2><span class="num">11</span>Reference config for brown-field repos</h2>
+      <p>This parses against the current schema. The config uses
+      <code>deny_unknown_fields</code>, so a typo or an unsupported key (for example
+      <code>shared_target</code>) is rejected as a load error rather than ignored — only use
+      keys listed in <a href="./config.md"><code>docs/config.md</code></a>.</p>
+      <pre><code>[scope]
+changed_only = "main"
+exclude = [
+  "dist/**",
+  "build/**",
+  "coverage/**",
+  "**/generated/**",
+  "**/*.generated.*",
+  "**/fixtures/**",
+  "**/testdata/**",
+  "**/__snapshots__/**",
+  "**/snapshots/**",
+]
+
+[mutation]
+strategy = "actionable"
+limit = 25
+static_skips = true
+context_lines = 3
+
+[runner]
+workspace_backend = "auto"
+jobs = 2
+timeout_seconds = 120
+preflight = true
+warmup = true
+per_worker_cache = true
+cache_dir = ".ooze/cache"
+runs_dir = ".ooze/runs"
+
+[probe]
+command = ["cargo", "test", "--jobs", "1"]
+env = ["RUST_BACKTRACE=1"]
+
+[report]
+format = "agent-tasks-markdown"
+output = "ooze-tasks.md"
+detail = "compact"
+fail_on_survivors = false
+allow_incomplete = false
+diff = false
+stdout = false
+stderr = true
+only_survivors = true</code></pre>
+      <div class="callout note">
+        <span class="label">On the operators key</span>
+        <p>The <code>[mutation]</code> <code>operators</code> / <code>exclude_operators</code>
+        keys are optional. By default every operator implemented for your language runs except
+        <code>integer_zero_one</code>. Only add an <code>operators</code> allow-list if you
+        have a reason to narrow it — there are no noisy arithmetic/string/regex operators to
+        exclude.</p>
+      </div>
+    </section>
+
+    <section id="adoption">
+      <h2><span class="num">12</span>Tracking adoption</h2>
+      <div class="twocol">
+        <div class="card"><h4 class="good">Good signs</h4>
+          <p>Survivors lead to real tests; timeouts/errors are rare; the same functions stop
+          reappearing; developers understand the generated tasks.</p></div>
+        <div class="card"><h4 class="bad">Bad signs</h4>
+          <p>Lots of equivalent/noisy mutants; frequent timeouts; mutating fixtures or
+          generated code; oversized reports; ignored annotations.</p></div>
+      </div>
+    </section>
+
+    <section id="rollout">
+      <h2><span class="num">13</span>Recommended rollout, in one place</h2>
+      <table>
+        <thead><tr><th>Step</th><th>What</th><th>Gating</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Local only: <code>doctor</code> + <code>preflight</code> + <code>--limit 1</code></td><td>none</td></tr>
+          <tr><td>2</td><td>Local changed-only: <code>--limit 10</code>, <code>agent-tasks-markdown</code></td><td>none</td></tr>
+          <tr><td>3</td><td>PR advisory: GitHub annotations or SARIF</td><td>none</td></tr>
+          <tr><td>4</td><td>Team policy: survivors require a test or an explanation</td><td>social</td></tr>
+          <tr><td>5</td><td>Changed-code gate: drop <code>--no-fail-on-survivors</code> for changed files only</td><td>changed code</td></tr>
+          <tr><td>6</td><td>Module campaigns: larger manual batches per critical crate/package</td><td>per module</td></tr>
+        </tbody>
+      </table>
+      <p>Start tiny, stay on changed code, generate useful tasks, and gate only once the
+      signal is trusted.</p>
+    </section>
+
+    <footer class="page">
+      ooze onboarding guide · companion to <a href="./onboarding.md">onboarding.md</a>,
+      <a href="./config.md">config.md</a>, <a href="./ci.md">ci.md</a>, and
+      <a href="./spec.html">spec.html</a>.
+    </footer>
+  </main>
+</div>
+</body>
+</html>
