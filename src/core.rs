@@ -252,6 +252,13 @@ pub enum OperatorName {
     OkErrBoolean,
     SomeBoolean,
     OptionSomeNone,
+    RemoveTry,
+    UnwrapToUnwrapOrDefault,
+    MinMaxSwap,
+    MatchWildcardToPanic,
+    EmptyVecMacro,
+    SaturatingCheckedSwap,
+    ExpectToUnwrapOrDefault,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -395,6 +402,13 @@ impl OperatorName {
         OperatorName::OkErrBoolean,
         OperatorName::SomeBoolean,
         OperatorName::OptionSomeNone,
+        OperatorName::RemoveTry,
+        OperatorName::UnwrapToUnwrapOrDefault,
+        OperatorName::MinMaxSwap,
+        OperatorName::MatchWildcardToPanic,
+        OperatorName::EmptyVecMacro,
+        OperatorName::SaturatingCheckedSwap,
+        OperatorName::ExpectToUnwrapOrDefault,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -423,6 +437,13 @@ impl OperatorName {
             OperatorName::OkErrBoolean => "ok_err_boolean",
             OperatorName::SomeBoolean => "some_boolean",
             OperatorName::OptionSomeNone => "option_some_none",
+            OperatorName::RemoveTry => "remove_try",
+            OperatorName::UnwrapToUnwrapOrDefault => "unwrap_to_unwrap_or_default",
+            OperatorName::MinMaxSwap => "min_max_swap",
+            OperatorName::MatchWildcardToPanic => "match_wildcard_to_panic",
+            OperatorName::EmptyVecMacro => "empty_vec_macro",
+            OperatorName::SaturatingCheckedSwap => "saturating_checked_swap",
+            OperatorName::ExpectToUnwrapOrDefault => "expect_to_unwrap_or_default",
         }
     }
 
@@ -599,6 +620,55 @@ impl OperatorName {
                 default_enabled: false,
                 description: "Replace a Some(value) with None (Some(x) -> None).",
                 test_hint: "Add a test that distinguishes a present value from None.",
+            },
+            OperatorName::RemoveTry => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::ErrorHandling,
+                default_enabled: false,
+                description: "Remove the ? operator from a try expression (foo()? -> foo()).",
+                test_hint: "Add a test that drives the error path so propagation matters.",
+            },
+            OperatorName::UnwrapToUnwrapOrDefault => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::ErrorHandling,
+                default_enabled: false,
+                description: "Replace unwrap() with unwrap_or_default() (x.unwrap() -> x.unwrap_or_default()).",
+                test_hint: "Add a test on the None/Err case so the panic-vs-default difference shows.",
+            },
+            OperatorName::MinMaxSwap => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Method,
+                default_enabled: false,
+                description: "Swap a min/max call for its opposite (min <-> max).",
+                test_hint: "Add inputs where the smallest and largest values differ.",
+            },
+            OperatorName::MatchWildcardToPanic => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::PatternMatching,
+                default_enabled: false,
+                description: "Replace a wildcard match arm's value with a panic (_ => expr -> _ => panic!(..)).",
+                test_hint: "Add a test that exercises the fallback/default match arm.",
+            },
+            OperatorName::EmptyVecMacro => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Collection,
+                default_enabled: false,
+                description: "Empty a vec! literal (vec![a, b, c] -> vec![]).",
+                test_hint: "Assert the vector's contents, not just that it is non-empty.",
+            },
+            OperatorName::SaturatingCheckedSwap => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Arithmetic,
+                default_enabled: false,
+                description: "Swap saturating/checked arithmetic (checked_add <-> saturating_add, checked_sub <-> saturating_sub).",
+                test_hint: "Add a test at the overflow boundary so saturating and checked behavior differ.",
+            },
+            OperatorName::ExpectToUnwrapOrDefault => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::ErrorHandling,
+                default_enabled: false,
+                description: "Replace expect(msg) with unwrap_or_default() (x.expect(\"..\") -> x.unwrap_or_default()).",
+                test_hint: "Add a test on the None/Err case so the panic-vs-default difference shows.",
             },
         }
     }

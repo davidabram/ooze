@@ -38,10 +38,18 @@ Built-in operators: `comparison_boundary`, `comparison_negation`,
 `contains(x)` -> `!contains(x)`), `iterator_any_all` (`any(..)` <-> `all(..)`),
 `match_bool_pattern` (`true =>` <-> `false =>`), `ok_err_boolean`
 (`Ok(true)` <-> `Ok(false)`, `Err(..)` likewise), `some_boolean`
-(`Some(true)` <-> `Some(false)`), and `option_some_none` (`Some(x)` -> `None`).
-All are on by default except `integer_zero_one` and `option_some_none`, which
-are off by default and must be opted in via `operators`. An operator only runs
-for languages that implement it.
+(`Some(true)` <-> `Some(false)`), `option_some_none` (`Some(x)` -> `None`),
+`remove_try` (`foo()?` -> `foo()`), `unwrap_to_unwrap_or_default`
+(`x.unwrap()` -> `x.unwrap_or_default()`), `min_max_swap` (`min` <-> `max`),
+`match_wildcard_to_panic` (`_ => expr` -> `_ => panic!(..)`), `empty_vec_macro`
+(`vec![a, b, c]` -> `vec![]`), `saturating_checked_swap` (`checked_add` <->
+`saturating_add`, `checked_sub` <-> `saturating_sub`), and
+`expect_to_unwrap_or_default` (`x.expect("..")` -> `x.unwrap_or_default()`). All
+are on by default except `integer_zero_one`, `option_some_none`, `remove_try`,
+`unwrap_to_unwrap_or_default`, `min_max_swap`, `match_wildcard_to_panic`,
+`empty_vec_macro`, `saturating_checked_swap`, and `expect_to_unwrap_or_default`,
+which are off by default and must be opted in via `operators`. An operator only
+runs for languages that implement it.
 
 `operators` / `exclude_operators` filter by **semantic operator**, so they apply
 to every language being scanned. Each operator is realized by one or more

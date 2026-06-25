@@ -824,6 +824,27 @@ pub fn suggest(candidate: &MutationCandidate) -> TestSuggestion {
         OperatorName::OptionSomeNone => format!(
             "Add a test for `{func}` in `{file}` that distinguishes a present value from None at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
         ),
+        OperatorName::RemoveTry => format!(
+            "Add a test for `{func}` in `{file}` that drives the error path of the `?` at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::UnwrapToUnwrapOrDefault => format!(
+            "Add a test for `{func}` in `{file}` that exercises the None/Err case at line {line} so the panic-vs-default behavior differs. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::MinMaxSwap => format!(
+            "Add a test for `{func}` in `{file}` where the smallest and largest values differ so `{original}` and `{replacement}` disagree at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::MatchWildcardToPanic => format!(
+            "Add a test for `{func}` in `{file}` that exercises the fallback match arm at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::EmptyVecMacro => format!(
+            "Add a test for `{func}` in `{file}` that asserts the contents of the vector at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::SaturatingCheckedSwap => format!(
+            "Add a test for `{func}` in `{file}` at the overflow boundary so saturating and checked behavior differ at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::ExpectToUnwrapOrDefault => format!(
+            "Add a test for `{func}` in `{file}` that exercises the None/Err case at line {line} so the panic-vs-default behavior differs. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
     };
 
     TestSuggestion {

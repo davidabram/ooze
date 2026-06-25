@@ -252,6 +252,108 @@ pub const MUTATORS: &[MutatorImpl] = &[
         description: |original, _replacement| format!("Replace `{original}` with `None`"),
         default_enabled_override: None,
     },
+    MutatorImpl {
+        id: "rust.remove_try",
+        operator: OperatorName::RemoveTry,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/remove-try.scm"),
+        replacement: |original| original.strip_suffix('?').map(str::to_string),
+        description: |original, replacement| {
+            format!("Remove `?` propagation `{original}` -> `{replacement}`")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "rust.unwrap_to_unwrap_or_default",
+        operator: OperatorName::UnwrapToUnwrapOrDefault,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/unwrap-to-unwrap-or-default.scm"),
+        replacement: |original| match original {
+            "unwrap" => Some("unwrap_or_default".to_string()),
+            _ => None,
+        },
+        description: |_original, _replacement| {
+            "Replace `unwrap()` with `unwrap_or_default()`".to_string()
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "rust.min_max_swap",
+        operator: OperatorName::MinMaxSwap,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/min-max-swap.scm"),
+        replacement: |original| match original {
+            "min" => Some("max".to_string()),
+            "max" => Some("min".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| format!("Swap {original} -> {replacement}"),
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "rust.match_wildcard_to_panic",
+        operator: OperatorName::MatchWildcardToPanic,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/match-wildcard-to-panic.scm"),
+        replacement: |_original| Some("panic!(\"ooze mutant\")".to_string()),
+        description: |original, _replacement| {
+            format!("Replace wildcard arm value `{original}` with a panic")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "rust.empty_vec_macro",
+        operator: OperatorName::EmptyVecMacro,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/empty-vec-macro.scm"),
+        // The query already scopes matches to the `vec!` macro; replace the whole
+        // invocation with an empty one.
+        replacement: |original| {
+            if original.starts_with("vec!") {
+                Some("vec![]".to_string())
+            } else {
+                None
+            }
+        },
+        description: |original, _replacement| format!("Empty `{original}` -> `vec![]`"),
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "rust.saturating_checked_swap",
+        operator: OperatorName::SaturatingCheckedSwap,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/saturating-checked-swap.scm"),
+        replacement: |original| match original {
+            "checked_add" => Some("saturating_add".to_string()),
+            "saturating_add" => Some("checked_add".to_string()),
+            "checked_sub" => Some("saturating_sub".to_string()),
+            "saturating_sub" => Some("checked_sub".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Swap overflow handling {original}(...) -> {replacement}(...)")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "rust.expect_to_unwrap_or_default",
+        operator: OperatorName::ExpectToUnwrapOrDefault,
+        language: Language::Rust,
+        query: include_str!("../../queries/rust/expect-to-unwrap-or-default.scm"),
+        // The @target is the whole `recv.expect(msg)` call. Split off the receiver
+        // at `.expect(` and drop the message so the result is `recv.unwrap_or_default()`.
+        replacement: |original| {
+            let receiver = original.split(".expect(").next()?;
+            if receiver == original {
+                return None;
+            }
+            Some(format!("{receiver}.unwrap_or_default()"))
+        },
+        description: |_original, _replacement| {
+            "Replace `expect(..)` with `unwrap_or_default()`".to_string()
+        },
+        default_enabled_override: None,
+    },
 ];
 
 pub const GRAMMAR: GrammarDef = GrammarDef {

@@ -338,10 +338,11 @@ mod operator_fixture_tests {
     fn rust_operator_fixture_discovers_expected_mutants() {
         use Language::Rust;
         use OperatorName::{
-            ComparisonBoundary, ComparisonNegation, IntegerZeroOne, IteratorAnyAll,
-            MatchBoolPattern, NegateEquality, NegatePredicateMethod, OkErrBoolean, OptionSomeNone,
-            RangeInclusiveExclusive, RemoveNot, ReturnBoolean, SomeBoolean, SwapBoolean,
-            SwapLogical, SwapPredicateMethod,
+            ComparisonBoundary, ComparisonNegation, EmptyVecMacro, ExpectToUnwrapOrDefault,
+            IntegerZeroOne, IteratorAnyAll, MatchBoolPattern, MatchWildcardToPanic, MinMaxSwap,
+            NegateEquality, NegatePredicateMethod, OkErrBoolean, OptionSomeNone,
+            RangeInclusiveExclusive, RemoveNot, RemoveTry, ReturnBoolean, SaturatingCheckedSwap,
+            SomeBoolean, SwapBoolean, SwapLogical, SwapPredicateMethod, UnwrapToUnwrapOrDefault,
         };
 
         let got = discovered("tests/fixtures/operators/rust");
@@ -389,6 +390,37 @@ mod operator_fixture_tests {
             expect(Rust, "some_boolean", SwapBoolean, "true", "false"),
             expect(Rust, "some_boolean", OptionSomeNone, "Some(true)", "None"),
             expect(Rust, "option_some_none", OptionSomeNone, "Some(x)", "None"),
+            expect(Rust, "remove_try", RemoveTry, "r?", "r"),
+            expect(
+                Rust,
+                "unwrap_to_unwrap_or_default",
+                UnwrapToUnwrapOrDefault,
+                "unwrap",
+                "unwrap_or_default",
+            ),
+            expect(Rust, "min_max_swap", MinMaxSwap, "min", "max"),
+            expect(
+                Rust,
+                "match_wildcard_to_panic",
+                MatchWildcardToPanic,
+                "200",
+                "panic!(\"ooze mutant\")",
+            ),
+            expect(Rust, "empty_vec_macro", EmptyVecMacro, "vec![3, 4, 5]", "vec![]"),
+            expect(
+                Rust,
+                "saturating_checked_swap",
+                SaturatingCheckedSwap,
+                "checked_add",
+                "saturating_add",
+            ),
+            expect(
+                Rust,
+                "expect_to_unwrap_or_default",
+                ExpectToUnwrapOrDefault,
+                "opt.expect(\"must be present\")",
+                "opt.unwrap_or_default()",
+            ),
         ]
         .into_iter()
         .collect();
