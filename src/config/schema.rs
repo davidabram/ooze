@@ -36,6 +36,8 @@ pub struct MutationConfigToml {
     pub static_skips: Option<bool>,
     pub context_lines: Option<usize>,
     pub lcov: Option<PathBuf>,
+    #[serde(default)]
+    pub coverage: Vec<String>,
     pub limit: Option<usize>,
 }
 

@@ -38,7 +38,8 @@ strategy = "actionable"
 static_skips = true
 context_lines = 3
 # limit = 50
-# lcov = "lcov.info"
+# coverage = ["lcov:lcov.info"]   # list, merged: cobertura:coverage.xml, jacoco:jacoco.xml, go-cover:coverage.out, or a bare path to auto-detect
+# lcov = "lcov.info"              # deprecated alias for coverage = ["lcov:lcov.info"]
 
 [runner]
 workspace_backend = "auto"
@@ -81,7 +82,8 @@ strategy = "actionable"
 static_skips = true
 context_lines = 3
 # limit = 50
-# lcov = "lcov.info"
+# coverage = ["lcov:lcov.info"]   # list, merged: cobertura:coverage.xml, jacoco:jacoco.xml, go-cover:coverage.out, or a bare path to auto-detect
+# lcov = "lcov.info"              # deprecated alias for coverage = ["lcov:lcov.info"]
 
 [runner]
 workspace_backend = "auto"
@@ -122,7 +124,8 @@ strategy = "actionable"
 static_skips = true
 context_lines = 3
 # limit = 50
-# lcov = "lcov.info"
+# coverage = ["lcov:lcov.info"]   # list, merged: cobertura:coverage.xml, jacoco:jacoco.xml, go-cover:coverage.out, or a bare path to auto-detect
+# lcov = "lcov.info"              # deprecated alias for coverage = ["lcov:lcov.info"]
 
 [runner]
 workspace_backend = "auto"
@@ -164,7 +167,8 @@ strategy = "actionable"
 static_skips = true
 context_lines = 3
 # limit = 50
-# lcov = "lcov.info"
+# coverage = ["lcov:lcov.info"]   # list, merged: cobertura:coverage.xml, jacoco:jacoco.xml, go-cover:coverage.out, or a bare path to auto-detect
+# lcov = "lcov.info"              # deprecated alias for coverage = ["lcov:lcov.info"]
 
 [runner]
 workspace_backend = "auto"
@@ -205,7 +209,8 @@ strategy = "actionable"
 static_skips = true
 context_lines = 3
 # limit = 50
-# lcov = "lcov.info"
+# coverage = ["lcov:lcov.info"]   # list, merged: cobertura:coverage.xml, jacoco:jacoco.xml, go-cover:coverage.out, or a bare path to auto-detect
+# lcov = "lcov.info"              # deprecated alias for coverage = ["lcov:lcov.info"]
 
 [runner]
 workspace_backend = "auto"
@@ -245,7 +250,8 @@ strategy = "actionable"
 static_skips = true
 context_lines = 3
 # limit = 50
-# lcov = "lcov.info"
+# coverage = ["lcov:lcov.info"]   # list, merged: cobertura:coverage.xml, jacoco:jacoco.xml, go-cover:coverage.out, or a bare path to auto-detect
+# lcov = "lcov.info"              # deprecated alias for coverage = ["lcov:lcov.info"]
 
 [runner]
 workspace_backend = "auto"
@@ -284,7 +290,8 @@ strategy = "actionable"
 static_skips = true
 context_lines = 3
 # limit = 50
-# lcov = "lcov.info"
+# coverage = ["lcov:lcov.info"]   # list, merged: cobertura:coverage.xml, jacoco:jacoco.xml, go-cover:coverage.out, or a bare path to auto-detect
+# lcov = "lcov.info"              # deprecated alias for coverage = ["lcov:lcov.info"]
 
 [runner]
 workspace_backend = "auto"

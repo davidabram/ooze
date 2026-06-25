@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::core::{CrapEntry, FileCoverage, FunctionSpan};
@@ -75,22 +75,81 @@ fn lookup_coverage<'a>(
     source_file: &Path,
     coverage: &'a HashMap<PathBuf, FileCoverage>,
 ) -> Option<&'a FileCoverage> {
-    if let Some(file_cov) = coverage.get(source_file) {
-        return Some(file_cov);
+    match_coverage_key(source_file, coverage).map(|key| &coverage[key])
+}
+
+/// Find the coverage entry that corresponds to a scanned source file, returning
+/// its key. An exact path wins; otherwise we fall back to suffix matching in
+/// either direction (handles relative vs. absolute and package-rooted paths).
+fn match_coverage_key<'a>(
+    source_file: &Path,
+    coverage: &'a HashMap<PathBuf, FileCoverage>,
+) -> Option<&'a PathBuf> {
+    if let Some((key, _)) = coverage.get_key_value(source_file) {
+        return Some(key);
     }
 
-    coverage
-        .iter()
-        .find_map(|(coverage_path, file_cov)| {
-            (path_has_suffix(source_file, coverage_path)
-                || path_has_suffix(coverage_path, source_file))
-            .then_some(file_cov)
-        })
+    coverage.keys().find(|coverage_path| {
+        path_has_suffix(source_file, coverage_path)
+            || path_has_suffix(coverage_path, source_file)
+    })
+}
+
+/// Diagnostics describing how well a coverage map lines up with the scanned
+/// source tree. Surfaced to users so path-root mismatches (Docker, CI,
+/// monorepos) are visible rather than silently scoring everything as uncovered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::struct_field_names)] // the shared `_files` suffix aids clarity here
+pub struct CoverageMatch {
+    /// Distinct source files present in the coverage map.
+    pub coverage_source_files: usize,
+    /// Scanned source files that matched a coverage entry.
+    pub matched_source_files: usize,
+    /// Scanned source files with no coverage entry.
+    pub unmatched_source_files: usize,
+    /// Coverage entries that no scanned source file matched.
+    pub unmatched_coverage_files: usize,
+}
+
+/// Compare the scanned source files against a coverage map.
+pub fn match_report(
+    scanned_files: &[PathBuf],
+    coverage: &HashMap<PathBuf, FileCoverage>,
+) -> CoverageMatch {
+    let mut matched_keys: HashSet<&PathBuf> = HashSet::new();
+    let mut matched = 0;
+    let mut unmatched = 0;
+
+    for file in scanned_files {
+        if let Some(key) = match_coverage_key(file, coverage) {
+            matched += 1;
+            matched_keys.insert(key);
+        } else {
+            unmatched += 1;
+        }
+    }
+
+    CoverageMatch {
+        coverage_source_files: coverage.len(),
+        matched_source_files: matched,
+        unmatched_source_files: unmatched,
+        unmatched_coverage_files: coverage.len() - matched_keys.len(),
+    }
 }
 
 fn path_has_suffix(path: &Path, suffix: &Path) -> bool {
-    let path_components: Vec<_> = path.components().collect();
-    let suffix_components: Vec<_> = suffix.components().collect();
+    // Ignore `.` (CurDir) components so a scanned `./foo.go` still matches a
+    // coverage path like `github.com/me/app/foo.go` or an absolute path.
+    let path_components: Vec<_> = path
+        .components()
+        .filter(|c| !matches!(c, std::path::Component::CurDir))
+        .map(std::path::Component::as_os_str)
+        .collect();
+    let suffix_components: Vec<_> = suffix
+        .components()
+        .filter(|c| !matches!(c, std::path::Component::CurDir))
+        .map(std::path::Component::as_os_str)
+        .collect();
 
     if suffix_components.len() > path_components.len() {
         return false;

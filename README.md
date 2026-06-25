@@ -103,7 +103,8 @@ Full per-language recipes in [docs/running-mutants.md](docs/running-mutants.md).
 | `--timeout-seconds`    | Per-mutant probe timeout (→ `timeout` verdict).                      |
 | `--workspace-backend`  | `copy`, `overlay`, `auto`.                                           |
 | `--exclude`            | Extra globs. Defaults + `.gitignore` always apply.                   |
-| `--lcov`               | Feed coverage into candidate ordering.                               |
+| `--coverage`           | Feed coverage into ordering. `format:path` or a bare path to auto-detect. Formats: `lcov`, `cobertura`, `jacoco`, `go-cover`. Repeatable; reports are merged. |
+| `--lcov`               | Deprecated alias for `--coverage lcov:<path>`.                       |
 | `--warmup`             | Pre-build probe per worker.                                          |
 | `--per-worker-cache`   | Per-worker `build-cache-job-{i}` dirs.                               |
 | `--probe-env KEY=VAL`  | Env vars on probe + warmup. `{worker}` → worker index, `{build_cache}` → build cache path. |

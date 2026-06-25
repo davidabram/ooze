@@ -45,6 +45,76 @@ pub(crate) const DEFAULT_EXCLUDES: &[&str] = &[
     ".gradle/**",
 ];
 
+const COVERAGE_HELP: &str = "Coverage report as `format:path` or a bare path to auto-detect. \
+Formats: lcov, cobertura, jacoco, go-cover. Repeatable; multiple reports are merged. \
+E.g. --coverage cobertura:coverage.xml";
+
+/// Coverage resolved from the CLI, ready for scoring plus a count of how many
+/// reports were merged (for diagnostics).
+struct ResolvedCoverage {
+    map: std::collections::HashMap<PathBuf, core::FileCoverage>,
+    reports: usize,
+}
+
+/// Resolve coverage from the (repeatable) `--coverage` specs, falling back to
+/// the deprecated `--lcov` flag. Returns `None` when neither was supplied.
+fn resolve_coverage(
+    coverage: &[String],
+    lcov: Option<&std::path::Path>,
+) -> anyhow::Result<Option<ResolvedCoverage>> {
+    if !coverage.is_empty() {
+        return Ok(Some(ResolvedCoverage {
+            map: crap::coverage::load_all(coverage)?,
+            reports: coverage.len(),
+        }));
+    }
+    if let Some(path) = lcov {
+        return Ok(Some(ResolvedCoverage {
+            map: crap::coverage::parse_lcov(path)?,
+            reports: 1,
+        }));
+    }
+    Ok(None)
+}
+
+/// Score `functions` against resolved coverage when present (printing match
+/// diagnostics to stderr), or without coverage otherwise.
+fn score_with_optional_coverage(
+    functions: Vec<core::FunctionSpan>,
+    coverage: Option<ResolvedCoverage>,
+) -> Vec<core::CrapEntry> {
+    match coverage {
+        Some(ResolvedCoverage { map, reports }) => {
+            report_coverage_match(reports, &functions, &map);
+            crap::score_with_coverage(functions, &map)
+        }
+        None => crap::score_without_coverage(functions),
+    }
+}
+
+/// Print how well the coverage reports line up with the scanned source tree.
+fn report_coverage_match(
+    reports: usize,
+    functions: &[core::FunctionSpan],
+    map: &std::collections::HashMap<PathBuf, core::FileCoverage>,
+) {
+    let mut scanned: Vec<PathBuf> = functions.iter().map(|f| f.file.clone()).collect();
+    scanned.sort();
+    scanned.dedup();
+
+    let m = crap::match_report(&scanned, map);
+    eprintln!("ooze: coverage reports parsed: {reports}");
+    eprintln!("ooze: coverage source files:  {}", m.coverage_source_files);
+    eprintln!("ooze: matched source files:   {}", m.matched_source_files);
+    eprintln!("ooze: unmatched coverage files: {}", m.unmatched_coverage_files);
+    eprintln!("ooze: unmatched scanned files:  {}", m.unmatched_source_files);
+    if m.coverage_source_files > 0 && m.matched_source_files == 0 {
+        eprintln!(
+            "ooze: warning: no scanned files matched any coverage entry — check path roots (Docker/CI/monorepo prefixes)"
+        );
+    }
+}
+
 fn read_gitignore_patterns(root: &std::path::Path) -> Vec<String> {
     let path = root.join(".gitignore");
     let Ok(text) = std::fs::read_to_string(&path) else {
@@ -470,8 +540,10 @@ enum Commands {
     Crap {
         #[arg(short, long, default_value = ".")]
         path: String,
-        #[arg(long)]
+        #[arg(long, help = "DEPRECATED: use --coverage. Path to an LCOV tracefile.")]
         lcov: Option<PathBuf>,
+        #[arg(long, value_name = "SPEC", help = COVERAGE_HELP)]
+        coverage: Vec<String>,
         #[arg(long, default_value = "json")]
         format: String,
     },
@@ -494,8 +566,11 @@ enum Commands {
         #[arg(long, default_value = ".")]
         path: PathBuf,
 
-        #[arg(long)]
+        #[arg(long, help = "DEPRECATED: use --coverage. Path to an LCOV tracefile.")]
         lcov: Option<PathBuf>,
+
+        #[arg(long, value_name = "SPEC", help = COVERAGE_HELP)]
+        coverage: Vec<String>,
 
         #[arg(long, value_enum, default_value_t = scheduler::MutationStrategy::Discovery)]
         strategy: scheduler::MutationStrategy,
@@ -588,8 +663,11 @@ struct TestMutantsArgs {
     #[arg(long, default_value = ".")]
     path: PathBuf,
 
-    #[arg(long)]
+    #[arg(long, help = "DEPRECATED: use --coverage. Path to an LCOV tracefile.")]
     lcov: Option<PathBuf>,
+
+    #[arg(long, value_name = "SPEC", help = COVERAGE_HELP)]
+    coverage: Vec<String>,
 
     #[arg(long, value_enum)]
     strategy: Option<scheduler::MutationStrategy>,
@@ -738,6 +816,7 @@ fn main() -> anyhow::Result<()> {
         Commands::PlanMutants {
             path,
             lcov,
+            coverage,
             strategy,
             limit,
             format,
@@ -767,12 +846,8 @@ fn main() -> anyhow::Result<()> {
             };
             let skipped_count = skipped_candidates.len();
 
-            let crap_entries = if let Some(lcov_path) = lcov.as_ref() {
-                let coverage = crap::coverage::parse_lcov(lcov_path)?;
-                crap::score_with_coverage(functions, &coverage)
-            } else {
-                crap::score_without_coverage(functions)
-            };
+            let coverage = resolve_coverage(&coverage, lcov.as_deref())?;
+            let crap_entries = score_with_optional_coverage(functions, coverage);
 
             let mut ordered = scheduler::order(strategy, candidates, &crap_entries);
             if let Some(limit) = limit {
@@ -828,6 +903,7 @@ fn main() -> anyhow::Result<()> {
                 config: config_path,
                 path,
                 lcov,
+                coverage,
                 strategy,
                 limit,
                 jobs,
@@ -921,6 +997,11 @@ fn main() -> anyhow::Result<()> {
                 resolve_disabled_flag(no_fail_on_survivors, cfg.report.fail_on_survivors);
             let allow_incomplete = resolve_bool_flag(allow_incomplete, cfg.report.allow_incomplete);
             let lcov = lcov.or(cfg.mutation.lcov.clone());
+            let coverage = if coverage.is_empty() {
+                cfg.mutation.coverage.clone()
+            } else {
+                coverage
+            };
 
             let exclude = resolve_exclude_list(exclude, &cfg.scope.exclude);
 
@@ -975,12 +1056,8 @@ fn main() -> anyhow::Result<()> {
                 candidates
             };
 
-            let crap_entries = if let Some(lcov_path) = lcov.as_ref() {
-                let coverage = crap::coverage::parse_lcov(lcov_path)?;
-                crap::score_with_coverage(functions, &coverage)
-            } else {
-                crap::score_without_coverage(functions)
-            };
+            let coverage = resolve_coverage(&coverage, lcov.as_deref())?;
+            let crap_entries = score_with_optional_coverage(functions, coverage);
 
             let mut candidates = scheduler::order(strategy, candidates, &crap_entries);
 
@@ -1277,15 +1354,12 @@ fn main() -> anyhow::Result<()> {
         Commands::Crap {
             path,
             lcov,
+            coverage,
             format,
         } => {
             let functions = lang::scan_directory(std::path::Path::new(&path))?;
-            let entries = if let Some(lcov_path) = lcov.as_ref() {
-                let coverage = crap::coverage::parse_lcov(lcov_path)?;
-                crap::score_with_coverage(functions, &coverage)
-            } else {
-                crap::score_without_coverage(functions)
-            };
+            let coverage = resolve_coverage(&coverage, lcov.as_deref())?;
+            let entries = score_with_optional_coverage(functions, coverage);
             if wants_json(&format) {
                 println!("{}", serde_json::to_string_pretty(&entries)?);
             }

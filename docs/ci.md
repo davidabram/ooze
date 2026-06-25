@@ -228,7 +228,7 @@ mutation_testing:
 - `--limit N` — bound wall time. Tune so the job finishes in a budget you'd accept on every PR.
 - `--timeout-seconds T` — kill stuck probes. Set to ~2x your slowest test.
 - `--jobs J` + `--per-worker-cache` + `--warmup` — parallelism without build lock contention and without cold-start cost.
-- `--lcov lcov.info` — if you already collect coverage, feed it in; the scheduler ranks better and CRAP scores become meaningful.
+- `--coverage <spec>` — if you already collect coverage, feed it in; the scheduler ranks better and CRAP scores become meaningful. Pass `format:path` (`lcov`, `cobertura`, `jacoco`, `go-cover`) or a bare path to auto-detect, e.g. `--coverage cobertura:coverage.xml` or `--coverage coverage.out`. Repeatable, and reports are merged — pass one per suite in a monorepo (`--coverage lcov:frontend/lcov.info --coverage jacoco:backend/jacoco.xml`). ooze prints match diagnostics (matched/unmatched source files) to stderr so path-root mismatches are visible. (`--lcov lcov.info` still works as a deprecated alias.)
 
 ## Tuning loop
 

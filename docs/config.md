@@ -26,7 +26,8 @@ typo will surface as a load error rather than being silently ignored.
 | `static_skips` | `bool` | `true` | Skip mutants that the static analyzer flags as equivalent. |
 | `context_lines` | `int` | `3` | Diff context lines shown around each mutant. |
 | `limit` | `int` | unlimited | Cap on the number of mutants to run. |
-| `lcov` | `path` | none | LCOV file used to prioritize by coverage. |
+| `coverage` | `[string]` | `[]` | Coverage reports used to prioritize by coverage. Each entry is `format:path` (`lcov`, `cobertura`, `jacoco`, `go-cover`) or a bare path to auto-detect; multiple entries are merged. |
+| `lcov` | `path` | none | Deprecated alias for `coverage = ["lcov:<path>"]`. |
 
 Built-in operators: `comparison_boundary`, `comparison_negation`,
 `negate_equality`, `swap_logical`, `swap_boolean`, `remove_not`,
