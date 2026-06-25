@@ -4,18 +4,27 @@
     "operator": "swap_boolean",
     "implementation": "javascript.swap_boolean",
     "function": "core",
-    "original": "false",
-    "replacement": "true",
-    "line": 15
+    "original": "true",
+    "replacement": "false",
+    "line": 10
   },
   {
     "language": "javascript",
-    "operator": "swap_boolean",
-    "implementation": "javascript.swap_boolean",
+    "operator": "return_boolean",
+    "implementation": "javascript.return_boolean",
+    "function": "core",
+    "original": "false",
+    "replacement": "true",
+    "line": 16
+  },
+  {
+    "language": "javascript",
+    "operator": "return_boolean",
+    "implementation": "javascript.return_boolean",
     "function": "core",
     "original": "true",
     "replacement": "false",
-    "line": 19
+    "line": 20
   },
   {
     "language": "javascript",
@@ -24,7 +33,7 @@
     "function": "core",
     "original": "===",
     "replacement": "!==",
-    "line": 18
+    "line": 19
   },
   {
     "language": "javascript",
@@ -33,7 +42,7 @@
     "function": "core",
     "original": "<",
     "replacement": "<=",
-    "line": 22
+    "line": 23
   },
   {
     "language": "javascript",
@@ -42,7 +51,7 @@
     "function": "core",
     "original": "<",
     "replacement": ">=",
-    "line": 22
+    "line": 23
   },
   {
     "language": "javascript",
@@ -51,7 +60,7 @@
     "function": "core",
     "original": "&&",
     "replacement": "||",
-    "line": 18
+    "line": 19
   },
   {
     "language": "javascript",
@@ -60,25 +69,7 @@
     "function": "core",
     "original": "!flag",
     "replacement": "flag",
-    "line": 14
-  },
-  {
-    "language": "javascript",
-    "operator": "return_boolean",
-    "implementation": "javascript.return_boolean",
-    "function": "core",
-    "original": "false",
-    "replacement": "true",
     "line": 15
-  },
-  {
-    "language": "javascript",
-    "operator": "return_boolean",
-    "implementation": "javascript.return_boolean",
-    "function": "core",
-    "original": "true",
-    "replacement": "false",
-    "line": 19
   },
   {
     "language": "javascript",
@@ -87,7 +78,7 @@
     "function": "quantifier",
     "original": "some",
     "replacement": "every",
-    "line": 27
+    "line": 28
   },
   {
     "language": "javascript",
@@ -96,7 +87,7 @@
     "function": "boundary",
     "original": "||",
     "replacement": "&&",
-    "line": 33
+    "line": 34
   },
   {
     "language": "javascript",
@@ -105,7 +96,7 @@
     "function": "boundary",
     "original": "startsWith",
     "replacement": "endsWith",
-    "line": 33
+    "line": 34
   },
   {
     "language": "javascript",
@@ -114,7 +105,7 @@
     "function": "boundary",
     "original": "endsWith",
     "replacement": "startsWith",
-    "line": 33
+    "line": 34
   },
   {
     "language": "javascript",
@@ -123,6 +114,6 @@
     "function": "membership",
     "original": "items.includes(item)",
     "replacement": "!(items.includes(item))",
-    "line": 38
+    "line": 39
   }
 ]

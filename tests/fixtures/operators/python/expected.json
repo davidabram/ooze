@@ -127,11 +127,11 @@
   },
   {
     "language": "python",
-    "operator": "negate_equality",
-    "implementation": "python.negate_equality",
+    "operator": "len_zero_boundary",
+    "implementation": "python.len_zero_boundary",
     "function": "len_boundary",
-    "original": "==",
-    "replacement": "!=",
+    "original": "len(xs) == 0",
+    "replacement": "len(xs) != 0",
     "line": 57
   },
   {
@@ -141,15 +141,6 @@
     "function": "len_boundary",
     "original": "0",
     "replacement": "1",
-    "line": 57
-  },
-  {
-    "language": "python",
-    "operator": "len_zero_boundary",
-    "implementation": "python.len_zero_boundary",
-    "function": "len_boundary",
-    "original": "len(xs) == 0",
-    "replacement": "len(xs) != 0",
     "line": 57
   },
   {
@@ -217,8 +208,8 @@
   },
   {
     "language": "python",
-    "operator": "swap_boolean",
-    "implementation": "python.swap_boolean",
+    "operator": "return_boolean",
+    "implementation": "python.return_boolean",
     "function": "returns_boolean",
     "original": "True",
     "replacement": "False",
@@ -226,8 +217,8 @@
   },
   {
     "language": "python",
-    "operator": "swap_boolean",
-    "implementation": "python.swap_boolean",
+    "operator": "return_boolean",
+    "implementation": "python.return_boolean",
     "function": "returns_boolean",
     "original": "False",
     "replacement": "True",
@@ -258,24 +249,6 @@
     "function": "returns_boolean",
     "original": "False",
     "replacement": "None",
-    "line": 91
-  },
-  {
-    "language": "python",
-    "operator": "return_boolean",
-    "implementation": "python.return_boolean",
-    "function": "returns_boolean",
-    "original": "True",
-    "replacement": "False",
-    "line": 90
-  },
-  {
-    "language": "python",
-    "operator": "return_boolean",
-    "implementation": "python.return_boolean",
-    "function": "returns_boolean",
-    "original": "False",
-    "replacement": "True",
     "line": 91
   },
   {
@@ -343,11 +316,11 @@
   },
   {
     "language": "python",
-    "operator": "swap_boolean",
-    "implementation": "python.swap_boolean",
+    "operator": "sorted_reverse_flip",
+    "implementation": "python.sorted_reverse_flip",
     "function": "ordering_explicit",
-    "original": "True",
-    "replacement": "False",
+    "original": "sorted(xs, reverse=True)",
+    "replacement": "sorted(xs, reverse=False)",
     "line": 112
   },
   {
@@ -357,15 +330,6 @@
     "function": "ordering_explicit",
     "original": "sorted(xs, reverse=True)",
     "replacement": "None",
-    "line": 112
-  },
-  {
-    "language": "python",
-    "operator": "sorted_reverse_flip",
-    "implementation": "python.sorted_reverse_flip",
-    "function": "ordering_explicit",
-    "original": "sorted(xs, reverse=True)",
-    "replacement": "sorted(xs, reverse=False)",
     "line": 112
   },
   {

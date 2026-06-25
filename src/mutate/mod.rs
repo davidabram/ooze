@@ -209,7 +209,81 @@ pub fn discover_mutants(
         }
     }
 
-    Ok(candidates)
+    Ok(dedupe_overlapping(candidates))
+}
+
+/// Drop redundant candidates that rewrite the same source bytes to the same
+/// text. Two operators can match overlapping nodes yet produce a byte-identical
+/// mutant: `swap_boolean` and `return_boolean` both turn `return true` into
+/// `return false`, and `negate_equality` (rewriting `==`) and `len_zero_boundary`
+/// (rewriting the whole `len(x) == 0`) both yield `len(x) != 0`. Building and
+/// testing both wastes work and double-counts the site, so we keep one per
+/// distinct edit — the most specific operator (see `OperatorName::dedup_priority`).
+///
+/// Edits are compared by their *canonical* form: each `(start_byte, original,
+/// replacement)` is reduced to the minimal changed span by stripping the common
+/// prefix and suffix. This is what lets the two `len(x) == 0` edits — which span
+/// different byte ranges — collapse to the same `=`→`!` change.
+fn dedupe_overlapping(candidates: Vec<MutationCandidate>) -> Vec<MutationCandidate> {
+    use std::collections::HashMap;
+
+    let mut slot_for_key: HashMap<(PathBuf, usize, usize, String), usize> = HashMap::new();
+    let mut kept: Vec<MutationCandidate> = Vec::with_capacity(candidates.len());
+
+    for cand in candidates {
+        let (start, end, repl) =
+            canonical_edit(cand.start_byte, &cand.original, &cand.replacement);
+        let key = (cand.file.clone(), start, end, repl);
+
+        if let Some(&idx) = slot_for_key.get(&key) {
+            if cand.operator.dedup_priority() > kept[idx].operator.dedup_priority() {
+                kept[idx] = cand;
+            }
+        } else {
+            slot_for_key.insert(key, kept.len());
+            kept.push(cand);
+        }
+    }
+
+    kept
+}
+
+/// Reduce an edit (replace `original` at `start_byte` with `replacement`) to the
+/// minimal byte range that actually changes, by stripping the common prefix and
+/// suffix shared by `original` and `replacement`. Returns the canonical
+/// `(start_byte, end_byte, replacement_text)`. Affixes are trimmed on char
+/// boundaries so the byte offsets stay valid for non-ASCII source.
+fn canonical_edit(start_byte: usize, original: &str, replacement: &str) -> (usize, usize, String) {
+    let prefix = common_prefix_len(original, replacement);
+    let suffix = common_suffix_len(&original[prefix..], &replacement[prefix..]);
+    let canon_start = start_byte + prefix;
+    let canon_end = start_byte + original.len() - suffix;
+    let canon_repl = replacement[prefix..replacement.len() - suffix].to_string();
+    (canon_start, canon_end, canon_repl)
+}
+
+fn common_prefix_len(a: &str, b: &str) -> usize {
+    let mut len = 0;
+    for (ca, cb) in a.chars().zip(b.chars()) {
+        if ca != cb {
+            break;
+        }
+        len += ca.len_utf8();
+    }
+    len
+}
+
+fn common_suffix_len(a: &str, b: &str) -> usize {
+    let mut len = 0;
+    let mut ai = a.chars().rev();
+    let mut bi = b.chars().rev();
+    while let (Some(ca), Some(cb)) = (ai.next(), bi.next()) {
+        if ca != cb {
+            break;
+        }
+        len += ca.len_utf8();
+    }
+    len
 }
 
 fn find_node_by_byte_range(root: Node, start_byte: usize, end_byte: usize) -> Option<Node> {
@@ -247,6 +321,30 @@ fn node_text(node: Node, source: &[u8]) -> String {
     std::str::from_utf8(&source[node.start_byte()..node.end_byte()])
         .unwrap_or("<invalid utf8>")
         .to_string()
+}
+
+#[cfg(test)]
+mod canonical_edit_tests {
+    use super::canonical_edit;
+
+    #[test]
+    fn shared_affixes_are_trimmed() {
+        // `swap_boolean` on a plain `true` literal at byte 10. The shared trailing
+        // `e` is stripped, leaving the minimal `tru`->`fals` edit.
+        assert_eq!(canonical_edit(10, "true", "false"), (10, 13, "fals".into()));
+    }
+
+    #[test]
+    fn whole_expression_and_operator_edits_collapse() {
+        // The two `len(x) == 0` mutants: `negate_equality` rewrites just the `==`,
+        // `len_zero_boundary` rewrites the whole comparison. Both must canonicalize
+        // to the same minimal `=`->`!` edit at the same absolute byte so they dedupe.
+        let whole = canonical_edit(5, "len(x) == 0", "len(x) != 0");
+        // `==` sits 7 bytes into the comparison (after `len(x) `), so at byte 12.
+        let operator = canonical_edit(12, "==", "!=");
+        assert_eq!(whole, operator);
+        assert_eq!(whole, (12, 13, "!".into()));
+    }
 }
 
 #[cfg(test)]
@@ -372,22 +470,19 @@ mod operator_fixture_tests {
                 "s.is_empty()",
                 "!s.is_empty()",
             ),
-            // The literal in `return true` drives both return_boolean and swap_boolean.
+            // `return true` is matched by both return_boolean and swap_boolean; the
+            // identical mutant is deduped down to the more specific return_boolean.
             expect(Rust, "return_boolean", ReturnBoolean, "true", "false"),
-            expect(Rust, "return_boolean", SwapBoolean, "true", "false"),
             expect(Rust, "iterator_any_all", IteratorAnyAll, "any", "all"),
-            // Each match-arm boolean pattern drives match_bool_pattern and swap_boolean.
+            // Each match-arm boolean pattern is matched by both match_bool_pattern
+            // and swap_boolean; the identical mutants dedupe to match_bool_pattern.
             expect(Rust, "match_bool_pattern", MatchBoolPattern, "true", "false"),
             expect(Rust, "match_bool_pattern", MatchBoolPattern, "false", "true"),
-            expect(Rust, "match_bool_pattern", SwapBoolean, "true", "false"),
-            expect(Rust, "match_bool_pattern", SwapBoolean, "false", "true"),
-            // `Ok(true)` drives ok_err_boolean and swap_boolean on the literal.
+            // `Ok(true)`: ok_err_boolean and swap_boolean coincide; keep ok_err_boolean.
             expect(Rust, "ok_err_boolean", OkErrBoolean, "true", "false"),
-            expect(Rust, "ok_err_boolean", SwapBoolean, "true", "false"),
-            // `Some(true)` drives some_boolean and swap_boolean on the literal, plus
-            // option_some_none on the whole call.
+            // `Some(true)`: some_boolean and swap_boolean coincide on the literal
+            // (kept as some_boolean), plus option_some_none on the whole call.
             expect(Rust, "some_boolean", SomeBoolean, "true", "false"),
-            expect(Rust, "some_boolean", SwapBoolean, "true", "false"),
             expect(Rust, "some_boolean", OptionSomeNone, "Some(true)", "None"),
             expect(Rust, "option_some_none", OptionSomeNone, "Some(x)", "None"),
             expect(Rust, "remove_try", RemoveTry, "r?", "r"),
@@ -485,12 +580,11 @@ mod operator_fixture_tests {
                 "any(x.active for x in items)",
                 "None",
             ),
-            // Each returned boolean drives return_boolean and swap_boolean; both
-            // also feed none_return, and the `if flag:` condition feeds truthiness.
+            // Each returned boolean is matched by return_boolean and swap_boolean;
+            // the identical flip dedupes to return_boolean. Both literals also feed
+            // none_return (a distinct mutant), and `if flag:` feeds truthiness.
             expect(Python, "returns_boolean", ReturnBoolean, "True", "False"),
             expect(Python, "returns_boolean", ReturnBoolean, "False", "True"),
-            expect(Python, "returns_boolean", SwapBoolean, "True", "False"),
-            expect(Python, "returns_boolean", SwapBoolean, "False", "True"),
             expect(Python, "returns_boolean", NoneReturn, "True", "None"),
             expect(Python, "returns_boolean", NoneReturn, "False", "None"),
             expect(Python, "returns_boolean", TruthinessNegation, "flag", "not (flag)"),
@@ -531,8 +625,8 @@ mod operator_fixture_tests {
         use Language::Python;
         use OperatorName::{
             ComprehensionFilterRemoval, DictGetDefaultRemoval, EmptyCollectionLiteral,
-            InNegation, IntegerZeroOne, IsNoneNegation, LenZeroBoundary, NegateEquality,
-            NoneReturn, TruthinessNegation,
+            InNegation, IntegerZeroOne, IsNoneNegation, LenZeroBoundary, NoneReturn,
+            TruthinessNegation,
         };
 
         let got = discovered("tests/fixtures/operators/python_specific");
@@ -540,7 +634,10 @@ mod operator_fixture_tests {
             expect(Python, "is_none", IsNoneNegation, "is", "is not"),
             expect(Python, "membership", InNegation, "in", "not in"),
             expect(Python, "truthiness", TruthinessNegation, "x", "not (x)"),
-            // `len(xs) == 0` drives three operators on overlapping nodes.
+            // `len(xs) == 0`: len_zero_boundary (whole comparison) and negate_equality
+            // (`==` token) produce the byte-identical `len(xs) != 0`, so the mutant
+            // dedupes to the more specific len_zero_boundary. The `0` still feeds
+            // integer_zero_one (a distinct mutant).
             expect(
                 Python,
                 "len_boundary",
@@ -548,7 +645,6 @@ mod operator_fixture_tests {
                 "len(xs) == 0",
                 "len(xs) != 0",
             ),
-            expect(Python, "len_boundary", NegateEquality, "==", "!="),
             expect(Python, "len_boundary", IntegerZeroOne, "0", "1"),
             // `d.get(k, 0)` drops its default; the `0` also feeds integer_zero_one.
             expect(

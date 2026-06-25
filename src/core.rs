@@ -464,6 +464,20 @@ impl OperatorName {
         OperatorName::ALL.iter().copied().find(|op| op.as_str() == s)
     }
 
+    /// Relative specificity, used to break ties when two operators yield a
+    /// byte-identical source edit at the same location (see
+    /// `crate::mutate::dedupe_overlapping`). The broad fallback operators
+    /// (`swap_boolean` matches every boolean literal; `negate_equality` every
+    /// `==`/`!=`) defer to any more specific operator that produces the same
+    /// mutant — e.g. `return_boolean` on `return true`, or `len_zero_boundary`
+    /// on `len(x) == 0` — so they score lower and are the ones dropped.
+    pub fn dedup_priority(self) -> u8 {
+        match self {
+            OperatorName::SwapBoolean | OperatorName::NegateEquality => 0,
+            _ => 1,
+        }
+    }
+
     pub fn info(self) -> OperatorInfo {
         match self {
             OperatorName::ComparisonBoundary => OperatorInfo {

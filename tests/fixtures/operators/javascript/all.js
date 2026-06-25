@@ -7,10 +7,11 @@
 // function minimal; where two operators legitimately fire on the same node, the
 // overlap is noted in a comment.
 
-export function core(a, b, flag) {
+export function core(a, b, flag = true) {
   // `!flag` drives remove_not; `flag && ...` drives swap_logical; `a === b`
-  // drives negate_equality. Each `return true`/`return false` drives
-  // return_boolean and swap_boolean; `a < b` drives both comparison operators.
+  // drives negate_equality. The `flag = true` default drives swap_boolean; each
+  // `return true`/`return false` drives return_boolean (the overlapping
+  // swap_boolean mutant is deduped away); `a < b` drives both comparison operators.
   if (!flag) {
     return false;
   }

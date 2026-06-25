@@ -118,15 +118,6 @@
   },
   {
     "language": "rust",
-    "operator": "swap_boolean",
-    "implementation": "rust.swap_boolean",
-    "function": "return_boolean",
-    "original": "true",
-    "replacement": "false",
-    "line": 62
-  },
-  {
-    "language": "rust",
     "operator": "iterator_any_all",
     "implementation": "rust.iterator_any_all",
     "function": "iterator_any_all",
@@ -145,26 +136,8 @@
   },
   {
     "language": "rust",
-    "operator": "swap_boolean",
-    "implementation": "rust.swap_boolean",
-    "function": "match_bool_pattern",
-    "original": "true",
-    "replacement": "false",
-    "line": 75
-  },
-  {
-    "language": "rust",
     "operator": "match_bool_pattern",
     "implementation": "rust.match_bool_pattern",
-    "function": "match_bool_pattern",
-    "original": "false",
-    "replacement": "true",
-    "line": 76
-  },
-  {
-    "language": "rust",
-    "operator": "swap_boolean",
-    "implementation": "rust.swap_boolean",
     "function": "match_bool_pattern",
     "original": "false",
     "replacement": "true",
@@ -181,24 +154,6 @@
   },
   {
     "language": "rust",
-    "operator": "swap_boolean",
-    "implementation": "rust.swap_boolean",
-    "function": "ok_err_boolean",
-    "original": "true",
-    "replacement": "false",
-    "line": 82
-  },
-  {
-    "language": "rust",
-    "operator": "option_some_none",
-    "implementation": "rust.option_some_none",
-    "function": "some_boolean",
-    "original": "Some(true)",
-    "replacement": "None",
-    "line": 88
-  },
-  {
-    "language": "rust",
     "operator": "some_boolean",
     "implementation": "rust.some_boolean",
     "function": "some_boolean",
@@ -208,11 +163,11 @@
   },
   {
     "language": "rust",
-    "operator": "swap_boolean",
-    "implementation": "rust.swap_boolean",
+    "operator": "option_some_none",
+    "implementation": "rust.option_some_none",
     "function": "some_boolean",
-    "original": "true",
-    "replacement": "false",
+    "original": "Some(true)",
+    "replacement": "None",
     "line": 88
   },
   {
