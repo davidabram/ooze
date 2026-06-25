@@ -456,8 +456,9 @@ mod operator_fixture_tests {
     fn python_operator_fixture_discovers_expected_mutants() {
         use Language::Python;
         use OperatorName::{
-            ComparisonBoundary, ComparisonNegation, IntegerZeroOne, NegateEquality, NoneReturn,
-            SwapBoolean, SwapLogical,
+            ComparisonBoundary, ComparisonNegation, IntegerZeroOne, IteratorAnyAll, MinMaxSwap,
+            NegateEquality, NegatePredicateMethod, NoneReturn, ReturnBoolean, SwapBoolean,
+            SwapLogical, TruthinessNegation,
         };
 
         let got = discovered("tests/fixtures/operators/python");
@@ -475,6 +476,49 @@ mod operator_fixture_tests {
             expect(Python, "compare", NoneReturn, "a < b", "None"),
             expect(Python, "swap_logical", NoneReturn, "x and y", "None"),
             expect(Python, "integer_zero_one", NoneReturn, "n", "None"),
+            // `any(...)` drives iterator_any_all; the returned call also feeds none_return.
+            expect(Python, "quantifier", IteratorAnyAll, "any", "all"),
+            expect(
+                Python,
+                "quantifier",
+                NoneReturn,
+                "any(x.active for x in items)",
+                "None",
+            ),
+            // Each returned boolean drives return_boolean and swap_boolean; both
+            // also feed none_return, and the `if flag:` condition feeds truthiness.
+            expect(Python, "returns_boolean", ReturnBoolean, "True", "False"),
+            expect(Python, "returns_boolean", ReturnBoolean, "False", "True"),
+            expect(Python, "returns_boolean", SwapBoolean, "True", "False"),
+            expect(Python, "returns_boolean", SwapBoolean, "False", "True"),
+            expect(Python, "returns_boolean", NoneReturn, "True", "None"),
+            expect(Python, "returns_boolean", NoneReturn, "False", "None"),
+            expect(Python, "returns_boolean", TruthinessNegation, "flag", "not (flag)"),
+            // `value.isdigit()` drives negate_predicate_method; the call also feeds none_return.
+            expect(
+                Python,
+                "string_predicate",
+                NegatePredicateMethod,
+                "value.isdigit()",
+                "not (value.isdigit())",
+            ),
+            expect(
+                Python,
+                "string_predicate",
+                NoneReturn,
+                "value.isdigit()",
+                "None",
+            ),
+            // `min`/`max` drive min_max_swap (default-disabled); the returned tuple feeds none_return.
+            expect(Python, "bounds", MinMaxSwap, "min", "max"),
+            expect(Python, "bounds", MinMaxSwap, "max", "min"),
+            expect(
+                Python,
+                "bounds",
+                NoneReturn,
+                "min(values), max(values)",
+                "None",
+            ),
         ]
         .into_iter()
         .collect();

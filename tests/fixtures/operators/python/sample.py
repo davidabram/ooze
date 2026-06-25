@@ -31,3 +31,25 @@ def integer_zero_one():
     # integer_zero_one is default-disabled; only discovered when explicitly enabled.
     n = 0
     return n
+
+
+def quantifier(items):
+    # `any(...)` drives iterator_any_all (any -> all).
+    return any(x.active for x in items)
+
+
+def returns_boolean(flag):
+    # Each boolean literal drives return_boolean and swap_boolean.
+    if flag:
+        return True
+    return False
+
+
+def string_predicate(value):
+    # `value.isdigit()` drives negate_predicate_method (wrap in `not (...)`).
+    return value.isdigit()
+
+
+def bounds(values):
+    # `min`/`max` drive min_max_swap; min_max_swap is default-disabled.
+    return min(values), max(values)

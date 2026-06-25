@@ -204,7 +204,83 @@ pub const MUTATORS: &[MutatorImpl] = &[
         },
         default_enabled_override: None,
     },
+    // ── Reused cross-language operators ─────────────────────────────────────
+    MutatorImpl {
+        id: "python.iterator_any_all",
+        operator: OperatorName::IteratorAnyAll,
+        language: Language::Python,
+        query: include_str!("../../queries/python/iterator-any-all.scm"),
+        replacement: |original| match original {
+            "any" => Some("all".to_string()),
+            "all" => Some("any".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Swap Python quantifier {original}(...) -> {replacement}(...)")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "python.return_boolean",
+        operator: OperatorName::ReturnBoolean,
+        language: Language::Python,
+        query: include_str!("../../queries/python/return-boolean.scm"),
+        replacement: |original| match original {
+            "True" => Some("False".to_string()),
+            "False" => Some("True".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| {
+            format!("Flip returned boolean {original} -> {replacement}")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "python.negate_predicate_method",
+        operator: OperatorName::NegatePredicateMethod,
+        language: Language::Python,
+        query: include_str!("../../queries/python/negate-predicate-method.scm"),
+        replacement: negate_python_predicate_call,
+        description: |original, replacement| {
+            format!("Negate predicate call `{original}` -> `{replacement}`")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "python.min_max_swap",
+        operator: OperatorName::MinMaxSwap,
+        language: Language::Python,
+        query: include_str!("../../queries/python/min-max-swap.scm"),
+        replacement: |original| match original {
+            "min" => Some("max".to_string()),
+            "max" => Some("min".to_string()),
+            _ => None,
+        },
+        description: |original, replacement| format!("Swap {original}(...) -> {replacement}(...)"),
+        default_enabled_override: None,
+    },
 ];
+
+/// `negate_predicate_method`: flip a boolean-returning string predicate call by
+/// wrapping it in `not (...)`. An existing leading `not` is unwrapped so the
+/// mutation toggles cleanly; the parentheses keep operator precedence intact.
+fn negate_python_predicate_call(original: &str) -> Option<String> {
+    let trimmed = original.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Some(rest) = trimmed.strip_prefix("not ") {
+        let inner = rest.trim();
+        if inner.is_empty() {
+            None
+        } else {
+            Some(inner.to_string())
+        }
+    } else {
+        Some(format!("not ({trimmed})"))
+    }
+}
 
 /// `truthiness_negation`: flip an `if`/`while` condition. An existing leading
 /// `not` is unwrapped; anything else is wrapped in `not (...)` so operator
