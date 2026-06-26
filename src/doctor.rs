@@ -233,7 +233,7 @@ pub fn run(path: &Path) -> DoctorReport {
     let gitignore = canonical.join(".gitignore");
     let mut excludes_msg = format!(
         "defaults={}, user={}",
-        crate::DEFAULT_EXCLUDES.len(),
+        crate::app::DEFAULT_EXCLUDES.len(),
         cfg.scope.exclude.len()
     );
     if gitignore.is_file() {
