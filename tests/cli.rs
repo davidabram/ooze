@@ -74,8 +74,31 @@ fn operators_json_outputs_valid_json() {
         .expect("failed to run ooze");
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
     let stdout = String::from_utf8(out.stdout).unwrap();
-    serde_json::from_str::<serde_json::Value>(&stdout)
+    let ops: serde_json::Value = serde_json::from_str(&stdout)
         .expect("stdout should be valid JSON when --format json");
+    let ops = ops.as_array().expect("operators output is an array");
+
+    // Each operator reports the languages that implement it. `remove_try` is
+    // Rust-only; `swap_boolean` is cross-language.
+    let remove_try = ops
+        .iter()
+        .find(|o| o["name"] == "remove_try")
+        .expect("remove_try listed");
+    assert_eq!(
+        remove_try["languages"],
+        serde_json::json!(["rust"]),
+        "remove_try is Rust-only"
+    );
+
+    let swap_boolean = ops
+        .iter()
+        .find(|o| o["name"] == "swap_boolean")
+        .expect("swap_boolean listed");
+    let langs = swap_boolean["languages"].as_array().expect("languages array");
+    assert!(
+        langs.len() > 1 && langs.contains(&serde_json::json!("rust")),
+        "swap_boolean spans multiple languages incl. rust"
+    );
 }
 
 #[test]

@@ -822,14 +822,44 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Operators { format } => {
-            let infos: Vec<_> = core::OperatorName::ALL.iter().copied().map(core::OperatorName::info).collect();
+            #[derive(serde::Serialize)]
+            struct OperatorEntry {
+                #[serde(flatten)]
+                info: core::OperatorInfo,
+                /// Languages with a registered implementation of this operator.
+                languages: Vec<core::Language>,
+            }
+            let infos: Vec<OperatorEntry> = core::OperatorName::ALL
+                .iter()
+                .copied()
+                .map(|op| {
+                    let mut languages: Vec<core::Language> = mutate::registry::all()
+                        .filter(|m| m.operator == op)
+                        .map(|m| m.language)
+                        .collect();
+                    languages.sort();
+                    languages.dedup();
+                    OperatorEntry { info: op.info(), languages }
+                })
+                .collect();
             if format.is_json() {
                 println!("{}", serde_json::to_string_pretty(&infos)?);
             } else {
-                for info in &infos {
+                for entry in &infos {
+                    let info = &entry.info;
+                    let langs = if entry.languages.is_empty() {
+                        "(none)".to_string()
+                    } else {
+                        entry
+                            .languages
+                            .iter()
+                            .map(|l| l.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    };
                     println!(
-                        "{:<18} [{}] default_enabled={}\n  {}\n  hint: {}\n",
-                        info.name, info.category, info.default_enabled, info.description, info.test_hint
+                        "{:<18} [{}] default_enabled={}\n  {}\n  langs: {}\n  hint: {}\n",
+                        info.name, info.category, info.default_enabled, info.description, langs, info.test_hint
                     );
                 }
             }
