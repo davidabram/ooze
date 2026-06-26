@@ -37,11 +37,11 @@ mod tests;
 
 /// The full comptime description of a language: how to parse it, which mutation
 /// operators it ships, and how far its support is trusted. This is the single
-/// source of truth — `GRAMMARS` is the only place a language is registered, and
+/// source of truth — `LANGUAGES` is the only place a language is registered, and
 /// `crate::mutate::registry` derives the mutator lookup from `mutators` here
 /// rather than maintaining a parallel list. A compile-time constant per language
-/// (e.g. `crate::lang::rust::GRAMMAR`).
-pub struct GrammarDef {
+/// (e.g. `crate::lang::rust::SPEC`).
+pub struct LanguageSpec {
     /// The typed language id. `name()` derives from this, so it is the single
     /// source of truth for the canonical language string.
     pub id: Language,
@@ -59,47 +59,47 @@ pub struct GrammarDef {
     pub mutators: &'static [MutatorImpl],
 }
 
-impl GrammarDef {
+impl LanguageSpec {
     pub fn name(&self) -> &'static str {
         self.id.as_str()
     }
 }
 
-pub const GRAMMARS: &[&GrammarDef] = &[
-    &bash::GRAMMAR,
-    &javascript::GRAMMAR,
-    &typescript::GRAMMAR,
-    &python::GRAMMAR,
-    &java::GRAMMAR,
-    &c_sharp::GRAMMAR,
-    &cpp::GRAMMAR,
-    &c::GRAMMAR,
-    &dart::GRAMMAR,
-    &elixir::GRAMMAR,
-    &erlang::GRAMMAR,
-    &gleam::GRAMMAR,
-    &go::GRAMMAR,
-    &haskell::GRAMMAR,
-    &julia::GRAMMAR,
-    &lua::GRAMMAR,
-    &ocaml::GRAMMAR,
-    &rust::GRAMMAR,
-    &ruby::GRAMMAR,
-    &php::GRAMMAR,
-    &scala::GRAMMAR,
-    &swift::GRAMMAR,
-    &zig::GRAMMAR,
+pub const LANGUAGES: &[&LanguageSpec] = &[
+    &bash::SPEC,
+    &javascript::SPEC,
+    &typescript::SPEC,
+    &python::SPEC,
+    &java::SPEC,
+    &c_sharp::SPEC,
+    &cpp::SPEC,
+    &c::SPEC,
+    &dart::SPEC,
+    &elixir::SPEC,
+    &erlang::SPEC,
+    &gleam::SPEC,
+    &go::SPEC,
+    &haskell::SPEC,
+    &julia::SPEC,
+    &lua::SPEC,
+    &ocaml::SPEC,
+    &rust::SPEC,
+    &ruby::SPEC,
+    &php::SPEC,
+    &scala::SPEC,
+    &swift::SPEC,
+    &zig::SPEC,
 ];
 
-pub fn supported_languages() -> &'static [&'static GrammarDef] {
-    GRAMMARS
+pub fn supported_languages() -> &'static [&'static LanguageSpec] {
+    LANGUAGES
 }
 
 /// Languages that declare mutation support (`SupportLevel::mutates()`), i.e. the
 /// ones mutation discovery can actually produce candidates for. Scan-only
 /// grammars are excluded here so "parseable" never silently means "mutable".
-pub fn mutable_languages() -> Vec<&'static GrammarDef> {
-    GRAMMARS
+pub fn mutable_languages() -> Vec<&'static LanguageSpec> {
+    LANGUAGES
         .iter()
         .copied()
         .filter(|g| g.support.mutates())
@@ -110,12 +110,12 @@ pub fn mutable_languages() -> Vec<&'static GrammarDef> {
 /// a `MutatorImpl` with the tree-sitter language its query must compile against,
 /// and anywhere else that needs to go from a typed `Language` back to its parser.
 #[cfg_attr(not(test), allow(dead_code))]
-pub fn grammar_for_language(language: Language) -> Option<&'static GrammarDef> {
-    GRAMMARS.iter().copied().find(|g| g.id == language)
+pub fn spec_for_language(language: Language) -> Option<&'static LanguageSpec> {
+    LANGUAGES.iter().copied().find(|g| g.id == language)
 }
 
 struct Compiled {
-    language: &'static GrammarDef,
+    language: &'static LanguageSpec,
     functions: tree_sitter::Query,
     branches: tree_sitter::Query,
 }
@@ -186,7 +186,7 @@ pub fn scan_directory_with_excludes(
 
 fn scan_file(
     path: &Path,
-    language: &GrammarDef,
+    language: &LanguageSpec,
     fn_query: &tree_sitter::Query,
     branch_query: &tree_sitter::Query,
 ) -> anyhow::Result<Vec<FunctionSpan>> {

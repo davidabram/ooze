@@ -1,9 +1,9 @@
-use super::GrammarDef;
+use super::LanguageSpec;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/haskell/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/haskell/branches.scm");
 
-pub const GRAMMAR: GrammarDef = GrammarDef {
+pub const SPEC: LanguageSpec = LanguageSpec {
     id: crate::core::Language::Haskell,
     extensions: &["hs"],
     language: || tree_sitter_haskell::LANGUAGE.into(),

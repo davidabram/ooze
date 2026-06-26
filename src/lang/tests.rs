@@ -1,4 +1,4 @@
-use super::{grammar_for_language, scan_directory, GRAMMARS};
+use super::{spec_for_language, scan_directory, LANGUAGES};
 use crate::core::{FunctionSpan, Language};
 use std::collections::HashMap;
 use std::path::Path;
@@ -308,21 +308,21 @@ fn cyclomatic_values_match_expected() {
 }
 
 #[test]
-fn grammar_for_language_resolves_every_registered_grammar() {
-    for &grammar in GRAMMARS {
-        let resolved = grammar_for_language(grammar.id)
+fn spec_for_language_resolves_every_registered_grammar() {
+    for &grammar in LANGUAGES {
+        let resolved = spec_for_language(grammar.id)
             .unwrap_or_else(|| panic!("no grammar resolved for {}", grammar.id));
         assert_eq!(
             resolved.id, grammar.id,
-            "grammar_for_language returned the wrong grammar for {}",
+            "spec_for_language returned the wrong grammar for {}",
             grammar.id
         );
     }
 }
 
 #[test]
-fn grammar_for_language_matches_the_typed_language() {
-    let rust = grammar_for_language(Language::Rust).expect("rust grammar");
+fn spec_for_language_matches_the_typed_language() {
+    let rust = spec_for_language(Language::Rust).expect("rust grammar");
     assert_eq!(rust.id, Language::Rust);
     assert!(rust.extensions.contains(&"rs"));
 }

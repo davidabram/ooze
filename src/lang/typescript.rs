@@ -1,4 +1,4 @@
-use super::GrammarDef;
+use super::LanguageSpec;
 use crate::lang::javascript::{
     empty_array_literal, empty_object_literal, empty_string_literal, negate_js_expression,
     remove_await, remove_nullish_fallback, remove_optional_chaining, swap_ternary_arms,
@@ -164,7 +164,7 @@ mutators! {
     },
 }
 
-pub const GRAMMAR: GrammarDef = GrammarDef {
+pub const SPEC: LanguageSpec = LanguageSpec {
     id: crate::core::Language::TypeScript,
     extensions: &["ts", "tsx"],
     language: || tree_sitter_typescript::LANGUAGE_TSX.into(),

@@ -1,4 +1,4 @@
-use super::GrammarDef;
+use super::LanguageSpec;
 use crate::lang::mutators;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/python/functions.scm");
@@ -396,7 +396,7 @@ fn top_level_colon(s: &str) -> bool {
     false
 }
 
-pub const GRAMMAR: GrammarDef = GrammarDef {
+pub const SPEC: LanguageSpec = LanguageSpec {
     id: crate::core::Language::Python,
     extensions: &["py"],
     language: || tree_sitter_python::LANGUAGE.into(),

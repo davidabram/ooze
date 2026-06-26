@@ -1,9 +1,9 @@
-use super::GrammarDef;
+use super::LanguageSpec;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/c/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/c/branches.scm");
 
-pub const GRAMMAR: GrammarDef = GrammarDef {
+pub const SPEC: LanguageSpec = LanguageSpec {
     id: crate::core::Language::C,
     extensions: &["c", "h"],
     language: || tree_sitter_c::LANGUAGE.into(),

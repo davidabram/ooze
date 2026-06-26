@@ -1,9 +1,9 @@
-use super::GrammarDef;
+use super::LanguageSpec;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/cpp/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/cpp/branches.scm");
 
-pub const GRAMMAR: GrammarDef = GrammarDef {
+pub const SPEC: LanguageSpec = LanguageSpec {
     id: crate::core::Language::Cpp,
     extensions: &["cpp", "cc", "cxx", "hpp", "hh", "hxx"],
     language: || tree_sitter_cpp::LANGUAGE.into(),

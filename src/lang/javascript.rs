@@ -1,4 +1,4 @@
-use super::GrammarDef;
+use super::LanguageSpec;
 use crate::lang::mutators;
 
 const FUNCTIONS_QUERY: &str =
@@ -365,7 +365,7 @@ pub(crate) fn remove_await(original: &str) -> Option<String> {
     }
 }
 
-pub const GRAMMAR: GrammarDef = GrammarDef {
+pub const SPEC: LanguageSpec = LanguageSpec {
     id: crate::core::Language::JavaScript,
     extensions: &["js", "jsx", "mjs", "cjs"],
     language: || tree_sitter_javascript::LANGUAGE.into(),

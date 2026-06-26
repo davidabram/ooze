@@ -1,9 +1,9 @@
-use super::GrammarDef;
+use super::LanguageSpec;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/dart/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/dart/branches.scm");
 
-pub const GRAMMAR: GrammarDef = GrammarDef {
+pub const SPEC: LanguageSpec = LanguageSpec {
     id: crate::core::Language::Dart,
     extensions: &["dart"],
     language: || tree_sitter_dart::LANGUAGE.into(),

@@ -1,9 +1,9 @@
-use super::GrammarDef;
+use super::LanguageSpec;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/elixir/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/elixir/branches.scm");
 
-pub const GRAMMAR: GrammarDef = GrammarDef {
+pub const SPEC: LanguageSpec = LanguageSpec {
     id: crate::core::Language::Elixir,
     extensions: &["ex", "exs"],
     language: || tree_sitter_elixir::LANGUAGE.into(),

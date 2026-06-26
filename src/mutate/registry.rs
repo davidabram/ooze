@@ -1,19 +1,19 @@
 //! One lookup point over the per-language mutator implementations.
 //!
 //! A semantic operator (`OperatorName`) can have one implementation per language.
-//! The implementations live on each language's `GrammarDef` (its `mutators`
+//! The implementations live on each language's `LanguageSpec` (its `mutators`
 //! field), so there is no separate registry list to keep in sync: this module
-//! just walks `crate::lang::GRAMMARS` — the single source of truth — and answers
+//! just walks `crate::lang::LANGUAGES` — the single source of truth — and answers
 //! "every implementation registered for language X".
 
 use crate::core::{Language, MutatorImpl};
 
 /// Every registered mutator implementation across all languages, sourced from the
-/// per-language grammar definitions in `crate::lang::GRAMMARS`.
+/// per-language spec definitions in `crate::lang::LANGUAGES`.
 pub fn all() -> impl Iterator<Item = &'static MutatorImpl> {
-    crate::lang::GRAMMARS
+    crate::lang::LANGUAGES
         .iter()
-        .flat_map(|grammar| grammar.mutators.iter())
+        .flat_map(|spec| spec.mutators.iter())
 }
 
 /// Implementations registered for a given language.
@@ -46,12 +46,12 @@ mod tests {
 
     #[test]
     fn support_level_agrees_with_mutators() {
-        for grammar in crate::lang::GRAMMARS {
+        for spec in crate::lang::LANGUAGES {
             assert_eq!(
-                grammar.support.mutates(),
-                !grammar.mutators.is_empty(),
+                spec.support.mutates(),
+                !spec.mutators.is_empty(),
                 "{}: support level and presence of mutators disagree",
-                grammar.id
+                spec.id
             );
         }
     }
@@ -59,9 +59,9 @@ mod tests {
     #[test]
     fn all_mutator_queries_compile() {
         for m in all() {
-            let grammar = crate::lang::grammar_for_language(m.language)
-                .unwrap_or_else(|| panic!("{}: no grammar registered for {}", m.id, m.language));
-            let ts_lang = (grammar.language)();
+            let spec = crate::lang::spec_for_language(m.language)
+                .unwrap_or_else(|| panic!("{}: no spec registered for {}", m.id, m.language));
+            let ts_lang = (spec.language)();
             tree_sitter::Query::new(&ts_lang, m.query)
                 .unwrap_or_else(|e| panic!("{} query failed to compile: {e}", m.id));
         }

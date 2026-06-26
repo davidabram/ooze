@@ -1,4 +1,4 @@
-use super::GrammarDef;
+use super::LanguageSpec;
 use crate::core::Language;
 use crate::lang::mutators;
 
@@ -245,7 +245,7 @@ mutators! {
     },
 }
 
-pub const GRAMMAR: GrammarDef = GrammarDef {
+pub const SPEC: LanguageSpec = LanguageSpec {
     id: Language::Rust,
     extensions: &["rs"],
     language: || tree_sitter_rust::LANGUAGE.into(),

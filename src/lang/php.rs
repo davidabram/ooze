@@ -1,9 +1,9 @@
-use super::GrammarDef;
+use super::LanguageSpec;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/php/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/php/branches.scm");
 
-pub const GRAMMAR: GrammarDef = GrammarDef {
+pub const SPEC: LanguageSpec = LanguageSpec {
     id: crate::core::Language::Php,
     extensions: &["php"],
     language: || tree_sitter_php::LANGUAGE_PHP.into(),

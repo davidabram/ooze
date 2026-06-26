@@ -1,9 +1,9 @@
-use super::GrammarDef;
+use super::LanguageSpec;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/java/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/java/branches.scm");
 
-pub const GRAMMAR: GrammarDef = GrammarDef {
+pub const SPEC: LanguageSpec = LanguageSpec {
     id: crate::core::Language::Java,
     extensions: &["java"],
     language: || tree_sitter_java::LANGUAGE.into(),

@@ -102,17 +102,17 @@ use std::path::{Path, PathBuf};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, Query, QueryCursor};
 
-use crate::lang::GrammarDef;
+use crate::lang::LanguageSpec;
 
 pub fn discover_mutants(
     functions: &[crate::core::FunctionSpan],
-    grammars: &[&GrammarDef],
+    specs: &[&LanguageSpec],
     filter: &OperatorFilter,
 ) -> Result<Vec<MutationCandidate>> {
     let mut candidates = Vec::new();
 
     for function in functions {
-        let Some(grammar) = grammars.iter().find(|g| g.id == function.language) else {
+        let Some(spec) = specs.iter().find(|g| g.id == function.language) else {
             continue;
         };
 
@@ -126,7 +126,7 @@ pub fn discover_mutants(
         let source = std::fs::read_to_string(&function.file)
             .with_context(|| format!("reading {}", function.file.display()))?;
 
-        let ts_lang = (grammar.language)();
+        let ts_lang = (spec.language)();
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&ts_lang)
             .with_context(|| format!("loading {} grammar", function.language))?;
@@ -357,9 +357,9 @@ mod discover_tests {
     fn discover_sets_language_qualified_implementation_and_id() {
         let functions = crate::lang::scan_directory(Path::new("tests/fixtures/mutate"))
             .expect("scanning fixtures");
-        let grammars = crate::lang::supported_languages();
+        let specs = crate::lang::supported_languages();
         let candidates =
-            discover_mutants(&functions, grammars, &OperatorFilter::allow_all()).unwrap();
+            discover_mutants(&functions, specs, &OperatorFilter::allow_all()).unwrap();
 
         assert!(!candidates.is_empty(), "fixture should yield candidates");
         for c in &candidates {
@@ -417,9 +417,9 @@ mod operator_fixture_tests {
     /// them to the compact shape. Duplicate shapes at different locations dedupe.
     fn discovered(dir: &str) -> BTreeSet<ExpectedMutant> {
         let functions = crate::lang::scan_directory(Path::new(dir)).expect("scanning fixture");
-        let grammars = crate::lang::supported_languages();
+        let specs = crate::lang::supported_languages();
         let candidates =
-            discover_mutants(&functions, grammars, &OperatorFilter::allow_all()).unwrap();
+            discover_mutants(&functions, specs, &OperatorFilter::allow_all()).unwrap();
         candidates
             .iter()
             .map(|c| ExpectedMutant {
@@ -437,9 +437,9 @@ mod operator_fixture_tests {
     /// `--operators` selection would.
     fn discovered_ops(dir: &str, ops: &[OperatorName]) -> BTreeSet<ExpectedMutant> {
         let functions = crate::lang::scan_directory(Path::new(dir)).expect("scanning fixture");
-        let grammars = crate::lang::supported_languages();
+        let specs = crate::lang::supported_languages();
         let filter = OperatorFilter::from_cli(ops, &[]);
-        let candidates = discover_mutants(&functions, grammars, &filter).unwrap();
+        let candidates = discover_mutants(&functions, specs, &filter).unwrap();
         candidates
             .iter()
             .map(|c| ExpectedMutant {
