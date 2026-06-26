@@ -1,4 +1,5 @@
 mod core;
+mod source_path;
 mod lang;
 mod crap;
 mod mutate;
@@ -195,7 +196,7 @@ fn resolve_excludes(root: &std::path::Path, user: &[String]) -> Vec<String> {
 fn git_changed_files(
     base: &str,
     root: &std::path::Path,
-) -> anyhow::Result<std::collections::HashSet<PathBuf>> {
+) -> anyhow::Result<std::collections::HashSet<source_path::SourcePath>> {
     use anyhow::Context;
 
     let toplevel_out = std::process::Command::new("git")
@@ -218,12 +219,12 @@ fn git_changed_files(
     collect_git_paths(root, &["diff", "--name-only", "HEAD"], &mut names)?;
     collect_git_paths(root, &["ls-files", "--others", "--exclude-standard"], &mut names)?;
 
-    // Resolve to canonical absolute paths; drop entries that no longer exist
-    // (e.g. deletions) since they carry no mutation candidates anyway.
+    // Resolve to source identities; drop entries that no longer exist (e.g.
+    // deletions) since they carry no mutation candidates anyway.
     let mut out = std::collections::HashSet::new();
     for name in names {
-        if let Ok(canon) = toplevel.join(&name).canonicalize() {
-            out.insert(canon);
+        if let Some(id) = source_path::SourcePath::under(&toplevel, std::path::Path::new(&name)) {
+            out.insert(id);
         }
     }
     Ok(out)
@@ -262,14 +263,12 @@ fn collect_git_paths(
 // that fail to canonicalize (already gone) are dropped.
 fn filter_candidates_to_changed(
     candidates: Vec<core::MutationCandidate>,
-    changed: &std::collections::HashSet<PathBuf>,
+    changed: &std::collections::HashSet<source_path::SourcePath>,
 ) -> Vec<core::MutationCandidate> {
     candidates
         .into_iter()
         .filter(|c| {
-            c.file
-                .canonicalize()
-                .is_ok_and(|p| changed.contains(&p))
+            source_path::SourcePath::canonical(&c.file).is_some_and(|id| changed.contains(&id))
         })
         .collect()
 }
