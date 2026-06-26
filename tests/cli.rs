@@ -93,6 +93,52 @@ fn operators_non_json_outputs_text() {
     );
 }
 
+#[test]
+fn languages_json_reports_support_levels() {
+    let out = ooze()
+        .args(["languages", "--format", "json"])
+        .output()
+        .expect("failed to run ooze");
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    let langs: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should be valid JSON when --format json");
+    let langs = langs.as_array().expect("languages output is an array");
+
+    // Rust ships golden-tested mutators; a scan-only language ships none. This
+    // pins the honesty invariant: support level agrees with operator count.
+    let rust = langs
+        .iter()
+        .find(|l| l["language"] == "rust")
+        .expect("rust listed");
+    assert_eq!(rust["support"], "mutate_stable");
+    assert_eq!(rust["mutates"], true);
+    assert!(rust["operators"].as_u64().unwrap() > 0);
+
+    let go = langs
+        .iter()
+        .find(|l| l["language"] == "go")
+        .expect("go listed");
+    assert_eq!(go["support"], "scan_only");
+    assert_eq!(go["mutates"], false);
+    assert_eq!(go["operators"], 0);
+}
+
+#[test]
+fn languages_non_json_outputs_text() {
+    let out = ooze()
+        .args(["languages", "--format", "human"])
+        .output()
+        .expect("failed to run ooze");
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    assert!(stdout.contains("rust"), "human output lists languages");
+    assert!(
+        serde_json::from_str::<serde_json::Value>(&stdout).is_err(),
+        "non-json format should not produce JSON"
+    );
+}
+
 // ── plan-mutants ──────────────────────────────────────────────────────────────
 
 #[test]

@@ -115,6 +115,21 @@ impl SupportLevel {
     pub fn mutates(self) -> bool {
         matches!(self, SupportLevel::MutateExperimental | SupportLevel::MutateStable)
     }
+
+    /// Stable string form, used in `ooze languages` output.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SupportLevel::ScanOnly => "scan_only",
+            SupportLevel::MutateExperimental => "mutate_experimental",
+            SupportLevel::MutateStable => "mutate_stable",
+        }
+    }
+}
+
+impl serde::Serialize for SupportLevel {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
 }
 
 impl serde::Serialize for Language {

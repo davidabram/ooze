@@ -577,6 +577,11 @@ enum Commands {
         #[arg(long, value_enum, default_value = "json")]
         format: OutputFormat,
     },
+    #[command(about = "List supported languages and how far their support goes (scan-only vs mutation)")]
+    Languages {
+        #[arg(long, value_enum, default_value = "json")]
+        format: OutputFormat,
+    },
     #[command(about = "Plan a mutation run without executing probes: shows selection, scores, and applied excludes")]
     PlanMutants {
         #[arg(long, default_value = ".")]
@@ -825,6 +830,39 @@ fn main() -> anyhow::Result<()> {
                     println!(
                         "{:<18} [{}] default_enabled={}\n  {}\n  hint: {}\n",
                         info.name, info.category, info.default_enabled, info.description, info.test_hint
+                    );
+                }
+            }
+        }
+        Commands::Languages { format } => {
+            #[derive(serde::Serialize)]
+            struct LanguageInfo {
+                language: core::Language,
+                support: core::SupportLevel,
+                mutates: bool,
+                operators: usize,
+                extensions: &'static [&'static str],
+            }
+            let infos: Vec<LanguageInfo> = lang::supported_languages()
+                .iter()
+                .map(|g| LanguageInfo {
+                    language: g.id,
+                    support: g.support,
+                    mutates: g.support.mutates(),
+                    operators: g.mutators.len(),
+                    extensions: g.extensions,
+                })
+                .collect();
+            if format.is_json() {
+                println!("{}", serde_json::to_string_pretty(&infos)?);
+            } else {
+                for info in &infos {
+                    println!(
+                        "{:<12} {:<20} {:>2} operators  [{}]",
+                        info.language.as_str(),
+                        info.support.as_str(),
+                        info.operators,
+                        info.extensions.join(", "),
                     );
                 }
             }
