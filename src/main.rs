@@ -477,9 +477,25 @@ fn progress_enabled(quiet: bool, progress_resolved: bool) -> bool {
     !quiet && progress_resolved
 }
 
-// True when JSON output was requested.
-fn wants_json(format: &str) -> bool {
-    format == "json"
+/// Output shape for the simple introspection commands (scan, crap, mutants,
+/// operators, plan-mutants, doctor): either machine JSON or a human rendering.
+/// The richer `test-mutants` report uses `report::ReportFormat` instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[clap(rename_all = "lower")]
+enum OutputFormat {
+    Human,
+    Json,
+}
+
+impl OutputFormat {
+    fn is_json(self) -> bool {
+        matches!(self, OutputFormat::Json)
+    }
+}
+
+fn parse_report_format_str(s: &str) -> anyhow::Result<report::ReportFormat> {
+    <report::ReportFormat as ValueEnum>::from_str(s, true)
+        .map_err(|e| anyhow::anyhow!("invalid report format {s:?}: {e}"))
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -533,8 +549,8 @@ enum Commands {
     Scan {
         #[arg(short, long, default_value = ".")]
         path: String,
-        #[arg(long, default_value = "json")]
-        format: String,
+        #[arg(long, value_enum, default_value = "json")]
+        format: OutputFormat,
     },
     #[command(about = "Score functions by CRAP formula")]
     Crap {
@@ -544,22 +560,22 @@ enum Commands {
         lcov: Option<PathBuf>,
         #[arg(long, value_name = "SPEC", help = COVERAGE_HELP)]
         coverage: Vec<String>,
-        #[arg(long, default_value = "json")]
-        format: String,
+        #[arg(long, value_enum, default_value = "json")]
+        format: OutputFormat,
     },
     #[command(about = "Discover mutation candidates")]
     Mutants {
         #[arg(long, default_value = ".")]
         path: PathBuf,
-        #[arg(long, default_value = "json")]
-        format: String,
+        #[arg(long, value_enum, default_value = "json")]
+        format: OutputFormat,
         #[arg(long, value_delimiter = ',', help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git.")]
         exclude: Vec<String>,
     },
     #[command(about = "List available mutation operators and their metadata")]
     Operators {
-        #[arg(long, default_value = "json")]
-        format: String,
+        #[arg(long, value_enum, default_value = "json")]
+        format: OutputFormat,
     },
     #[command(about = "Plan a mutation run without executing probes: shows selection, scores, and applied excludes")]
     PlanMutants {
@@ -578,8 +594,8 @@ enum Commands {
         #[arg(long)]
         limit: Option<usize>,
 
-        #[arg(long, default_value = "json")]
-        format: String,
+        #[arg(long, value_enum, default_value = "json")]
+        format: OutputFormat,
 
         #[arg(long, value_delimiter = ',', help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git.")]
         exclude: Vec<String>,
@@ -636,8 +652,8 @@ enum Commands {
         #[arg(long, default_value = ".")]
         path: PathBuf,
 
-        #[arg(long, default_value = "human", help = "Output format: human or json")]
-        format: String,
+        #[arg(long, value_enum, default_value = "human", help = "Output format: human or json")]
+        format: OutputFormat,
     },
     #[command(about = "Apply a mutation in a workspace, run a probe, and classify the result")]
     TestMutant {
@@ -699,8 +715,8 @@ struct TestMutantsArgs {
     #[arg(long)]
     runs_dir: Option<PathBuf>,
 
-    #[arg(long, help = "Report format: json, human, agent-tasks-json, agent-tasks-markdown, github-annotations, sarif")]
-    format: Option<String>,
+    #[arg(long, value_enum, help = "Report format: json, human, agent-tasks-json, agent-tasks-markdown, github-annotations, sarif")]
+    format: Option<report::ReportFormat>,
 
     #[arg(long, help = "Write report to a file instead of stdout.")]
     output: Option<PathBuf>,
@@ -786,23 +802,23 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Scan { path, format } => {
             let spans = lang::scan_directory(std::path::Path::new(&path))?;
-            if format == "json" {
+            if format.is_json() {
                 println!("{}", serde_json::to_string_pretty(&spans)?);
             }
         }
         Commands::Mutants { path, format, exclude } => {
             let excludes = resolve_excludes(&path, &exclude);
             let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
-            let languages = lang::supported_languages();
+            let languages = lang::mutable_languages();
             let candidates =
-                mutate::discover_mutants(&functions, languages, &mutate::OperatorFilter::allow_all())?;
-            if format == "json" {
+                mutate::discover_mutants(&functions, &languages, &mutate::OperatorFilter::allow_all())?;
+            if format.is_json() {
                 println!("{}", serde_json::to_string_pretty(&candidates)?);
             }
         }
         Commands::Operators { format } => {
             let infos: Vec<_> = core::OperatorName::ALL.iter().copied().map(core::OperatorName::info).collect();
-            if format == "json" {
+            if format.is_json() {
                 println!("{}", serde_json::to_string_pretty(&infos)?);
             } else {
                 for info in &infos {
@@ -829,9 +845,9 @@ fn main() -> anyhow::Result<()> {
         } => {
             let excludes = resolve_excludes(&path, &exclude);
             let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
-            let languages = lang::supported_languages();
+            let languages = lang::mutable_languages();
             let filter = mutate::OperatorFilter::from_cli(&operators, &exclude_operators);
-            let candidates = mutate::discover_mutants(&functions, languages, &filter)?;
+            let candidates = mutate::discover_mutants(&functions, &languages, &filter)?;
             let candidates = if let Some(base) = changed_only.as_deref() {
                 let changed = git_changed_files(base, &path)?;
                 filter_candidates_to_changed(candidates, &changed)
@@ -877,7 +893,7 @@ fn main() -> anyhow::Result<()> {
                 },
             };
 
-            if format == "json" {
+            if format.is_json() {
                 println!("{}", serde_json::to_string_pretty(&plan)?);
             }
         }
@@ -885,9 +901,9 @@ fn main() -> anyhow::Result<()> {
             let repo_root = path;
 
             let functions = lang::scan_directory(&repo_root)?;
-            let languages = lang::supported_languages();
+            let languages = lang::mutable_languages();
             let candidates =
-                mutate::discover_mutants(&functions, languages, &mutate::OperatorFilter::allow_all())?;
+                mutate::discover_mutants(&functions, &languages, &mutate::OperatorFilter::allow_all())?;
 
             let Some(candidate) = candidates.into_iter().find(|c| c.id == id) else {
                 anyhow::bail!("no mutation candidate found with id {id:?}");
@@ -966,16 +982,20 @@ fn main() -> anyhow::Result<()> {
             let runs_dir = runs_dir
                 .or(cfg.runner.runs_dir.clone())
                 .unwrap_or_else(|| PathBuf::from(".ooze/runs"));
-            let format = format
-                .or(cfg.report.format.clone())
-                .unwrap_or_else(|| "json".to_string());
+            let format = match format {
+                Some(f) => f,
+                None => match cfg.report.format.as_deref() {
+                    Some(s) => parse_report_format_str(s)?,
+                    None => report::ReportFormat::Json,
+                },
+            };
             let output = output.or(cfg.report.output.clone());
 
             let report_detail = match report_detail {
                 Some(d) => d,
                 None => match cfg.report.detail.as_deref() {
                     Some(s) => parse_report_detail_str(s)?,
-                    None => report::default_detail_for_format(&format),
+                    None => format.default_detail(),
                 },
             };
             let report_opts = build_report_options(
@@ -1032,9 +1052,9 @@ fn main() -> anyhow::Result<()> {
 
             let excludes = resolve_excludes(&path, &exclude);
             let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
-            let languages = lang::supported_languages();
+            let languages = lang::mutable_languages();
             let filter = mutate::OperatorFilter::from_cli(&operators, &exclude_operators);
-            let candidates = mutate::discover_mutants(&functions, languages, &filter)?;
+            let candidates = mutate::discover_mutants(&functions, &languages, &filter)?;
             let candidates = if no_static_skips {
                 candidates
             } else {
@@ -1163,7 +1183,7 @@ fn main() -> anyhow::Result<()> {
                         stdout: outcome.stdout,
                         stderr: outcome.stderr,
                     };
-                    if format == "human" {
+                    if matches!(format, report::ReportFormat::Human) {
                         eprintln!("Preflight failed.\n");
                         eprintln!("{msg}\n");
                         eprintln!("Command: {}", probe.join(" "));
@@ -1248,31 +1268,7 @@ fn main() -> anyhow::Result<()> {
             let mut enriched = report::enrich(raw_report, &crap_entries, &repo_root, context_lines);
             report::apply_options(&mut enriched, report_opts);
 
-            let text = match format.as_str() {
-                "human" => report::human(&enriched),
-                "agent-tasks-json" => {
-                    let tasks = report::agent_tasks(&enriched);
-                    let mut s = serde_json::to_string_pretty(&tasks)?;
-                    s.push('\n');
-                    s
-                }
-                "agent-tasks-markdown" => {
-                    let tasks = report::agent_tasks(&enriched);
-                    report::agent_tasks_markdown(&tasks)
-                }
-                "github-annotations" => report::github_annotations(&enriched),
-                "sarif" => {
-                    let log = report::sarif(&enriched);
-                    let mut s = serde_json::to_string_pretty(&log)?;
-                    s.push('\n');
-                    s
-                }
-                _ => {
-                    let mut s = serde_json::to_string_pretty(&enriched)?;
-                    s.push('\n');
-                    s
-                }
-            };
+            let text = format.render(&enriched)?;
             match output.as_deref() {
                 Some(path) => std::fs::write(path, &text)
                     .with_context(|| format!("writing report to {}", path.display()))?,
@@ -1304,9 +1300,9 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::TestMutant { path, id, probe } => {
             let functions = lang::scan_directory(&path)?;
-            let languages = lang::supported_languages();
+            let languages = lang::mutable_languages();
             let candidates =
-                mutate::discover_mutants(&functions, languages, &mutate::OperatorFilter::allow_all())?;
+                mutate::discover_mutants(&functions, &languages, &mutate::OperatorFilter::allow_all())?;
 
             let Some(candidate) = candidates.into_iter().find(|c| c.id == id) else {
                 anyhow::bail!("no mutation candidate found with id {id:?}");
@@ -1323,7 +1319,7 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Doctor { path, format } => {
             let report = doctor::run(&path);
-            if wants_json(&format) {
+            if format.is_json() {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
                 doctor::print_human(&report);
@@ -1360,7 +1356,7 @@ fn main() -> anyhow::Result<()> {
             let functions = lang::scan_directory(std::path::Path::new(&path))?;
             let coverage = resolve_coverage(&coverage, lcov.as_deref())?;
             let entries = score_with_optional_coverage(functions, coverage);
-            if wants_json(&format) {
+            if format.is_json() {
                 println!("{}", serde_json::to_string_pretty(&entries)?);
             }
         }
@@ -1712,11 +1708,11 @@ mod tests {
         assert!(!progress_enabled(true, false));
     }
 
-    // --- wants_json -------------------------------------------------------
+    // --- OutputFormat -----------------------------------------------------
 
     #[test]
-    fn wants_json_matches_only_json() {
-        assert!(wants_json("json"));
-        assert!(!wants_json("human"));
+    fn output_format_is_json_only_for_json() {
+        assert!(OutputFormat::Json.is_json());
+        assert!(!OutputFormat::Human.is_json());
     }
 }

@@ -9,4 +9,6 @@ pub const GRAMMAR: GrammarDef = GrammarDef {
     language: || tree_sitter_c::LANGUAGE.into(),
     functions_query: FUNCTIONS_QUERY,
     branches_query: BRANCHES_QUERY,
+    support: crate::core::SupportLevel::ScanOnly,
+    mutators: &[],
 };

@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::Context;
 use streaming_iterator::StreamingIterator;
 
-use crate::core::{FunctionSpan, Language};
+use crate::core::{FunctionSpan, Language, MutatorImpl, SupportLevel};
 
 pub mod bash;
 pub mod c;
@@ -32,10 +32,12 @@ pub mod zig;
 #[cfg(test)]
 mod tests;
 
-/// A parseable language grammar. Mutation operators no longer live here — they
-/// are in `crate::mutate::registry`, keyed by `Language`. This struct is purely
-/// about discovery/parsing, and is a compile-time constant per language (e.g.
-/// `crate::lang::rust::GRAMMAR`).
+/// The full comptime description of a language: how to parse it, which mutation
+/// operators it ships, and how far its support is trusted. This is the single
+/// source of truth — `GRAMMARS` is the only place a language is registered, and
+/// `crate::mutate::registry` derives the mutator lookup from `mutators` here
+/// rather than maintaining a parallel list. A compile-time constant per language
+/// (e.g. `crate::lang::rust::GRAMMAR`).
 pub struct GrammarDef {
     /// The typed language id. `name()` derives from this, so it is the single
     /// source of truth for the canonical language string.
@@ -46,6 +48,12 @@ pub struct GrammarDef {
     pub language: fn() -> tree_sitter::Language,
     pub functions_query: &'static str,
     pub branches_query: &'static str,
+    /// How far support for this language goes. Must agree with `mutators`: a
+    /// `ScanOnly` language has no mutators; a `Mutate*` language has at least one.
+    pub support: SupportLevel,
+    /// Mutation operators registered for this language, or `&[]` for scan-only
+    /// languages.
+    pub mutators: &'static [MutatorImpl],
 }
 
 impl GrammarDef {
@@ -82,6 +90,17 @@ pub const GRAMMARS: &[&GrammarDef] = &[
 
 pub fn supported_languages() -> &'static [&'static GrammarDef] {
     GRAMMARS
+}
+
+/// Languages that declare mutation support (`SupportLevel::mutates()`), i.e. the
+/// ones mutation discovery can actually produce candidates for. Scan-only
+/// grammars are excluded here so "parseable" never silently means "mutable".
+pub fn mutable_languages() -> Vec<&'static GrammarDef> {
+    GRAMMARS
+        .iter()
+        .copied()
+        .filter(|g| g.support.mutates())
+        .collect()
 }
 
 /// The grammar registered for a language, if any. Used by mutator tests to pair

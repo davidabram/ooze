@@ -25,7 +25,7 @@ fn scan_json_outputs_valid_json() {
 #[test]
 fn scan_non_json_produces_no_output() {
     let out = ooze()
-        .args(["scan", "--path", "tests/fixtures/lang", "--format", "text"])
+        .args(["scan", "--path", "tests/fixtures/lang", "--format", "human"])
         .output()
         .expect("failed to run ooze");
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
@@ -53,7 +53,7 @@ fn mutants_json_outputs_valid_json() {
 #[test]
 fn mutants_non_json_produces_no_output() {
     let out = ooze()
-        .args(["mutants", "--path", "tests/fixtures/mutate", "--format", "text"])
+        .args(["mutants", "--path", "tests/fixtures/mutate", "--format", "human"])
         .output()
         .expect("failed to run ooze");
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
@@ -81,7 +81,7 @@ fn operators_json_outputs_valid_json() {
 #[test]
 fn operators_non_json_outputs_text() {
     let out = ooze()
-        .args(["operators", "--format", "text"])
+        .args(["operators", "--format", "human"])
         .output()
         .expect("failed to run ooze");
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
@@ -110,7 +110,7 @@ fn plan_mutants_json_outputs_valid_json() {
 #[test]
 fn plan_mutants_non_json_produces_no_output() {
     let out = ooze()
-        .args(["plan-mutants", "--path", "tests/fixtures/mutate", "--format", "text"])
+        .args(["plan-mutants", "--path", "tests/fixtures/mutate", "--format", "human"])
         .output()
         .expect("failed to run ooze");
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
@@ -491,7 +491,7 @@ fn crap_json_format_outputs_valid_json() {
 #[test]
 fn crap_non_json_format_produces_no_stdout() {
     let out = ooze()
-        .args(["crap", "--path", "tests/fixtures/lang", "--format", "text"])
+        .args(["crap", "--path", "tests/fixtures/lang", "--format", "human"])
         .output()
         .expect("failed to run ooze");
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));

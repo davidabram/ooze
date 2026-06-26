@@ -128,14 +128,59 @@ impl ReportOptions {
     }
 }
 
-/// Default detail level for a given output format. Survivor-only formats
-/// (agent tasks, sarif, github annotations) and the already-terse human format
-/// default to compact; the full JSON report defaults to normal.
-pub fn default_detail_for_format(format: &str) -> ReportDetail {
-    match format {
-        "human" | "agent-tasks-json" | "agent-tasks-markdown" | "sarif"
-        | "github-annotations" => ReportDetail::Compact,
-        _ => ReportDetail::Normal,
+/// The rendered shape of a `test-mutants` report. Replaces passing `"json"` /
+/// `"sarif"` / … as strings: parsed once at the CLI/config boundary, then the
+/// match over output shapes lives in one place (`render`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum ReportFormat {
+    Json,
+    Human,
+    AgentTasksJson,
+    AgentTasksMarkdown,
+    GithubAnnotations,
+    Sarif,
+}
+
+impl ReportFormat {
+    /// Default detail level for this format. Survivor-only formats (agent tasks,
+    /// sarif, github annotations) and the already-terse human format default to
+    /// compact; the full JSON report defaults to normal.
+    pub fn default_detail(self) -> ReportDetail {
+        match self {
+            ReportFormat::Json => ReportDetail::Normal,
+            _ => ReportDetail::Compact,
+        }
+    }
+
+    /// Render an enriched report into its textual form (trailing newline
+    /// included for the serialized variants).
+    pub fn render(self, report: &EnrichedRunReport) -> serde_json::Result<String> {
+        Ok(match self {
+            ReportFormat::Human => human(report),
+            ReportFormat::AgentTasksJson => {
+                let tasks = agent_tasks(report);
+                let mut s = serde_json::to_string_pretty(&tasks)?;
+                s.push('\n');
+                s
+            }
+            ReportFormat::AgentTasksMarkdown => {
+                let tasks = agent_tasks(report);
+                agent_tasks_markdown(&tasks)
+            }
+            ReportFormat::GithubAnnotations => github_annotations(report),
+            ReportFormat::Sarif => {
+                let log = sarif(report);
+                let mut s = serde_json::to_string_pretty(&log)?;
+                s.push('\n');
+                s
+            }
+            ReportFormat::Json => {
+                let mut s = serde_json::to_string_pretty(report)?;
+                s.push('\n');
+                s
+            }
+        })
     }
 }
 
@@ -1423,13 +1468,20 @@ mod tests {
 
     #[test]
     fn default_detail_per_format() {
-        assert_eq!(default_detail_for_format("human"), ReportDetail::Compact);
-        assert_eq!(default_detail_for_format("sarif"), ReportDetail::Compact);
+        assert_eq!(ReportFormat::Human.default_detail(), ReportDetail::Compact);
+        assert_eq!(ReportFormat::Sarif.default_detail(), ReportDetail::Compact);
         assert_eq!(
-            default_detail_for_format("agent-tasks-json"),
+            ReportFormat::AgentTasksJson.default_detail(),
             ReportDetail::Compact
         );
-        assert_eq!(default_detail_for_format("json"), ReportDetail::Normal);
-        assert_eq!(default_detail_for_format("anything-else"), ReportDetail::Normal);
+        assert_eq!(
+            ReportFormat::AgentTasksMarkdown.default_detail(),
+            ReportDetail::Compact
+        );
+        assert_eq!(
+            ReportFormat::GithubAnnotations.default_detail(),
+            ReportDetail::Compact
+        );
+        assert_eq!(ReportFormat::Json.default_detail(), ReportDetail::Normal);
     }
 }

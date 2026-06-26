@@ -96,6 +96,27 @@ impl std::fmt::Display for Language {
     }
 }
 
+/// How far ooze's support for a language goes. A grammar that only parses is not
+/// the same as one that has mutation operators, which is not the same as one
+/// whose operators are trusted in production. Keeping these states explicit (and
+/// comptime) stops "parseable" from being mistaken for "mutable".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SupportLevel {
+    /// Functions and branches can be discovered, but there are no mutators.
+    ScanOnly,
+    /// Mutators exist but are not yet trusted/golden-tested.
+    MutateExperimental,
+    /// Mutators exist and are exercised by golden tests.
+    MutateStable,
+}
+
+impl SupportLevel {
+    /// Whether this language ships any mutation operators.
+    pub fn mutates(self) -> bool {
+        matches!(self, SupportLevel::MutateExperimental | SupportLevel::MutateStable)
+    }
+}
+
 impl serde::Serialize for Language {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(self.as_str())

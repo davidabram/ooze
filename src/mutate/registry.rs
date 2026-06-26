@@ -1,24 +1,19 @@
-//! Aggregates the per-language mutator implementations into one lookup point.
+//! One lookup point over the per-language mutator implementations.
 //!
 //! A semantic operator (`OperatorName`) can have one implementation per language.
-//! The implementations themselves live next to each grammar (e.g.
-//! `crate::lang::rust::MUTATORS`); this module just chains those slices so
-//! discovery can ask for "every implementation registered for language X"
-//! without knowing which file they came from.
+//! The implementations live on each language's `GrammarDef` (its `mutators`
+//! field), so there is no separate registry list to keep in sync: this module
+//! just walks `crate::lang::GRAMMARS` — the single source of truth — and answers
+//! "every implementation registered for language X".
 
 use crate::core::{Language, MutatorImpl};
 
-/// Every language's mutator slice. Add a language by appending its slice here.
-const LANGUAGE_MUTATORS: &[&[MutatorImpl]] = &[
-    crate::lang::rust::MUTATORS,
-    crate::lang::javascript::MUTATORS,
-    crate::lang::typescript::MUTATORS,
-    crate::lang::python::MUTATORS,
-];
-
-/// Every registered mutator implementation across all languages.
+/// Every registered mutator implementation across all languages, sourced from the
+/// per-language grammar definitions in `crate::lang::GRAMMARS`.
 pub fn all() -> impl Iterator<Item = &'static MutatorImpl> {
-    LANGUAGE_MUTATORS.iter().copied().flatten()
+    crate::lang::GRAMMARS
+        .iter()
+        .flat_map(|grammar| grammar.mutators.iter())
 }
 
 /// Implementations registered for a given language.
@@ -47,6 +42,18 @@ mod tests {
     fn rust_registers_every_current_operator() {
         let count = implementations_for_language(Language::Rust).count();
         assert_eq!(count, 23, "expected all twenty-three rust operators");
+    }
+
+    #[test]
+    fn support_level_agrees_with_mutators() {
+        for grammar in crate::lang::GRAMMARS {
+            assert_eq!(
+                grammar.support.mutates(),
+                !grammar.mutators.is_empty(),
+                "{}: support level and presence of mutators disagree",
+                grammar.id
+            );
+        }
     }
 
     #[test]
