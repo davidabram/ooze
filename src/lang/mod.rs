@@ -159,9 +159,6 @@ pub fn scan_directory_with_registry(
 }
 
 fn scan_file(path: &Path, compiled: &CompiledLanguage) -> anyhow::Result<Vec<FunctionSpan>> {
-    let language = compiled.spec;
-    let fn_query = &compiled.functions;
-    let branch_query = &compiled.branches;
     // A function definition (named or anonymous) and its byte range. Anonymous
     // functions (closures, lambdas, arrow functions) get a synthetic name derived
     // from their start line so they are no longer dropped.
@@ -171,6 +168,10 @@ fn scan_file(path: &Path, compiled: &CompiledLanguage) -> anyhow::Result<Vec<Fun
         start: usize,
         end: usize,
     }
+
+    let language = compiled.spec;
+    let fn_query = &compiled.functions;
+    let branch_query = &compiled.branches;
 
     let source =
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;

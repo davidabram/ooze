@@ -196,17 +196,17 @@ fn sorted_reverse_flip(original: &str) -> Option<String> {
     let mut flipped = false;
     for arg in &args {
         let a = arg.trim();
-        if let Some(val) = a.strip_prefix("reverse") {
-            if let Some(v) = val.trim_start().strip_prefix('=') {
-                let new = match v.trim() {
-                    "True" => "False",
-                    "False" => "True",
-                    _ => return None,
-                };
-                out.push(format!("reverse={new}"));
-                flipped = true;
-                continue;
-            }
+        if let Some(val) = a.strip_prefix("reverse")
+            && let Some(v) = val.trim_start().strip_prefix('=')
+        {
+            let new = match v.trim() {
+                "True" => "False",
+                "False" => "True",
+                _ => return None,
+            };
+            out.push(format!("reverse={new}"));
+            flipped = true;
+            continue;
         }
         out.push(a.to_string());
     }

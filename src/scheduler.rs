@@ -195,6 +195,23 @@ fn rank_actionable(
     candidates
 }
 
+fn rank_highest_crap(
+    mut candidates: Vec<MutationCandidate>,
+    crap_entries: &[CrapEntry],
+) -> Vec<MutationCandidate> {
+    let index = index_crap(crap_entries);
+
+    candidates.sort_by(|a, b| {
+        let ca = lookup(&index, a).map_or(f64::NEG_INFINITY, |e| e.crap);
+        let cb = lookup(&index, b).map_or(f64::NEG_INFINITY, |e| e.crap);
+        cb.partial_cmp(&ca)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.id.cmp(&b.id))
+    });
+
+    candidates
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,21 +242,4 @@ mod tests {
         // Tangled: above the CRAP ceiling, outside all positive ranges.
         assert_eq!(actionable_score(Some(&entry(20, 95.0, 90.0)), p), -50);
     }
-}
-
-fn rank_highest_crap(
-    mut candidates: Vec<MutationCandidate>,
-    crap_entries: &[CrapEntry],
-) -> Vec<MutationCandidate> {
-    let index = index_crap(crap_entries);
-
-    candidates.sort_by(|a, b| {
-        let ca = lookup(&index, a).map_or(f64::NEG_INFINITY, |e| e.crap);
-        let cb = lookup(&index, b).map_or(f64::NEG_INFINITY, |e| e.crap);
-        cb.partial_cmp(&ca)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.id.cmp(&b.id))
-    });
-
-    candidates
 }

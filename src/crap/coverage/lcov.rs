@@ -13,15 +13,14 @@ pub fn parse_lcov(path: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
     // the parse over data we don't use.
     let contents = fs::read_to_string(path)
         .with_context(|| format!("opening LCOV file {}", path.display()))?;
-    let filtered: String = contents
-        .lines()
-        .filter(|line| {
-            !(line.starts_with("BRDA:")
-                || line.starts_with("BRF:")
-                || line.starts_with("BRH:"))
-        })
-        .map(|line| format!("{line}\n"))
-        .collect();
+    let mut filtered = String::with_capacity(contents.len());
+    for line in contents.lines() {
+        if line.starts_with("BRDA:") || line.starts_with("BRF:") || line.starts_with("BRH:") {
+            continue;
+        }
+        filtered.push_str(line);
+        filtered.push('\n');
+    }
     let reader = lcov::Reader::new(filtered.as_bytes());
 
     let mut files: HashMap<PathBuf, FileCoverage> = HashMap::new();

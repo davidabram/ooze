@@ -872,7 +872,7 @@ pub fn suggest(candidate: &MutationCandidate) -> TestSuggestion {
         OperatorName::RemoveTry => format!(
             "Add a test for `{func}` in `{file}` that drives the error path of the `?` at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
         ),
-        OperatorName::UnwrapToUnwrapOrDefault => format!(
+        OperatorName::UnwrapToUnwrapOrDefault | OperatorName::ExpectToUnwrapOrDefault => format!(
             "Add a test for `{func}` in `{file}` that exercises the None/Err case at line {line} so the panic-vs-default behavior differs. The test should fail if `{original}` is changed to `{replacement}`."
         ),
         OperatorName::MinMaxSwap => format!(
@@ -886,9 +886,6 @@ pub fn suggest(candidate: &MutationCandidate) -> TestSuggestion {
         ),
         OperatorName::SaturatingCheckedSwap => format!(
             "Add a test for `{func}` in `{file}` at the overflow boundary so saturating and checked behavior differ at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
-        ),
-        OperatorName::ExpectToUnwrapOrDefault => format!(
-            "Add a test for `{func}` in `{file}` that exercises the None/Err case at line {line} so the panic-vs-default behavior differs. The test should fail if `{original}` is changed to `{replacement}`."
         ),
         OperatorName::StringBoundaryMethodSwap => format!(
             "Add a test for `{func}` in `{file}` covering both matching and non-matching prefixes/suffixes so `{original}` and `{replacement}` differ at line {line}. The test should fail if `{original}` is changed to `{replacement}`."

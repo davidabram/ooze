@@ -398,7 +398,7 @@ fn stable_fields(c: &serde_json::Value) -> serde_json::Value {
 /// Sort key that is total over the stable projection, so two runs (and the
 /// golden file) compare order-independently.
 fn snapshot_sorted(mut mutants: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
-    mutants.sort_by_key(|c| c.to_string());
+    mutants.sort_by_key(ToString::to_string);
     mutants
 }
 
