@@ -102,106 +102,142 @@ use std::path::{Path, PathBuf};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, QueryCursor};
 
-use crate::lang::CompiledRegistry;
+use crate::core::FunctionSpan;
+use crate::lang::{CompiledMutator, CompiledRegistry};
 
 /// Discover mutation candidates using queries compiled once for this run. The
 /// registry was built with the operator filter already applied, so each compiled
 /// language carries exactly the mutators that should run.
+///
+/// Functions are grouped by source file so each file is read and parsed once,
+/// regardless of how many functions it contains, then every mutator runs against
+/// each function's node in that single tree.
 pub fn discover_mutants(
-    functions: &[crate::core::FunctionSpan],
+    functions: &[FunctionSpan],
     registry: &CompiledRegistry,
 ) -> Result<Vec<MutationCandidate>> {
+    // BTreeMap keeps file iteration deterministic; insertion order within a file
+    // preserves the scan order of its functions.
+    let mut by_file: std::collections::BTreeMap<&Path, Vec<&FunctionSpan>> =
+        std::collections::BTreeMap::new();
+    for function in functions {
+        by_file.entry(&function.file).or_default().push(function);
+    }
+
     let mut candidates = Vec::new();
 
-    for function in functions {
-        let Some(compiled) = registry.for_language(function.language) else {
+    for (file, spans) in by_file {
+        // All spans in a file share its language.
+        let language = spans[0].language;
+        let Some(compiled) = registry.for_language(language) else {
             continue;
         };
         if compiled.mutators.is_empty() {
             continue;
         }
 
-        let source = std::fs::read_to_string(&function.file)
-            .with_context(|| format!("reading {}", function.file.display()))?;
+        let source = std::fs::read_to_string(file)
+            .with_context(|| format!("reading {}", file.display()))?;
 
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&compiled.ts_language)
-            .with_context(|| format!("loading {} grammar", function.language))?;
+        parser
+            .set_language(&compiled.ts_language)
+            .with_context(|| format!("loading {language} grammar"))?;
 
         let tree = parser
             .parse(&source, None)
-            .with_context(|| format!("parsing {}", function.file.display()))?;
+            .with_context(|| format!("parsing {}", file.display()))?;
 
         let source_bytes = source.as_bytes();
         let root = tree.root_node();
 
-        let function_node = find_node_by_byte_range(root, function.start_byte, function.end_byte);
+        for function in spans {
+            let Some(function_node) =
+                find_node_by_byte_range(root, function.start_byte, function.end_byte)
+            else {
+                continue;
+            };
 
-        let Some(function_node) = function_node else {
-            continue;
-        };
-
-        for m in &compiled.mutators {
-            let target_idx = m.target_index;
-
-            let mut cursor = QueryCursor::new();
-            let mut matches = cursor.matches(&m.query, function_node, source_bytes);
-
-            while let Some(captured) = matches.next() {
-                for capture in captured.captures {
-                    if capture.index != target_idx {
-                        continue;
-                    }
-
-                    let node = capture.node;
-                    let mut original = node_text(node, source_bytes);
-                    let Some(replacement) = (m.spec.replacement)(&original) else {
-                        continue;
-                    };
-
-                    // A deletion (empty replacement) that removes a whole node
-                    // would otherwise leave the separator that preceded it, e.g.
-                    // `[x for x in xs if p]` -> `[x for x in xs ]`. Absorb one
-                    // preceding space into the range so the edit reads cleanly.
-                    let mut start_byte = node.start_byte();
-                    if replacement.is_empty()
-                        && start_byte > 0
-                        && source_bytes[start_byte - 1] == b' '
-                    {
-                        start_byte -= 1;
-                        original.insert(0, ' ');
-                    }
-
-                    let candidate_file = normalize_path(&function.file);
-
-                    candidates.push(MutationCandidate {
-                        id: format!(
-                            "{}:{}:{}:{}",
-                            candidate_file.display(),
-                            node.start_position().row + 1,
-                            node.start_position().column,
-                            m.spec.id,
-                        ),
-                        file: function.file.clone(),
-                        language: function.language,
-                        function: function.name.clone(),
-                        line: node.start_position().row + 1,
-                        column: node.start_position().column,
-                        start_byte,
-                        end_byte: node.end_byte(),
-                        operator: m.spec.operator,
-                        operator_category: m.spec.category(),
-                        implementation: m.spec.id.to_string(),
-                        description: (m.spec.description)(&original, &replacement),
-                        original,
-                        replacement,
-                    });
-                }
+            for m in &compiled.mutators {
+                run_mutator(m, function, function_node, source_bytes, &mut candidates);
             }
         }
     }
 
-    Ok(dedupe_overlapping(candidates))
+    let mut candidates = dedupe_overlapping(candidates);
+    // Deterministic output independent of file grouping / mutator order, so
+    // `mutants` and `plan-mutants` are stable across runs.
+    candidates.sort_by(|a, b| {
+        (a.file.as_path(), a.line, a.column, a.implementation.as_str()).cmp(&(
+            b.file.as_path(),
+            b.line,
+            b.column,
+            b.implementation.as_str(),
+        ))
+    });
+    Ok(candidates)
+}
+
+/// Run one compiled mutator against a single function node, pushing a candidate
+/// for every `target` capture whose replacement applies.
+fn run_mutator(
+    m: &CompiledMutator,
+    function: &FunctionSpan,
+    function_node: Node,
+    source_bytes: &[u8],
+    candidates: &mut Vec<MutationCandidate>,
+) {
+    let mut cursor = QueryCursor::new();
+    let mut matches = cursor.matches(&m.query, function_node, source_bytes);
+
+    while let Some(captured) = matches.next() {
+        for capture in captured.captures {
+            if capture.index != m.target_index {
+                continue;
+            }
+
+            let node = capture.node;
+            let mut original = node_text(node, source_bytes);
+            let Some(replacement) = (m.spec.replacement)(&original) else {
+                continue;
+            };
+
+            // A deletion (empty replacement) that removes a whole node would
+            // otherwise leave the separator that preceded it, e.g.
+            // `[x for x in xs if p]` -> `[x for x in xs ]`. Absorb one preceding
+            // space into the range so the edit reads cleanly.
+            let mut start_byte = node.start_byte();
+            if replacement.is_empty() && start_byte > 0 && source_bytes[start_byte - 1] == b' ' {
+                start_byte -= 1;
+                original.insert(0, ' ');
+            }
+
+            let candidate_file = normalize_path(&function.file);
+
+            candidates.push(MutationCandidate {
+                id: format!(
+                    "{}:{}:{}:{}",
+                    candidate_file.display(),
+                    node.start_position().row + 1,
+                    node.start_position().column,
+                    m.spec.id,
+                ),
+                file: function.file.clone(),
+                language: function.language,
+                function: function.name.clone(),
+                line: node.start_position().row + 1,
+                column: node.start_position().column,
+                start_byte,
+                end_byte: node.end_byte(),
+                operator: m.spec.operator,
+                operator_category: m.spec.category(),
+                implementation: m.spec.id.to_string(),
+                description: (m.spec.description)(&original, &replacement),
+                original,
+                replacement,
+            });
+        }
+    }
 }
 
 /// Drop redundant candidates that rewrite the same source bytes to the same
@@ -366,6 +402,43 @@ mod discover_tests {
                 c.implementation
             );
         }
+    }
+
+    #[test]
+    fn discovery_output_is_deterministically_ordered() {
+        // Grouping by file plus the final sort must make the candidate vector
+        // (order included) identical across runs, and sorted by source position.
+        let functions = crate::lang::scan_directory(Path::new("tests/fixtures/mutate"))
+            .expect("scanning fixtures");
+        let registry = CompiledRegistry::compile(
+            crate::lang::supported_languages(),
+            &OperatorFilter::allow_all(),
+        )
+        .unwrap();
+
+        let first = discover_mutants(&functions, &registry).unwrap();
+        let second = discover_mutants(&functions, &registry).unwrap();
+        let ids_first: Vec<&str> = first.iter().map(|c| c.id.as_str()).collect();
+        let ids_second: Vec<&str> = second.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids_first, ids_second, "discovery order must be stable");
+
+        let sorted = {
+            let mut s = first.clone();
+            s.sort_by(|a, b| {
+                (a.file.as_path(), a.line, a.column, a.implementation.as_str()).cmp(&(
+                    b.file.as_path(),
+                    b.line,
+                    b.column,
+                    b.implementation.as_str(),
+                ))
+            });
+            s
+        };
+        assert_eq!(
+            ids_first,
+            sorted.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+            "candidates must come out sorted by (file, line, column, implementation)"
+        );
     }
 }
 

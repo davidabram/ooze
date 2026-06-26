@@ -9,7 +9,7 @@ mod mutator_macro;
 pub(crate) use mutator_macro::mutators;
 
 mod compiled;
-pub use compiled::{CompiledLanguage, CompiledRegistry};
+pub use compiled::{CompiledLanguage, CompiledMutator, CompiledRegistry};
 
 pub mod bash;
 pub mod c;
