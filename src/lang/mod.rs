@@ -5,6 +5,9 @@ use streaming_iterator::StreamingIterator;
 
 use crate::core::{FunctionSpan, Language, MutatorImpl, SupportLevel};
 
+mod mutator_macro;
+pub(crate) use mutator_macro::mutators;
+
 pub mod bash;
 pub mod c;
 pub mod c_sharp;

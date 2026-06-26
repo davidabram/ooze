@@ -1,100 +1,73 @@
 use super::GrammarDef;
-use crate::core::{Language, MutatorImpl, OperatorName};
+use crate::lang::mutators;
 
 const FUNCTIONS_QUERY: &str =
     include_str!("../../queries/javascript/functions.scm");
 const BRANCHES_QUERY: &str =
     include_str!("../../queries/javascript/branches.scm");
 
-/// JavaScript's mutator implementations. The registry
-/// (`crate::mutate::registry`) aggregates this slice with the other languages'
-/// slices for discovery.
-pub const MUTATORS: &[MutatorImpl] = &[
-    MutatorImpl {
-        id: "javascript.swap_boolean",
-        operator: OperatorName::SwapBoolean,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/swap-boolean.scm"),
-        replacement: |original| match original {
+// JavaScript's mutator implementations (expands to `pub const MUTATORS`). The
+// registry (`crate::mutate::registry`) aggregates this slice with the others'.
+mutators! {
+    language: JavaScript,
+    id_prefix: "javascript",
+
+    SwapBoolean {
+        replace: |original| match original {
             "true" => Some("false".to_string()),
             "false" => Some("true".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Swap boolean literal {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "javascript.negate_equality",
-        operator: OperatorName::NegateEquality,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/negate-equality.scm"),
-        replacement: |original| match original {
+    NegateEquality {
+        replace: |original| match original {
             "==" => Some("!=".to_string()),
             "!=" => Some("==".to_string()),
             "===" => Some("!==".to_string()),
             "!==" => Some("===".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Negate equality {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "javascript.comparison_boundary",
-        operator: OperatorName::ComparisonBoundary,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/comparison-boundary.scm"),
-        replacement: |original| match original {
+    ComparisonBoundary {
+        replace: |original| match original {
             "<" => Some("<=".to_string()),
             "<=" => Some("<".to_string()),
             ">" => Some(">=".to_string()),
             ">=" => Some(">".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Toggle comparison boundary {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "javascript.comparison_negation",
-        operator: OperatorName::ComparisonNegation,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/comparison-negation.scm"),
-        replacement: |original| match original {
+    ComparisonNegation {
+        replace: |original| match original {
             "<" => Some(">=".to_string()),
             "<=" => Some(">".to_string()),
             ">" => Some("<=".to_string()),
             ">=" => Some("<".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Negate comparison {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "javascript.swap_logical",
-        operator: OperatorName::SwapLogical,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/swap-logical.scm"),
-        replacement: |original| match original {
+    SwapLogical {
+        replace: |original| match original {
             "&&" => Some("||".to_string()),
             "||" => Some("&&".to_string()),
             _ => None,
         },
-        description: |original, replacement| format!("Swap logical {original} -> {replacement}"),
-        default_enabled_override: None,
+        describe: |original, replacement| format!("Swap logical {original} -> {replacement}"),
     },
-    MutatorImpl {
-        id: "javascript.remove_not",
-        operator: OperatorName::RemoveNot,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/remove-not.scm"),
-        replacement: |original| {
+    RemoveNot {
+        replace: |original| {
             let rest = original.strip_prefix('!')?.trim_start();
             if rest.is_empty() {
                 None
@@ -102,145 +75,89 @@ pub const MUTATORS: &[MutatorImpl] = &[
                 Some(rest.to_string())
             }
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Remove negation `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "javascript.return_boolean",
-        operator: OperatorName::ReturnBoolean,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/return-boolean.scm"),
-        replacement: |original| match original {
+    ReturnBoolean {
+        replace: |original| match original {
             "true" => Some("false".to_string()),
             "false" => Some("true".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Flip returned boolean {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "javascript.iterator_any_all",
-        operator: OperatorName::IteratorAnyAll,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/iterator-any-all.scm"),
-        replacement: |original| match original {
+    IteratorAnyAll {
+        replace: |original| match original {
             "some" => Some("every".to_string()),
             "every" => Some("some".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Swap iterator quantifier {original}(...) -> {replacement}(...)")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "javascript.string_boundary_method_swap",
-        operator: OperatorName::StringBoundaryMethodSwap,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/string-boundary-method-swap.scm"),
-        replacement: |original| match original {
+    StringBoundaryMethodSwap {
+        replace: |original| match original {
             "startsWith" => Some("endsWith".to_string()),
             "endsWith" => Some("startsWith".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Swap string boundary method {original}(...) -> {replacement}(...)")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "javascript.includes_negation",
-        operator: OperatorName::IncludesNegation,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/includes-negation.scm"),
-        replacement: negate_js_expression,
-        description: |original, replacement| {
+    IncludesNegation {
+        replace: negate_js_expression,
+        describe: |original, replacement| {
             format!("Negate membership `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "javascript.nullish_coalescing_removal",
-        operator: OperatorName::NullishCoalescingRemoval,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/nullish-coalescing-removal.scm"),
-        replacement: remove_nullish_fallback,
-        description: |original, replacement| {
+    NullishCoalescingRemoval {
+        replace: remove_nullish_fallback,
+        describe: |original, replacement| {
             format!("Remove nullish fallback `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "javascript.optional_chaining_removal",
-        operator: OperatorName::OptionalChainingRemoval,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/optional-chaining-removal.scm"),
-        replacement: remove_optional_chaining,
-        description: |original, replacement| {
+    OptionalChainingRemoval {
+        replace: remove_optional_chaining,
+        describe: |original, replacement| {
             format!("Remove optional chaining `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "javascript.ternary_arm_swap",
-        operator: OperatorName::TernaryArmSwap,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/ternary-arm-swap.scm"),
-        replacement: swap_ternary_arms,
-        description: |original, replacement| {
+    TernaryArmSwap {
+        replace: swap_ternary_arms,
+        describe: |original, replacement| {
             format!("Swap ternary arms `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "javascript.array_empty_literal",
-        operator: OperatorName::ArrayEmptyLiteral,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/array-empty-literal.scm"),
-        replacement: empty_array_literal,
-        description: |original, replacement| {
+    ArrayEmptyLiteral {
+        replace: empty_array_literal,
+        describe: |original, replacement| {
             format!("Empty array literal `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "javascript.object_empty_literal",
-        operator: OperatorName::ObjectEmptyLiteral,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/object-empty-literal.scm"),
-        replacement: empty_object_literal,
-        description: |original, replacement| {
+    ObjectEmptyLiteral {
+        replace: empty_object_literal,
+        describe: |original, replacement| {
             format!("Empty object literal `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "javascript.string_empty_literal",
-        operator: OperatorName::StringEmptyLiteral,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/string-empty-literal.scm"),
-        replacement: empty_string_literal,
-        description: |original, replacement| {
+    StringEmptyLiteral {
+        replace: empty_string_literal,
+        describe: |original, replacement| {
             format!("Empty string literal `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "javascript.await_removal",
-        operator: OperatorName::AwaitRemoval,
-        language: Language::JavaScript,
-        query: include_str!("../../queries/javascript/await-removal.scm"),
-        replacement: remove_await,
-        description: |original, replacement| {
+    AwaitRemoval {
+        replace: remove_await,
+        describe: |original, replacement| {
             format!("Remove await `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-];
+}
 
 /// `includes_negation`: flip an `includes` membership predicate by wrapping it in
 /// `!(...)`. An existing leading `!` is unwrapped so the mutation toggles

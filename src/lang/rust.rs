@@ -1,95 +1,70 @@
 use super::GrammarDef;
-use crate::core::{Language, MutatorImpl, OperatorName};
+use crate::core::Language;
+use crate::lang::mutators;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/rust/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/rust/branches.scm");
 
-/// Rust's mutator implementations. The registry (`crate::mutate::registry`)
-/// aggregates this slice with the other languages' slices for discovery.
-pub const MUTATORS: &[MutatorImpl] = &[
-    MutatorImpl {
-        id: "rust.swap_boolean",
-        operator: OperatorName::SwapBoolean,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/swap-boolean.scm"),
-        replacement: |original| match original {
+// Rust's mutator implementations (expands to `pub const MUTATORS`). The registry
+// (`crate::mutate::registry`) aggregates this slice with the other languages'.
+mutators! {
+    language: Rust,
+    id_prefix: "rust",
+
+    SwapBoolean {
+        replace: |original| match original {
             "true" => Some("false".to_string()),
             "false" => Some("true".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Swap boolean literal {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.negate_equality",
-        operator: OperatorName::NegateEquality,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/negate-equality.scm"),
-        replacement: |original| match original {
+    NegateEquality {
+        replace: |original| match original {
             "==" => Some("!=".to_string()),
             "!=" => Some("==".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Negate equality {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.comparison_boundary",
-        operator: OperatorName::ComparisonBoundary,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/comparison-boundary.scm"),
-        replacement: |original| match original {
+    ComparisonBoundary {
+        replace: |original| match original {
             "<" => Some("<=".to_string()),
             "<=" => Some("<".to_string()),
             ">" => Some(">=".to_string()),
             ">=" => Some(">".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Toggle comparison boundary {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.comparison_negation",
-        operator: OperatorName::ComparisonNegation,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/comparison-negation.scm"),
-        replacement: |original| match original {
+    ComparisonNegation {
+        replace: |original| match original {
             "<" => Some(">=".to_string()),
             "<=" => Some(">".to_string()),
             ">" => Some("<=".to_string()),
             ">=" => Some("<".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Negate comparison {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.swap_logical",
-        operator: OperatorName::SwapLogical,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/swap-logical.scm"),
-        replacement: |original| match original {
+    SwapLogical {
+        replace: |original| match original {
             "&&" => Some("||".to_string()),
             "||" => Some("&&".to_string()),
             _ => None,
         },
-        description: |original, replacement| format!("Swap logical {original} -> {replacement}"),
-        default_enabled_override: None,
+        describe: |original, replacement| format!("Swap logical {original} -> {replacement}"),
     },
-    MutatorImpl {
-        id: "rust.remove_not",
-        operator: OperatorName::RemoveNot,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/remove-not.scm"),
-        replacement: |original| {
+    RemoveNot {
+        replace: |original| {
             let rest = original.strip_prefix('!')?.trim_start();
             if rest.is_empty() {
                 None
@@ -97,267 +72,181 @@ pub const MUTATORS: &[MutatorImpl] = &[
                 Some(rest.to_string())
             }
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Remove negation `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.integer_zero_one",
-        operator: OperatorName::IntegerZeroOne,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/integer-zero-one.scm"),
-        replacement: |original| match original {
+    IntegerZeroOne {
+        replace: |original| match original {
             "0" => Some("1".to_string()),
             "1" => Some("0".to_string()),
             _ => None,
         },
-        description: |original, replacement| format!("Replace integer {original} -> {replacement}"),
-        default_enabled_override: None,
+        describe: |original, replacement| format!("Replace integer {original} -> {replacement}"),
     },
-    MutatorImpl {
-        id: "rust.range_inclusive_exclusive",
-        operator: OperatorName::RangeInclusiveExclusive,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/range-inclusive-exclusive.scm"),
-        replacement: |original| match original {
+    RangeInclusiveExclusive {
+        replace: |original| match original {
             ".." => Some("..=".to_string()),
             "..=" => Some("..".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Toggle range bound {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.swap_predicate_method",
-        operator: OperatorName::SwapPredicateMethod,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/swap-predicate-method.scm"),
-        replacement: |original| match original {
+    SwapPredicateMethod {
+        replace: |original| match original {
             "is_some" => Some("is_none".to_string()),
             "is_none" => Some("is_some".to_string()),
             "is_ok" => Some("is_err".to_string()),
             "is_err" => Some("is_ok".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Swap predicate method {original}() -> {replacement}()")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.negate_predicate_method",
-        operator: OperatorName::NegatePredicateMethod,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/negate-predicate-method.scm"),
+    NegatePredicateMethod {
         // The query only matches bool-returning predicate calls, so wrapping the
         // whole call expression in `!` is always type-correct.
-        replacement: |original| Some(format!("!{original}")),
-        description: |original, replacement| {
+        replace: |original| Some(format!("!{original}")),
+        describe: |original, replacement| {
             format!("Negate predicate method `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.return_boolean",
-        operator: OperatorName::ReturnBoolean,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/return-boolean.scm"),
-        replacement: |original| match original {
+    ReturnBoolean {
+        replace: |original| match original {
             "true" => Some("false".to_string()),
             "false" => Some("true".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Flip returned boolean {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.iterator_any_all",
-        operator: OperatorName::IteratorAnyAll,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/iterator-any-all.scm"),
-        replacement: |original| match original {
+    IteratorAnyAll {
+        replace: |original| match original {
             "any" => Some("all".to_string()),
             "all" => Some("any".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Swap iterator quantifier {original}(...) -> {replacement}(...)")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.match_bool_pattern",
-        operator: OperatorName::MatchBoolPattern,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/match-bool-pattern.scm"),
-        replacement: |original| match original {
+    MatchBoolPattern {
+        replace: |original| match original {
             "true" => Some("false".to_string()),
             "false" => Some("true".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Flip match-arm boolean pattern {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.ok_err_boolean",
-        operator: OperatorName::OkErrBoolean,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/ok-err-boolean.scm"),
-        replacement: |original| match original {
+    OkErrBoolean {
+        replace: |original| match original {
             "true" => Some("false".to_string()),
             "false" => Some("true".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Flip wrapped boolean {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.some_boolean",
-        operator: OperatorName::SomeBoolean,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/some-boolean.scm"),
-        replacement: |original| match original {
+    SomeBoolean {
+        replace: |original| match original {
             "true" => Some("false".to_string()),
             "false" => Some("true".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Flip wrapped boolean {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.option_some_none",
-        operator: OperatorName::OptionSomeNone,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/option-some-none.scm"),
+    OptionSomeNone {
         // The whole `Some(value)` call expression is the @target; replace it
         // with `None`. The query already scopes matches to the `Some` ctor.
-        replacement: |original| {
+        replace: |original| {
             if original.starts_with("Some") {
                 Some("None".to_string())
             } else {
                 None
             }
         },
-        description: |original, _replacement| format!("Replace `{original}` with `None`"),
-        default_enabled_override: None,
+        describe: |original, _replacement| format!("Replace `{original}` with `None`"),
     },
-    MutatorImpl {
-        id: "rust.remove_try",
-        operator: OperatorName::RemoveTry,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/remove-try.scm"),
-        replacement: |original| original.strip_suffix('?').map(str::to_string),
-        description: |original, replacement| {
+    RemoveTry {
+        replace: |original| original.strip_suffix('?').map(str::to_string),
+        describe: |original, replacement| {
             format!("Remove `?` propagation `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.unwrap_to_unwrap_or_default",
-        operator: OperatorName::UnwrapToUnwrapOrDefault,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/unwrap-to-unwrap-or-default.scm"),
-        replacement: |original| match original {
+    UnwrapToUnwrapOrDefault {
+        replace: |original| match original {
             "unwrap" => Some("unwrap_or_default".to_string()),
             _ => None,
         },
-        description: |_original, _replacement| {
+        describe: |_original, _replacement| {
             "Replace `unwrap()` with `unwrap_or_default()`".to_string()
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.min_max_swap",
-        operator: OperatorName::MinMaxSwap,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/min-max-swap.scm"),
-        replacement: |original| match original {
+    MinMaxSwap {
+        replace: |original| match original {
             "min" => Some("max".to_string()),
             "max" => Some("min".to_string()),
             _ => None,
         },
-        description: |original, replacement| format!("Swap {original} -> {replacement}"),
-        default_enabled_override: None,
+        describe: |original, replacement| format!("Swap {original} -> {replacement}"),
     },
-    MutatorImpl {
-        id: "rust.match_wildcard_to_panic",
-        operator: OperatorName::MatchWildcardToPanic,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/match-wildcard-to-panic.scm"),
-        replacement: |_original| Some("panic!(\"ooze mutant\")".to_string()),
-        description: |original, _replacement| {
+    MatchWildcardToPanic {
+        replace: |_original| Some("panic!(\"ooze mutant\")".to_string()),
+        describe: |original, _replacement| {
             format!("Replace wildcard arm value `{original}` with a panic")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.empty_vec_macro",
-        operator: OperatorName::EmptyVecMacro,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/empty-vec-macro.scm"),
+    EmptyVecMacro {
         // The query already scopes matches to the `vec!` macro; replace the whole
         // invocation with an empty one.
-        replacement: |original| {
+        replace: |original| {
             if original.starts_with("vec!") {
                 Some("vec![]".to_string())
             } else {
                 None
             }
         },
-        description: |original, _replacement| format!("Empty `{original}` -> `vec![]`"),
-        default_enabled_override: None,
+        describe: |original, _replacement| format!("Empty `{original}` -> `vec![]`"),
     },
-    MutatorImpl {
-        id: "rust.saturating_checked_swap",
-        operator: OperatorName::SaturatingCheckedSwap,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/saturating-checked-swap.scm"),
-        replacement: |original| match original {
+    SaturatingCheckedSwap {
+        replace: |original| match original {
             "checked_add" => Some("saturating_add".to_string()),
             "saturating_add" => Some("checked_add".to_string()),
             "checked_sub" => Some("saturating_sub".to_string()),
             "saturating_sub" => Some("checked_sub".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Swap overflow handling {original}(...) -> {replacement}(...)")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "rust.expect_to_unwrap_or_default",
-        operator: OperatorName::ExpectToUnwrapOrDefault,
-        language: Language::Rust,
-        query: include_str!("../../queries/rust/expect-to-unwrap-or-default.scm"),
+    ExpectToUnwrapOrDefault {
         // The @target is the whole `recv.expect(msg)` call. Split off the receiver
         // at `.expect(` and drop the message so the result is `recv.unwrap_or_default()`.
-        replacement: |original| {
+        replace: |original| {
             let receiver = original.split(".expect(").next()?;
             if receiver == original {
                 return None;
             }
             Some(format!("{receiver}.unwrap_or_default()"))
         },
-        description: |_original, _replacement| {
+        describe: |_original, _replacement| {
             "Replace `expect(..)` with `unwrap_or_default()`".to_string()
         },
-        default_enabled_override: None,
     },
-];
+}
 
 pub const GRAMMAR: GrammarDef = GrammarDef {
-    id: crate::core::Language::Rust,
+    id: Language::Rust,
     extensions: &["rs"],
     language: || tree_sitter_rust::LANGUAGE.into(),
     functions_query: FUNCTIONS_QUERY,

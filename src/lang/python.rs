@@ -1,287 +1,188 @@
 use super::GrammarDef;
-use crate::core::{Language, MutatorImpl, OperatorName};
+use crate::lang::mutators;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/python/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/python/branches.scm");
 
-/// Python's mutator implementations. The registry (`crate::mutate::registry`)
-/// aggregates this slice with the other languages' slices for discovery.
-///
-/// This is the generic-syntax MVP set: boolean literals, equality, comparison,
-/// and logical operators. Python-specific operators (`is None` negation, `in`
-/// negation, truthiness, etc.) can be layered on later as additional entries.
-pub const MUTATORS: &[MutatorImpl] = &[
-    MutatorImpl {
-        id: "python.swap_boolean",
-        operator: OperatorName::SwapBoolean,
-        language: Language::Python,
-        query: include_str!("../../queries/python/swap-boolean.scm"),
-        replacement: |original| match original {
+// Python's mutator implementations (expands to `pub const MUTATORS`). The
+// registry (`crate::mutate::registry`) aggregates this slice with the others'.
+// Generic-syntax operators plus Python-specific ones (`is None` negation, `in`
+// negation, truthiness, etc.); helper fns for the non-trivial ones live below.
+mutators! {
+    language: Python,
+    id_prefix: "python",
+
+    SwapBoolean {
+        replace: |original| match original {
             "True" => Some("False".to_string()),
             "False" => Some("True".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Swap boolean literal {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "python.negate_equality",
-        operator: OperatorName::NegateEquality,
-        language: Language::Python,
-        query: include_str!("../../queries/python/negate-equality.scm"),
-        replacement: |original| match original {
+    NegateEquality {
+        replace: |original| match original {
             "==" => Some("!=".to_string()),
             "!=" => Some("==".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Negate equality {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "python.comparison_boundary",
-        operator: OperatorName::ComparisonBoundary,
-        language: Language::Python,
-        query: include_str!("../../queries/python/comparison-boundary.scm"),
-        replacement: |original| match original {
+    ComparisonBoundary {
+        replace: |original| match original {
             "<" => Some("<=".to_string()),
             "<=" => Some("<".to_string()),
             ">" => Some(">=".to_string()),
             ">=" => Some(">".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Toggle comparison boundary {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "python.comparison_negation",
-        operator: OperatorName::ComparisonNegation,
-        language: Language::Python,
-        query: include_str!("../../queries/python/comparison-negation.scm"),
-        replacement: |original| match original {
+    ComparisonNegation {
+        replace: |original| match original {
             "<" => Some(">=".to_string()),
             "<=" => Some(">".to_string()),
             ">" => Some("<=".to_string()),
             ">=" => Some("<".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Negate comparison {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "python.swap_logical",
-        operator: OperatorName::SwapLogical,
-        language: Language::Python,
-        query: include_str!("../../queries/python/swap-logical.scm"),
-        replacement: |original| match original {
+    SwapLogical {
+        replace: |original| match original {
             "and" => Some("or".to_string()),
             "or" => Some("and".to_string()),
             _ => None,
         },
-        description: |original, replacement| format!("Swap logical {original} -> {replacement}"),
-        default_enabled_override: None,
+        describe: |original, replacement| format!("Swap logical {original} -> {replacement}"),
     },
-    MutatorImpl {
-        id: "python.integer_zero_one",
-        operator: OperatorName::IntegerZeroOne,
-        language: Language::Python,
-        query: include_str!("../../queries/python/integer-zero-one.scm"),
-        replacement: |original| match original {
+    IntegerZeroOne {
+        replace: |original| match original {
             "0" => Some("1".to_string()),
             "1" => Some("0".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Swap integer literal {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
     // ── Python-specific operators ───────────────────────────────────────────
-    MutatorImpl {
-        id: "python.is_none_negation",
-        operator: OperatorName::IsNoneNegation,
-        language: Language::Python,
-        query: include_str!("../../queries/python/is-none-negation.scm"),
-        replacement: |original| match original {
+    IsNoneNegation {
+        replace: |original| match original {
             "is" => Some("is not".to_string()),
             "is not" => Some("is".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Toggle None check {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "python.in_negation",
-        operator: OperatorName::InNegation,
-        language: Language::Python,
-        query: include_str!("../../queries/python/in-negation.scm"),
-        replacement: |original| match original {
+    InNegation {
+        replace: |original| match original {
             "in" => Some("not in".to_string()),
             "not in" => Some("in".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Toggle membership {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "python.truthiness_negation",
-        operator: OperatorName::TruthinessNegation,
-        language: Language::Python,
-        query: include_str!("../../queries/python/truthiness-negation.scm"),
-        replacement: negate_truthiness,
-        description: |original, replacement| {
+    TruthinessNegation {
+        replace: negate_truthiness,
+        describe: |original, replacement| {
             format!("Negate condition `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "python.len_zero_boundary",
-        operator: OperatorName::LenZeroBoundary,
-        language: Language::Python,
-        query: include_str!("../../queries/python/len-zero-boundary.scm"),
-        replacement: len_zero_boundary,
-        description: |original, replacement| {
+    LenZeroBoundary {
+        replace: len_zero_boundary,
+        describe: |original, replacement| {
             format!("Toggle emptiness check `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "python.dict_get_default_removal",
-        operator: OperatorName::DictGetDefaultRemoval,
-        language: Language::Python,
-        query: include_str!("../../queries/python/dict-get-default-removal.scm"),
-        replacement: dict_get_default_removal,
-        description: |original, replacement| {
+    DictGetDefaultRemoval {
+        replace: dict_get_default_removal,
+        describe: |original, replacement| {
             format!("Drop dict get default `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "python.comprehension_filter_removal",
-        operator: OperatorName::ComprehensionFilterRemoval,
-        language: Language::Python,
-        query: include_str!("../../queries/python/comprehension-filter-removal.scm"),
-        replacement: |_original| Some(String::new()),
-        description: |original, _replacement| {
+    ComprehensionFilterRemoval {
+        replace: |_original| Some(String::new()),
+        describe: |original, _replacement| {
             format!("Remove comprehension filter `{}`", original.trim())
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "python.none_return",
-        operator: OperatorName::NoneReturn,
-        language: Language::Python,
-        query: include_str!("../../queries/python/none-return.scm"),
-        replacement: |original| {
+    NoneReturn {
+        replace: |original| {
             if original.trim() == "None" {
                 None
             } else {
                 Some("None".to_string())
             }
         },
-        description: |original, _replacement| format!("Return None instead of `{original}`"),
-        default_enabled_override: None,
+        describe: |original, _replacement| format!("Return None instead of `{original}`"),
     },
-    MutatorImpl {
-        id: "python.empty_collection_literal",
-        operator: OperatorName::EmptyCollectionLiteral,
-        language: Language::Python,
-        query: include_str!("../../queries/python/empty-collection-literal.scm"),
-        replacement: empty_collection_literal,
-        description: |original, replacement| {
+    EmptyCollectionLiteral {
+        replace: empty_collection_literal,
+        describe: |original, replacement| {
             format!("Empty collection literal `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
     // ── Reused cross-language operators ─────────────────────────────────────
-    MutatorImpl {
-        id: "python.iterator_any_all",
-        operator: OperatorName::IteratorAnyAll,
-        language: Language::Python,
-        query: include_str!("../../queries/python/iterator-any-all.scm"),
-        replacement: |original| match original {
+    IteratorAnyAll {
+        replace: |original| match original {
             "any" => Some("all".to_string()),
             "all" => Some("any".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Swap Python quantifier {original}(...) -> {replacement}(...)")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "python.return_boolean",
-        operator: OperatorName::ReturnBoolean,
-        language: Language::Python,
-        query: include_str!("../../queries/python/return-boolean.scm"),
-        replacement: |original| match original {
+    ReturnBoolean {
+        replace: |original| match original {
             "True" => Some("False".to_string()),
             "False" => Some("True".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Flip returned boolean {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "python.negate_predicate_method",
-        operator: OperatorName::NegatePredicateMethod,
-        language: Language::Python,
-        query: include_str!("../../queries/python/negate-predicate-method.scm"),
-        replacement: negate_python_predicate_call,
-        description: |original, replacement| {
+    NegatePredicateMethod {
+        replace: negate_python_predicate_call,
+        describe: |original, replacement| {
             format!("Negate predicate call `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "python.min_max_swap",
-        operator: OperatorName::MinMaxSwap,
-        language: Language::Python,
-        query: include_str!("../../queries/python/min-max-swap.scm"),
-        replacement: |original| match original {
+    MinMaxSwap {
+        replace: |original| match original {
             "min" => Some("max".to_string()),
             "max" => Some("min".to_string()),
             _ => None,
         },
-        description: |original, replacement| format!("Swap {original}(...) -> {replacement}(...)"),
-        default_enabled_override: None,
+        describe: |original, replacement| format!("Swap {original}(...) -> {replacement}(...)"),
     },
-    MutatorImpl {
-        id: "python.sorted_reverse_flip",
-        operator: OperatorName::SortedReverseFlip,
-        language: Language::Python,
-        query: include_str!("../../queries/python/sorted-reverse-flip.scm"),
-        replacement: sorted_reverse_flip,
-        description: |original, replacement| {
+    SortedReverseFlip {
+        replace: sorted_reverse_flip,
+        describe: |original, replacement| {
             format!("Flip sorted ordering `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "python.dict_get_to_index",
-        operator: OperatorName::DictGetToIndex,
-        language: Language::Python,
-        query: include_str!("../../queries/python/dict-get-to-index.scm"),
-        replacement: dict_get_to_index,
-        description: |original, replacement| {
+    DictGetToIndex {
+        replace: dict_get_to_index,
+        describe: |original, replacement| {
             format!("Replace get with indexing `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-];
+}
 
 /// `sorted_reverse_flip`: flip a `sorted(...)` call's ordering. An existing
 /// `reverse=True`/`reverse=False` keyword is toggled in place; a call with no

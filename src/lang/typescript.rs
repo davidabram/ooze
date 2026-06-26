@@ -1,100 +1,78 @@
 use super::GrammarDef;
-use crate::core::{Language, MutatorImpl, OperatorName};
+use crate::lang::javascript::{
+    empty_array_literal, empty_object_literal, empty_string_literal, negate_js_expression,
+    remove_await, remove_nullish_fallback, remove_optional_chaining, swap_ternary_arms,
+};
+use crate::lang::mutators;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/typescript/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/typescript/branches.scm");
 
-/// TypeScript's mutator implementations. The expression grammar matches
-/// JavaScript's, so these mirror `crate::lang::javascript::MUTATORS`; they are
-/// kept as a separate slice (with their own query files) so TS-specific tweaks
-/// stay isolated. The registry (`crate::mutate::registry`) aggregates this slice
-/// with the other languages' slices for discovery.
-pub const MUTATORS: &[MutatorImpl] = &[
-    MutatorImpl {
-        id: "typescript.swap_boolean",
-        operator: OperatorName::SwapBoolean,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/swap-boolean.scm"),
-        replacement: |original| match original {
+// TypeScript's mutator implementations (expands to `pub const MUTATORS`). The
+// expression grammar matches JavaScript's, so these mirror
+// `crate::lang::javascript::MUTATORS` and reuse its helper fns; they are kept as
+// a separate slice (with their own query files) so TS-specific tweaks stay
+// isolated. The registry aggregates this slice with the other languages'.
+mutators! {
+    language: TypeScript,
+    id_prefix: "typescript",
+
+    SwapBoolean {
+        replace: |original| match original {
             "true" => Some("false".to_string()),
             "false" => Some("true".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Swap boolean literal {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "typescript.negate_equality",
-        operator: OperatorName::NegateEquality,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/negate-equality.scm"),
-        replacement: |original| match original {
+    NegateEquality {
+        replace: |original| match original {
             "==" => Some("!=".to_string()),
             "!=" => Some("==".to_string()),
             "===" => Some("!==".to_string()),
             "!==" => Some("===".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Negate equality {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "typescript.comparison_boundary",
-        operator: OperatorName::ComparisonBoundary,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/comparison-boundary.scm"),
-        replacement: |original| match original {
+    ComparisonBoundary {
+        replace: |original| match original {
             "<" => Some("<=".to_string()),
             "<=" => Some("<".to_string()),
             ">" => Some(">=".to_string()),
             ">=" => Some(">".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Toggle comparison boundary {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "typescript.comparison_negation",
-        operator: OperatorName::ComparisonNegation,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/comparison-negation.scm"),
-        replacement: |original| match original {
+    ComparisonNegation {
+        replace: |original| match original {
             "<" => Some(">=".to_string()),
             "<=" => Some(">".to_string()),
             ">" => Some("<=".to_string()),
             ">=" => Some("<".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Negate comparison {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "typescript.swap_logical",
-        operator: OperatorName::SwapLogical,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/swap-logical.scm"),
-        replacement: |original| match original {
+    SwapLogical {
+        replace: |original| match original {
             "&&" => Some("||".to_string()),
             "||" => Some("&&".to_string()),
             _ => None,
         },
-        description: |original, replacement| format!("Swap logical {original} -> {replacement}"),
-        default_enabled_override: None,
+        describe: |original, replacement| format!("Swap logical {original} -> {replacement}"),
     },
-    MutatorImpl {
-        id: "typescript.remove_not",
-        operator: OperatorName::RemoveNot,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/remove-not.scm"),
-        replacement: |original| {
+    RemoveNot {
+        replace: |original| {
             let rest = original.strip_prefix('!')?.trim_start();
             if rest.is_empty() {
                 None
@@ -102,145 +80,89 @@ pub const MUTATORS: &[MutatorImpl] = &[
                 Some(rest.to_string())
             }
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Remove negation `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "typescript.return_boolean",
-        operator: OperatorName::ReturnBoolean,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/return-boolean.scm"),
-        replacement: |original| match original {
+    ReturnBoolean {
+        replace: |original| match original {
             "true" => Some("false".to_string()),
             "false" => Some("true".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Flip returned boolean {original} -> {replacement}")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "typescript.iterator_any_all",
-        operator: OperatorName::IteratorAnyAll,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/iterator-any-all.scm"),
-        replacement: |original| match original {
+    IteratorAnyAll {
+        replace: |original| match original {
             "some" => Some("every".to_string()),
             "every" => Some("some".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Swap iterator quantifier {original}(...) -> {replacement}(...)")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "typescript.string_boundary_method_swap",
-        operator: OperatorName::StringBoundaryMethodSwap,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/string-boundary-method-swap.scm"),
-        replacement: |original| match original {
+    StringBoundaryMethodSwap {
+        replace: |original| match original {
             "startsWith" => Some("endsWith".to_string()),
             "endsWith" => Some("startsWith".to_string()),
             _ => None,
         },
-        description: |original, replacement| {
+        describe: |original, replacement| {
             format!("Swap string boundary method {original}(...) -> {replacement}(...)")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "typescript.includes_negation",
-        operator: OperatorName::IncludesNegation,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/includes-negation.scm"),
-        replacement: crate::lang::javascript::negate_js_expression,
-        description: |original, replacement| {
+    IncludesNegation {
+        replace: negate_js_expression,
+        describe: |original, replacement| {
             format!("Negate membership `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "typescript.nullish_coalescing_removal",
-        operator: OperatorName::NullishCoalescingRemoval,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/nullish-coalescing-removal.scm"),
-        replacement: crate::lang::javascript::remove_nullish_fallback,
-        description: |original, replacement| {
+    NullishCoalescingRemoval {
+        replace: remove_nullish_fallback,
+        describe: |original, replacement| {
             format!("Remove nullish fallback `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "typescript.optional_chaining_removal",
-        operator: OperatorName::OptionalChainingRemoval,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/optional-chaining-removal.scm"),
-        replacement: crate::lang::javascript::remove_optional_chaining,
-        description: |original, replacement| {
+    OptionalChainingRemoval {
+        replace: remove_optional_chaining,
+        describe: |original, replacement| {
             format!("Remove optional chaining `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "typescript.ternary_arm_swap",
-        operator: OperatorName::TernaryArmSwap,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/ternary-arm-swap.scm"),
-        replacement: crate::lang::javascript::swap_ternary_arms,
-        description: |original, replacement| {
+    TernaryArmSwap {
+        replace: swap_ternary_arms,
+        describe: |original, replacement| {
             format!("Swap ternary arms `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "typescript.array_empty_literal",
-        operator: OperatorName::ArrayEmptyLiteral,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/array-empty-literal.scm"),
-        replacement: crate::lang::javascript::empty_array_literal,
-        description: |original, replacement| {
+    ArrayEmptyLiteral {
+        replace: empty_array_literal,
+        describe: |original, replacement| {
             format!("Empty array literal `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "typescript.object_empty_literal",
-        operator: OperatorName::ObjectEmptyLiteral,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/object-empty-literal.scm"),
-        replacement: crate::lang::javascript::empty_object_literal,
-        description: |original, replacement| {
+    ObjectEmptyLiteral {
+        replace: empty_object_literal,
+        describe: |original, replacement| {
             format!("Empty object literal `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "typescript.string_empty_literal",
-        operator: OperatorName::StringEmptyLiteral,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/string-empty-literal.scm"),
-        replacement: crate::lang::javascript::empty_string_literal,
-        description: |original, replacement| {
+    StringEmptyLiteral {
+        replace: empty_string_literal,
+        describe: |original, replacement| {
             format!("Empty string literal `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-    MutatorImpl {
-        id: "typescript.await_removal",
-        operator: OperatorName::AwaitRemoval,
-        language: Language::TypeScript,
-        query: include_str!("../../queries/typescript/await-removal.scm"),
-        replacement: crate::lang::javascript::remove_await,
-        description: |original, replacement| {
+    AwaitRemoval {
+        replace: remove_await,
+        describe: |original, replacement| {
             format!("Remove await `{original}` -> `{replacement}`")
         },
-        default_enabled_override: None,
     },
-];
+}
 
 pub const GRAMMAR: GrammarDef = GrammarDef {
     id: crate::core::Language::TypeScript,
