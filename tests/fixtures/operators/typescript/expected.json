@@ -1,39 +1,21 @@
 [
   {
     "language": "typescript",
-    "operator": "swap_boolean",
-    "implementation": "typescript.swap_boolean",
-    "function": "core",
-    "original": "true",
-    "replacement": "false",
-    "line": 10
+    "operator": "array_empty_literal",
+    "implementation": "typescript.array_empty_literal",
+    "function": "arrayLiteral",
+    "original": "[1, 2, 3]",
+    "replacement": "[]",
+    "line": 67
   },
   {
     "language": "typescript",
-    "operator": "return_boolean",
-    "implementation": "typescript.return_boolean",
-    "function": "core",
-    "original": "false",
-    "replacement": "true",
-    "line": 16
-  },
-  {
-    "language": "typescript",
-    "operator": "return_boolean",
-    "implementation": "typescript.return_boolean",
-    "function": "core",
-    "original": "true",
-    "replacement": "false",
-    "line": 20
-  },
-  {
-    "language": "typescript",
-    "operator": "negate_equality",
-    "implementation": "typescript.negate_equality",
-    "function": "core",
-    "original": "===",
-    "replacement": "!==",
-    "line": 19
+    "operator": "await_removal",
+    "implementation": "typescript.await_removal",
+    "function": "awaitValue",
+    "original": "await promise",
+    "replacement": "promise",
+    "line": 82
   },
   {
     "language": "typescript",
@@ -55,21 +37,12 @@
   },
   {
     "language": "typescript",
-    "operator": "swap_logical",
-    "implementation": "typescript.swap_logical",
-    "function": "core",
-    "original": "&&",
-    "replacement": "||",
-    "line": 19
-  },
-  {
-    "language": "typescript",
-    "operator": "remove_not",
-    "implementation": "typescript.remove_not",
-    "function": "core",
-    "original": "!flag",
-    "replacement": "flag",
-    "line": 15
+    "operator": "includes_negation",
+    "implementation": "typescript.includes_negation",
+    "function": "membership",
+    "original": "items.includes(item)",
+    "replacement": "!(items.includes(item))",
+    "line": 39
   },
   {
     "language": "typescript",
@@ -82,11 +55,83 @@
   },
   {
     "language": "typescript",
-    "operator": "swap_logical",
-    "implementation": "typescript.swap_logical",
+    "operator": "negate_equality",
+    "implementation": "typescript.negate_equality",
+    "function": "core",
+    "original": "===",
+    "replacement": "!==",
+    "line": 19
+  },
+  {
+    "language": "typescript",
+    "operator": "nullish_coalescing_removal",
+    "implementation": "typescript.nullish_coalescing_removal",
+    "function": "fallback",
+    "original": "value ?? fallbackValue",
+    "replacement": "value",
+    "line": 47
+  },
+  {
+    "language": "typescript",
+    "operator": "object_empty_literal",
+    "implementation": "typescript.object_empty_literal",
+    "function": "objectLiteral",
+    "original": "{ a: 1, b: 2 }",
+    "replacement": "{}",
+    "line": 72
+  },
+  {
+    "language": "typescript",
+    "operator": "optional_chaining_removal",
+    "implementation": "typescript.optional_chaining_removal",
+    "function": "optionalAccess",
+    "original": "user?.name",
+    "replacement": "user.name",
+    "line": 52
+  },
+  {
+    "language": "typescript",
+    "operator": "optional_chaining_removal",
+    "implementation": "typescript.optional_chaining_removal",
+    "function": "optionalCall",
+    "original": "fn?.()",
+    "replacement": "fn()",
+    "line": 57
+  },
+  {
+    "language": "typescript",
+    "operator": "remove_not",
+    "implementation": "typescript.remove_not",
+    "function": "core",
+    "original": "!flag",
+    "replacement": "flag",
+    "line": 15
+  },
+  {
+    "language": "typescript",
+    "operator": "return_boolean",
+    "implementation": "typescript.return_boolean",
+    "function": "core",
+    "original": "false",
+    "replacement": "true",
+    "line": 16
+  },
+  {
+    "language": "typescript",
+    "operator": "return_boolean",
+    "implementation": "typescript.return_boolean",
+    "function": "core",
+    "original": "true",
+    "replacement": "false",
+    "line": 20
+  },
+  {
+    "language": "typescript",
+    "operator": "string_boundary_method_swap",
+    "implementation": "typescript.string_boundary_method_swap",
     "function": "boundary",
-    "original": "||",
-    "replacement": "&&",
+    "original": "endsWith",
+    "replacement": "startsWith",
     "line": 34
   },
   {
@@ -100,20 +145,65 @@
   },
   {
     "language": "typescript",
-    "operator": "string_boundary_method_swap",
-    "implementation": "typescript.string_boundary_method_swap",
+    "operator": "string_empty_literal",
+    "implementation": "typescript.string_empty_literal",
     "function": "boundary",
-    "original": "endsWith",
-    "replacement": "startsWith",
+    "original": "\".txt\"",
+    "replacement": "\"\"",
     "line": 34
   },
   {
     "language": "typescript",
-    "operator": "includes_negation",
-    "implementation": "typescript.includes_negation",
-    "function": "membership",
-    "original": "items.includes(item)",
-    "replacement": "!(items.includes(item))",
-    "line": 39
+    "operator": "string_empty_literal",
+    "implementation": "typescript.string_empty_literal",
+    "function": "boundary",
+    "original": "\"pre\"",
+    "replacement": "\"\"",
+    "line": 34
+  },
+  {
+    "language": "typescript",
+    "operator": "string_empty_literal",
+    "implementation": "typescript.string_empty_literal",
+    "function": "stringLiteral",
+    "original": "\"hello\"",
+    "replacement": "\"\"",
+    "line": 77
+  },
+  {
+    "language": "typescript",
+    "operator": "swap_boolean",
+    "implementation": "typescript.swap_boolean",
+    "function": "core",
+    "original": "true",
+    "replacement": "false",
+    "line": 10
+  },
+  {
+    "language": "typescript",
+    "operator": "swap_logical",
+    "implementation": "typescript.swap_logical",
+    "function": "boundary",
+    "original": "||",
+    "replacement": "&&",
+    "line": 34
+  },
+  {
+    "language": "typescript",
+    "operator": "swap_logical",
+    "implementation": "typescript.swap_logical",
+    "function": "core",
+    "original": "&&",
+    "replacement": "||",
+    "line": 19
+  },
+  {
+    "language": "typescript",
+    "operator": "ternary_arm_swap",
+    "implementation": "typescript.ternary_arm_swap",
+    "function": "choose",
+    "original": "flag ? a : b",
+    "replacement": "flag ? b : a",
+    "line": 62
   }
 ]

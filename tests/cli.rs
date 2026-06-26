@@ -426,15 +426,15 @@ fn javascript_operator_fixture_matches_snapshot() {
         "discovered JavaScript mutants drifted from tests/fixtures/operators/javascript/expected.json"
     );
 
-    // Guard the headline promise: every one of the 10 JavaScript operators still fires.
+    // Guard the headline promise: every one of the 17 JavaScript operators still fires.
     let operators: std::collections::BTreeSet<&str> = discovered
         .iter()
         .map(|c| c["operator"].as_str().expect("operator should be a string"))
         .collect();
     assert_eq!(
         operators.len(),
-        10,
-        "expected all 10 JavaScript operators to fire, got: {operators:?}"
+        17,
+        "expected all 17 JavaScript operators to fire, got: {operators:?}"
     );
 }
 
@@ -461,15 +461,15 @@ fn typescript_operator_fixture_matches_snapshot() {
         "discovered TypeScript mutants drifted from tests/fixtures/operators/typescript/expected.json"
     );
 
-    // Guard the headline promise: every one of the 10 TypeScript operators still fires.
+    // Guard the headline promise: every one of the 17 TypeScript operators still fires.
     let operators: std::collections::BTreeSet<&str> = discovered
         .iter()
         .map(|c| c["operator"].as_str().expect("operator should be a string"))
         .collect();
     assert_eq!(
         operators.len(),
-        10,
-        "expected all 10 TypeScript operators to fire, got: {operators:?}"
+        17,
+        "expected all 17 TypeScript operators to fire, got: {operators:?}"
     );
 }
 

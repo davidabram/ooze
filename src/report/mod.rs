@@ -857,6 +857,27 @@ pub fn suggest(candidate: &MutationCandidate) -> TestSuggestion {
         OperatorName::DictGetToIndex => format!(
             "Add a test for `{func}` in `{file}` that distinguishes missing-key from present-key behavior at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
         ),
+        OperatorName::NullishCoalescingRemoval => format!(
+            "Add a test for `{func}` in `{file}` where the left side of the `??` at line {line} is null or undefined so the fallback matters. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::OptionalChainingRemoval => format!(
+            "Add a test for `{func}` in `{file}` where the receiver of the `?.` at line {line} is null or undefined. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::TernaryArmSwap => format!(
+            "Add a test for `{func}` in `{file}` that drives both branches of the ternary at line {line} and asserts the returned value. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::ArrayEmptyLiteral => format!(
+            "Add a test for `{func}` in `{file}` that asserts the exact contents of the array at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::ObjectEmptyLiteral => format!(
+            "Add a test for `{func}` in `{file}` that asserts the required properties and values of the object at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::StringEmptyLiteral => format!(
+            "Add a test for `{func}` in `{file}` that asserts the exact string at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::AwaitRemoval => format!(
+            "Add an async test for `{func}` in `{file}` that asserts the resolved value and ordering around line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
     };
 
     TestSuggestion {

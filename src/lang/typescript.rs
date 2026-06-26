@@ -163,6 +163,83 @@ pub const MUTATORS: &[MutatorImpl] = &[
         },
         default_enabled_override: None,
     },
+    MutatorImpl {
+        id: "typescript.nullish_coalescing_removal",
+        operator: OperatorName::NullishCoalescingRemoval,
+        language: Language::TypeScript,
+        query: include_str!("../../queries/typescript/nullish-coalescing-removal.scm"),
+        replacement: crate::lang::javascript::remove_nullish_fallback,
+        description: |original, replacement| {
+            format!("Remove nullish fallback `{original}` -> `{replacement}`")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "typescript.optional_chaining_removal",
+        operator: OperatorName::OptionalChainingRemoval,
+        language: Language::TypeScript,
+        query: include_str!("../../queries/typescript/optional-chaining-removal.scm"),
+        replacement: crate::lang::javascript::remove_optional_chaining,
+        description: |original, replacement| {
+            format!("Remove optional chaining `{original}` -> `{replacement}`")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "typescript.ternary_arm_swap",
+        operator: OperatorName::TernaryArmSwap,
+        language: Language::TypeScript,
+        query: include_str!("../../queries/typescript/ternary-arm-swap.scm"),
+        replacement: crate::lang::javascript::swap_ternary_arms,
+        description: |original, replacement| {
+            format!("Swap ternary arms `{original}` -> `{replacement}`")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "typescript.array_empty_literal",
+        operator: OperatorName::ArrayEmptyLiteral,
+        language: Language::TypeScript,
+        query: include_str!("../../queries/typescript/array-empty-literal.scm"),
+        replacement: crate::lang::javascript::empty_array_literal,
+        description: |original, replacement| {
+            format!("Empty array literal `{original}` -> `{replacement}`")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "typescript.object_empty_literal",
+        operator: OperatorName::ObjectEmptyLiteral,
+        language: Language::TypeScript,
+        query: include_str!("../../queries/typescript/object-empty-literal.scm"),
+        replacement: crate::lang::javascript::empty_object_literal,
+        description: |original, replacement| {
+            format!("Empty object literal `{original}` -> `{replacement}`")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "typescript.string_empty_literal",
+        operator: OperatorName::StringEmptyLiteral,
+        language: Language::TypeScript,
+        query: include_str!("../../queries/typescript/string-empty-literal.scm"),
+        replacement: crate::lang::javascript::empty_string_literal,
+        description: |original, replacement| {
+            format!("Empty string literal `{original}` -> `{replacement}`")
+        },
+        default_enabled_override: None,
+    },
+    MutatorImpl {
+        id: "typescript.await_removal",
+        operator: OperatorName::AwaitRemoval,
+        language: Language::TypeScript,
+        query: include_str!("../../queries/typescript/await-removal.scm"),
+        replacement: crate::lang::javascript::remove_await,
+        description: |original, replacement| {
+            format!("Remove await `{original}` -> `{replacement}`")
+        },
+        default_enabled_override: None,
+    },
 ];
 
 pub const GRAMMAR: GrammarDef = GrammarDef {

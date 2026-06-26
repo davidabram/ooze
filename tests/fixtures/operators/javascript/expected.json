@@ -1,39 +1,21 @@
 [
   {
     "language": "javascript",
-    "operator": "swap_boolean",
-    "implementation": "javascript.swap_boolean",
-    "function": "core",
-    "original": "true",
-    "replacement": "false",
-    "line": 10
+    "operator": "array_empty_literal",
+    "implementation": "javascript.array_empty_literal",
+    "function": "arrayLiteral",
+    "original": "[1, 2, 3]",
+    "replacement": "[]",
+    "line": 67
   },
   {
     "language": "javascript",
-    "operator": "return_boolean",
-    "implementation": "javascript.return_boolean",
-    "function": "core",
-    "original": "false",
-    "replacement": "true",
-    "line": 16
-  },
-  {
-    "language": "javascript",
-    "operator": "return_boolean",
-    "implementation": "javascript.return_boolean",
-    "function": "core",
-    "original": "true",
-    "replacement": "false",
-    "line": 20
-  },
-  {
-    "language": "javascript",
-    "operator": "negate_equality",
-    "implementation": "javascript.negate_equality",
-    "function": "core",
-    "original": "===",
-    "replacement": "!==",
-    "line": 19
+    "operator": "await_removal",
+    "implementation": "javascript.await_removal",
+    "function": "awaitValue",
+    "original": "await promise",
+    "replacement": "promise",
+    "line": 82
   },
   {
     "language": "javascript",
@@ -55,21 +37,12 @@
   },
   {
     "language": "javascript",
-    "operator": "swap_logical",
-    "implementation": "javascript.swap_logical",
-    "function": "core",
-    "original": "&&",
-    "replacement": "||",
-    "line": 19
-  },
-  {
-    "language": "javascript",
-    "operator": "remove_not",
-    "implementation": "javascript.remove_not",
-    "function": "core",
-    "original": "!flag",
-    "replacement": "flag",
-    "line": 15
+    "operator": "includes_negation",
+    "implementation": "javascript.includes_negation",
+    "function": "membership",
+    "original": "items.includes(item)",
+    "replacement": "!(items.includes(item))",
+    "line": 39
   },
   {
     "language": "javascript",
@@ -82,11 +55,83 @@
   },
   {
     "language": "javascript",
-    "operator": "swap_logical",
-    "implementation": "javascript.swap_logical",
+    "operator": "negate_equality",
+    "implementation": "javascript.negate_equality",
+    "function": "core",
+    "original": "===",
+    "replacement": "!==",
+    "line": 19
+  },
+  {
+    "language": "javascript",
+    "operator": "nullish_coalescing_removal",
+    "implementation": "javascript.nullish_coalescing_removal",
+    "function": "fallback",
+    "original": "value ?? fallbackValue",
+    "replacement": "value",
+    "line": 47
+  },
+  {
+    "language": "javascript",
+    "operator": "object_empty_literal",
+    "implementation": "javascript.object_empty_literal",
+    "function": "objectLiteral",
+    "original": "{ a: 1, b: 2 }",
+    "replacement": "{}",
+    "line": 72
+  },
+  {
+    "language": "javascript",
+    "operator": "optional_chaining_removal",
+    "implementation": "javascript.optional_chaining_removal",
+    "function": "optionalAccess",
+    "original": "user?.name",
+    "replacement": "user.name",
+    "line": 52
+  },
+  {
+    "language": "javascript",
+    "operator": "optional_chaining_removal",
+    "implementation": "javascript.optional_chaining_removal",
+    "function": "optionalCall",
+    "original": "fn?.()",
+    "replacement": "fn()",
+    "line": 57
+  },
+  {
+    "language": "javascript",
+    "operator": "remove_not",
+    "implementation": "javascript.remove_not",
+    "function": "core",
+    "original": "!flag",
+    "replacement": "flag",
+    "line": 15
+  },
+  {
+    "language": "javascript",
+    "operator": "return_boolean",
+    "implementation": "javascript.return_boolean",
+    "function": "core",
+    "original": "false",
+    "replacement": "true",
+    "line": 16
+  },
+  {
+    "language": "javascript",
+    "operator": "return_boolean",
+    "implementation": "javascript.return_boolean",
+    "function": "core",
+    "original": "true",
+    "replacement": "false",
+    "line": 20
+  },
+  {
+    "language": "javascript",
+    "operator": "string_boundary_method_swap",
+    "implementation": "javascript.string_boundary_method_swap",
     "function": "boundary",
-    "original": "||",
-    "replacement": "&&",
+    "original": "endsWith",
+    "replacement": "startsWith",
     "line": 34
   },
   {
@@ -100,20 +145,65 @@
   },
   {
     "language": "javascript",
-    "operator": "string_boundary_method_swap",
-    "implementation": "javascript.string_boundary_method_swap",
+    "operator": "string_empty_literal",
+    "implementation": "javascript.string_empty_literal",
     "function": "boundary",
-    "original": "endsWith",
-    "replacement": "startsWith",
+    "original": "\".txt\"",
+    "replacement": "\"\"",
     "line": 34
   },
   {
     "language": "javascript",
-    "operator": "includes_negation",
-    "implementation": "javascript.includes_negation",
-    "function": "membership",
-    "original": "items.includes(item)",
-    "replacement": "!(items.includes(item))",
-    "line": 39
+    "operator": "string_empty_literal",
+    "implementation": "javascript.string_empty_literal",
+    "function": "boundary",
+    "original": "\"pre\"",
+    "replacement": "\"\"",
+    "line": 34
+  },
+  {
+    "language": "javascript",
+    "operator": "string_empty_literal",
+    "implementation": "javascript.string_empty_literal",
+    "function": "stringLiteral",
+    "original": "\"hello\"",
+    "replacement": "\"\"",
+    "line": 77
+  },
+  {
+    "language": "javascript",
+    "operator": "swap_boolean",
+    "implementation": "javascript.swap_boolean",
+    "function": "core",
+    "original": "true",
+    "replacement": "false",
+    "line": 10
+  },
+  {
+    "language": "javascript",
+    "operator": "swap_logical",
+    "implementation": "javascript.swap_logical",
+    "function": "boundary",
+    "original": "||",
+    "replacement": "&&",
+    "line": 34
+  },
+  {
+    "language": "javascript",
+    "operator": "swap_logical",
+    "implementation": "javascript.swap_logical",
+    "function": "core",
+    "original": "&&",
+    "replacement": "||",
+    "line": 19
+  },
+  {
+    "language": "javascript",
+    "operator": "ternary_arm_swap",
+    "implementation": "javascript.ternary_arm_swap",
+    "function": "choose",
+    "original": "flag ? a : b",
+    "replacement": "flag ? b : a",
+    "line": 62
   }
 ]

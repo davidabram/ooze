@@ -38,3 +38,46 @@ export function membership(items, item) {
   // `items.includes(item)` drives includes_negation (wrap in `!(...)`).
   return items.includes(item);
 }
+
+// Advanced operators below are all default_enabled = false; raw `mutants`
+// discovery enables every operator, so they still appear in expected.json.
+
+export function fallback(value, fallbackValue) {
+  // `value ?? fallbackValue` drives nullish_coalescing_removal (-> value).
+  return value ?? fallbackValue;
+}
+
+export function optionalAccess(user) {
+  // `user?.name` drives optional_chaining_removal (-> user.name).
+  return user?.name;
+}
+
+export function optionalCall(fn) {
+  // `fn?.()` drives optional_chaining_removal (-> fn()).
+  return fn?.();
+}
+
+export function choose(flag, a, b) {
+  // `flag ? a : b` drives ternary_arm_swap (-> flag ? b : a).
+  return flag ? a : b;
+}
+
+export function arrayLiteral() {
+  // `[1, 2, 3]` drives array_empty_literal (-> []).
+  return [1, 2, 3];
+}
+
+export function objectLiteral() {
+  // `{ a: 1, b: 2 }` drives object_empty_literal (-> {}).
+  return { a: 1, b: 2 };
+}
+
+export function stringLiteral() {
+  // `"hello"` drives string_empty_literal (-> "").
+  return "hello";
+}
+
+export async function awaitValue(promise) {
+  // `await promise` drives await_removal (-> promise).
+  return await promise;
+}

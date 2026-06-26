@@ -264,6 +264,14 @@ pub enum OperatorName {
     IncludesNegation,
     SortedReverseFlip,
     DictGetToIndex,
+    // JS/TS advanced operators.
+    NullishCoalescingRemoval,
+    OptionalChainingRemoval,
+    TernaryArmSwap,
+    ArrayEmptyLiteral,
+    ObjectEmptyLiteral,
+    StringEmptyLiteral,
+    AwaitRemoval,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -418,6 +426,13 @@ impl OperatorName {
         OperatorName::IncludesNegation,
         OperatorName::SortedReverseFlip,
         OperatorName::DictGetToIndex,
+        OperatorName::NullishCoalescingRemoval,
+        OperatorName::OptionalChainingRemoval,
+        OperatorName::TernaryArmSwap,
+        OperatorName::ArrayEmptyLiteral,
+        OperatorName::ObjectEmptyLiteral,
+        OperatorName::StringEmptyLiteral,
+        OperatorName::AwaitRemoval,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -457,6 +472,13 @@ impl OperatorName {
             OperatorName::IncludesNegation => "includes_negation",
             OperatorName::SortedReverseFlip => "sorted_reverse_flip",
             OperatorName::DictGetToIndex => "dict_get_to_index",
+            OperatorName::NullishCoalescingRemoval => "nullish_coalescing_removal",
+            OperatorName::OptionalChainingRemoval => "optional_chaining_removal",
+            OperatorName::TernaryArmSwap => "ternary_arm_swap",
+            OperatorName::ArrayEmptyLiteral => "array_empty_literal",
+            OperatorName::ObjectEmptyLiteral => "object_empty_literal",
+            OperatorName::StringEmptyLiteral => "string_empty_literal",
+            OperatorName::AwaitRemoval => "await_removal",
         }
     }
 
@@ -724,6 +746,55 @@ impl OperatorName {
                 default_enabled: false,
                 description: "Replace d.get(k) with d[k].",
                 test_hint: "Add tests that distinguish missing-key behavior from present-key behavior.",
+            },
+            OperatorName::NullishCoalescingRemoval => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Nullability,
+                default_enabled: false,
+                description: "Remove fallback from nullish coalescing (a ?? b -> a).",
+                test_hint: "Add tests where the left side is null or undefined so the fallback matters.",
+            },
+            OperatorName::OptionalChainingRemoval => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Nullability,
+                default_enabled: false,
+                description: "Remove optional chaining (a?.b -> a.b, fn?.() -> fn()).",
+                test_hint: "Add tests where the receiver is null or undefined.",
+            },
+            OperatorName::TernaryArmSwap => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Conditional,
+                default_enabled: false,
+                description: "Swap ternary result arms (cond ? a : b -> cond ? b : a).",
+                test_hint: "Add tests that drive both ternary branches and assert the returned value.",
+            },
+            OperatorName::ArrayEmptyLiteral => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Collection,
+                default_enabled: false,
+                description: "Empty an array literal ([a, b] -> []).",
+                test_hint: "Assert exact array contents, not just that an array is returned.",
+            },
+            OperatorName::ObjectEmptyLiteral => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Object,
+                default_enabled: false,
+                description: "Empty an object literal ({ a: 1 } -> {}).",
+                test_hint: "Assert required object properties and values.",
+            },
+            OperatorName::StringEmptyLiteral => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::String,
+                default_enabled: false,
+                description: "Replace a non-empty string literal with an empty string.",
+                test_hint: "Assert exact strings, especially validation, formatting, and keys.",
+            },
+            OperatorName::AwaitRemoval => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Statement,
+                default_enabled: false,
+                description: "Remove await from an awaited expression (await x -> x).",
+                test_hint: "Add async tests that assert resolved values and ordering.",
             },
         }
     }

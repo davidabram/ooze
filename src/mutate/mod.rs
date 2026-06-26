@@ -432,6 +432,36 @@ mod operator_fixture_tests {
             .collect()
     }
 
+    /// Like `discovered`, but restricted to an explicit set of operators. Used to
+    /// exercise the default-disabled advanced operators in isolation, the way the
+    /// `--operators` selection would.
+    fn discovered_ops(dir: &str, ops: &[OperatorName]) -> BTreeSet<ExpectedMutant> {
+        let functions = crate::lang::scan_directory(Path::new(dir)).expect("scanning fixture");
+        let grammars = crate::lang::supported_languages();
+        let filter = OperatorFilter::from_cli(ops, &[]);
+        let candidates = discover_mutants(&functions, grammars, &filter).unwrap();
+        candidates
+            .iter()
+            .map(|c| ExpectedMutant {
+                language: c.language,
+                function: c.function.clone(),
+                operator: c.operator,
+                original: c.original.clone(),
+                replacement: c.replacement.clone(),
+            })
+            .collect()
+    }
+
+    const ADVANCED_JS_TS_OPERATORS: &[OperatorName] = &[
+        OperatorName::NullishCoalescingRemoval,
+        OperatorName::OptionalChainingRemoval,
+        OperatorName::TernaryArmSwap,
+        OperatorName::ArrayEmptyLiteral,
+        OperatorName::ObjectEmptyLiteral,
+        OperatorName::StringEmptyLiteral,
+        OperatorName::AwaitRemoval,
+    ];
+
     #[test]
     fn rust_operator_fixture_discovers_expected_mutants() {
         use Language::Rust;
@@ -695,6 +725,92 @@ mod operator_fixture_tests {
             expect(TypeScript, "compare", ComparisonNegation, "<", ">="),
             expect(TypeScript, "swapLogical", SwapLogical, "&&", "||"),
             expect(TypeScript, "removeNot", RemoveNot, "!flag", "flag"),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn javascript_advanced_operator_fixture_discovers_expected_mutants() {
+        use Language::JavaScript;
+        use OperatorName::{
+            ArrayEmptyLiteral, AwaitRemoval, NullishCoalescingRemoval, ObjectEmptyLiteral,
+            OptionalChainingRemoval, StringEmptyLiteral, TernaryArmSwap,
+        };
+
+        let got = discovered_ops(
+            "tests/fixtures/operators/javascript/all.js",
+            ADVANCED_JS_TS_OPERATORS,
+        );
+        let want: BTreeSet<ExpectedMutant> = [
+            expect(
+                JavaScript,
+                "fallback",
+                NullishCoalescingRemoval,
+                "value ?? fallbackValue",
+                "value",
+            ),
+            expect(
+                JavaScript,
+                "optionalAccess",
+                OptionalChainingRemoval,
+                "user?.name",
+                "user.name",
+            ),
+            expect(JavaScript, "optionalCall", OptionalChainingRemoval, "fn?.()", "fn()"),
+            expect(JavaScript, "choose", TernaryArmSwap, "flag ? a : b", "flag ? b : a"),
+            expect(JavaScript, "arrayLiteral", ArrayEmptyLiteral, "[1, 2, 3]", "[]"),
+            expect(JavaScript, "objectLiteral", ObjectEmptyLiteral, "{ a: 1, b: 2 }", "{}"),
+            expect(JavaScript, "stringLiteral", StringEmptyLiteral, "\"hello\"", "\"\""),
+            // `boundary`'s prefix/suffix string arguments are also non-empty literals.
+            expect(JavaScript, "boundary", StringEmptyLiteral, "\"pre\"", "\"\""),
+            expect(JavaScript, "boundary", StringEmptyLiteral, "\".txt\"", "\"\""),
+            expect(JavaScript, "awaitValue", AwaitRemoval, "await promise", "promise"),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn typescript_advanced_operator_fixture_discovers_expected_mutants() {
+        use Language::TypeScript;
+        use OperatorName::{
+            ArrayEmptyLiteral, AwaitRemoval, NullishCoalescingRemoval, ObjectEmptyLiteral,
+            OptionalChainingRemoval, StringEmptyLiteral, TernaryArmSwap,
+        };
+
+        let got = discovered_ops(
+            "tests/fixtures/operators/typescript/all.ts",
+            ADVANCED_JS_TS_OPERATORS,
+        );
+        let want: BTreeSet<ExpectedMutant> = [
+            expect(
+                TypeScript,
+                "fallback",
+                NullishCoalescingRemoval,
+                "value ?? fallbackValue",
+                "value",
+            ),
+            expect(
+                TypeScript,
+                "optionalAccess",
+                OptionalChainingRemoval,
+                "user?.name",
+                "user.name",
+            ),
+            expect(TypeScript, "optionalCall", OptionalChainingRemoval, "fn?.()", "fn()"),
+            expect(TypeScript, "choose", TernaryArmSwap, "flag ? a : b", "flag ? b : a"),
+            expect(TypeScript, "arrayLiteral", ArrayEmptyLiteral, "[1, 2, 3]", "[]"),
+            expect(TypeScript, "objectLiteral", ObjectEmptyLiteral, "{ a: 1, b: 2 }", "{}"),
+            expect(TypeScript, "stringLiteral", StringEmptyLiteral, "\"hello\"", "\"\""),
+            // `boundary`'s prefix/suffix string arguments are also non-empty literals.
+            expect(TypeScript, "boundary", StringEmptyLiteral, "\"pre\"", "\"\""),
+            expect(TypeScript, "boundary", StringEmptyLiteral, "\".txt\"", "\"\""),
+            expect(TypeScript, "awaitValue", AwaitRemoval, "await promise", "promise"),
         ]
         .into_iter()
         .collect();
