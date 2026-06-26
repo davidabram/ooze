@@ -8,14 +8,18 @@ actually exercise — useful signal even when coverage looks fine.
 
 ## Languages
 
-Tree-sitter grammars are wired up for:
+Support comes in two tiers — parsing a language is not the same as mutating it:
 
-Bash · C · C++ · C# · Dart · Elixir · Erlang · Gleam · Go · Haskell · Java ·
-JavaScript · Julia · Lua · OCaml · PHP · Python · Ruby · Rust · Scala · Swift ·
-TypeScript · Zig.
+- **Mutation** (scan + mutation operators):
+  - `mutate_stable` (golden-tested): **Rust**
+  - `mutate_experimental`: **JavaScript · TypeScript · Python**
+- **Scan-only** (function/branch discovery and CRAP scoring, no mutators yet):
+  Bash · C · C++ · C# · Dart · Elixir · Erlang · Gleam · Go · Haskell · Java ·
+  Julia · Lua · OCaml · PHP · Ruby · Scala · Swift · Zig.
 
-Mutation operators ship per language (see `src/lang/`); discovery works across
-all of the above.
+Run `ooze languages` for the live list with each language's support level and
+operator count (`--format json` for machine output). Operators live per language
+in `src/lang/`.
 
 ## Install
 
@@ -31,6 +35,8 @@ cargo build --release
 | `scan`          | List function spans across the repo.                        |
 | `crap`          | Score functions by the CRAP formula (optionally with lcov). |
 | `mutants`       | Print mutation candidates (JSON).                           |
+| `operators`     | List mutation operators and their metadata.                 |
+| `languages`     | List supported languages and their support level.           |
 | `apply-mutant`  | Apply one mutation in a workspace and print the diff.       |
 | `test-mutant`   | Apply one mutation, run a probe, classify the outcome.      |
 | `test-mutants`  | Run a batch in parallel and emit a summary report.          |
