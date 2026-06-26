@@ -16,7 +16,9 @@ pub fn all() -> impl Iterator<Item = &'static MutatorImpl> {
         .flat_map(|spec| spec.mutators.iter())
 }
 
-/// Implementations registered for a given language.
+/// Implementations registered for a given language. Discovery now reads compiled
+/// mutators from the registry; this remains for tests and ad-hoc lookups.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn implementations_for_language(
     language: Language,
 ) -> impl Iterator<Item = &'static MutatorImpl> {

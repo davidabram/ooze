@@ -813,10 +813,12 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Mutants { path, format, exclude } => {
             let excludes = resolve_excludes(&path, &exclude);
-            let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
-            let languages = lang::mutable_languages();
-            let candidates =
-                mutate::discover_mutants(&functions, &languages, &mutate::OperatorFilter::allow_all())?;
+            let registry = lang::CompiledRegistry::compile(
+                lang::supported_languages(),
+                &mutate::OperatorFilter::allow_all(),
+            )?;
+            let functions = lang::scan_directory_with_registry(&registry, &path, &excludes)?;
+            let candidates = mutate::discover_mutants(&functions, &registry)?;
             if format.is_json() {
                 println!("{}", serde_json::to_string_pretty(&candidates)?);
             }
@@ -912,10 +914,10 @@ fn main() -> anyhow::Result<()> {
             show_skipped,
         } => {
             let excludes = resolve_excludes(&path, &exclude);
-            let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
-            let languages = lang::mutable_languages();
             let filter = mutate::OperatorFilter::from_cli(&operators, &exclude_operators);
-            let candidates = mutate::discover_mutants(&functions, &languages, &filter)?;
+            let registry = lang::CompiledRegistry::compile(lang::supported_languages(), &filter)?;
+            let functions = lang::scan_directory_with_registry(&registry, &path, &excludes)?;
+            let candidates = mutate::discover_mutants(&functions, &registry)?;
             let candidates = if let Some(base) = changed_only.as_deref() {
                 let changed = git_changed_files(base, &path)?;
                 filter_candidates_to_changed(candidates, &changed)
@@ -968,10 +970,12 @@ fn main() -> anyhow::Result<()> {
         Commands::ApplyMutant { path, id } => {
             let repo_root = path;
 
-            let functions = lang::scan_directory(&repo_root)?;
-            let languages = lang::mutable_languages();
-            let candidates =
-                mutate::discover_mutants(&functions, &languages, &mutate::OperatorFilter::allow_all())?;
+            let registry = lang::CompiledRegistry::compile(
+                lang::supported_languages(),
+                &mutate::OperatorFilter::allow_all(),
+            )?;
+            let functions = lang::scan_directory_with_registry(&registry, &repo_root, &[])?;
+            let candidates = mutate::discover_mutants(&functions, &registry)?;
 
             let Some(candidate) = candidates.into_iter().find(|c| c.id == id) else {
                 anyhow::bail!("no mutation candidate found with id {id:?}");
@@ -1119,10 +1123,10 @@ fn main() -> anyhow::Result<()> {
             }
 
             let excludes = resolve_excludes(&path, &exclude);
-            let functions = lang::scan_directory_with_excludes(&path, &excludes)?;
-            let languages = lang::mutable_languages();
             let filter = mutate::OperatorFilter::from_cli(&operators, &exclude_operators);
-            let candidates = mutate::discover_mutants(&functions, &languages, &filter)?;
+            let registry = lang::CompiledRegistry::compile(lang::supported_languages(), &filter)?;
+            let functions = lang::scan_directory_with_registry(&registry, &path, &excludes)?;
+            let candidates = mutate::discover_mutants(&functions, &registry)?;
             let candidates = if no_static_skips {
                 candidates
             } else {
@@ -1367,10 +1371,12 @@ fn main() -> anyhow::Result<()> {
             warmup_status_to_result(status)?;
         }
         Commands::TestMutant { path, id, probe } => {
-            let functions = lang::scan_directory(&path)?;
-            let languages = lang::mutable_languages();
-            let candidates =
-                mutate::discover_mutants(&functions, &languages, &mutate::OperatorFilter::allow_all())?;
+            let registry = lang::CompiledRegistry::compile(
+                lang::supported_languages(),
+                &mutate::OperatorFilter::allow_all(),
+            )?;
+            let functions = lang::scan_directory_with_registry(&registry, &path, &[])?;
+            let candidates = mutate::discover_mutants(&functions, &registry)?;
 
             let Some(candidate) = candidates.into_iter().find(|c| c.id == id) else {
                 anyhow::bail!("no mutation candidate found with id {id:?}");

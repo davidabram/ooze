@@ -8,6 +8,9 @@ use crate::core::{FunctionSpan, Language, MutatorImpl, SupportLevel};
 mod mutator_macro;
 pub(crate) use mutator_macro::mutators;
 
+mod compiled;
+pub use compiled::{CompiledLanguage, CompiledRegistry};
+
 pub mod bash;
 pub mod c;
 pub mod c_sharp;
@@ -95,29 +98,12 @@ pub fn supported_languages() -> &'static [&'static LanguageSpec] {
     LANGUAGES
 }
 
-/// Languages that declare mutation support (`SupportLevel::mutates()`), i.e. the
-/// ones mutation discovery can actually produce candidates for. Scan-only
-/// grammars are excluded here so "parseable" never silently means "mutable".
-pub fn mutable_languages() -> Vec<&'static LanguageSpec> {
-    LANGUAGES
-        .iter()
-        .copied()
-        .filter(|g| g.support.mutates())
-        .collect()
-}
-
 /// The grammar registered for a language, if any. Used by mutator tests to pair
 /// a `MutatorImpl` with the tree-sitter language its query must compile against,
 /// and anywhere else that needs to go from a typed `Language` back to its parser.
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn spec_for_language(language: Language) -> Option<&'static LanguageSpec> {
     LANGUAGES.iter().copied().find(|g| g.id == language)
-}
-
-struct Compiled {
-    language: &'static LanguageSpec,
-    functions: tree_sitter::Query,
-    branches: tree_sitter::Query,
 }
 
 pub fn scan_directory(path: &Path) -> anyhow::Result<Vec<FunctionSpan>> {
@@ -128,21 +114,17 @@ pub fn scan_directory_with_excludes(
     path: &Path,
     excludes: &[String],
 ) -> anyhow::Result<Vec<FunctionSpan>> {
-    let languages = supported_languages();
-    let mut compiled = Vec::with_capacity(languages.len());
-    for &language in languages {
-        let ts_lang = (language.language)();
-        let functions = tree_sitter::Query::new(&ts_lang, language.functions_query)
-            .with_context(|| format!("compiling {} function query", language.name()))?;
-        let branches = tree_sitter::Query::new(&ts_lang, language.branches_query)
-            .with_context(|| format!("compiling {} branch query", language.name()))?;
-        compiled.push(Compiled {
-            language,
-            functions,
-            branches,
-        });
-    }
+    let registry = CompiledRegistry::compile_queries(supported_languages())?;
+    scan_directory_with_registry(&registry, path, excludes)
+}
 
+/// Scan using queries that were already compiled for this run. Discovery commands
+/// build one `CompiledRegistry` and share it between scanning and mutation.
+pub fn scan_directory_with_registry(
+    registry: &CompiledRegistry,
+    path: &Path,
+    excludes: &[String],
+) -> anyhow::Result<Vec<FunctionSpan>> {
     let mut builder = ignore::WalkBuilder::new(path);
     if !excludes.is_empty() {
         let mut overrides = ignore::overrides::OverrideBuilder::new(path);
@@ -168,28 +150,18 @@ pub fn scan_directory_with_excludes(
         let Some(ext) = file_path.extension().and_then(|e| e.to_str()) else {
             continue;
         };
-        let Some(compiled) = compiled
-            .iter()
-            .find(|c| c.language.extensions.contains(&ext))
-        else {
+        let Some(compiled) = registry.for_extension(ext) else {
             continue;
         };
-        spans.extend(scan_file(
-            file_path,
-            compiled.language,
-            &compiled.functions,
-            &compiled.branches,
-        )?);
+        spans.extend(scan_file(file_path, compiled)?);
     }
     Ok(spans)
 }
 
-fn scan_file(
-    path: &Path,
-    language: &LanguageSpec,
-    fn_query: &tree_sitter::Query,
-    branch_query: &tree_sitter::Query,
-) -> anyhow::Result<Vec<FunctionSpan>> {
+fn scan_file(path: &Path, compiled: &CompiledLanguage) -> anyhow::Result<Vec<FunctionSpan>> {
+    let language = compiled.spec;
+    let fn_query = &compiled.functions;
+    let branch_query = &compiled.branches;
     // A function definition (named or anonymous) and its byte range. Anonymous
     // functions (closures, lambdas, arrow functions) get a synthetic name derived
     // from their start line so they are no longer dropped.
@@ -204,10 +176,9 @@ fn scan_file(
         std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     let source_bytes = source.as_bytes();
 
-    let ts_lang = (language.language)();
     let mut parser = tree_sitter::Parser::new();
     parser
-        .set_language(&ts_lang)
+        .set_language(&compiled.ts_language)
         .with_context(|| format!("loading {} tree-sitter grammar", language.name()))?;
     let tree = parser
         .parse(&source, None)

@@ -100,35 +100,32 @@ impl From<&OperatorFilter> for OperatorFilterReport {
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{Node, Query, QueryCursor};
+use tree_sitter::{Node, QueryCursor};
 
-use crate::lang::LanguageSpec;
+use crate::lang::CompiledRegistry;
 
+/// Discover mutation candidates using queries compiled once for this run. The
+/// registry was built with the operator filter already applied, so each compiled
+/// language carries exactly the mutators that should run.
 pub fn discover_mutants(
     functions: &[crate::core::FunctionSpan],
-    specs: &[&LanguageSpec],
-    filter: &OperatorFilter,
+    registry: &CompiledRegistry,
 ) -> Result<Vec<MutationCandidate>> {
     let mut candidates = Vec::new();
 
     for function in functions {
-        let Some(spec) = specs.iter().find(|g| g.id == function.language) else {
+        let Some(compiled) = registry.for_language(function.language) else {
             continue;
         };
-
-        let impls: Vec<&MutatorImpl> = registry::implementations_for_language(function.language)
-            .filter(|m| filter.allows_impl(m))
-            .collect();
-        if impls.is_empty() {
+        if compiled.mutators.is_empty() {
             continue;
         }
 
         let source = std::fs::read_to_string(&function.file)
             .with_context(|| format!("reading {}", function.file.display()))?;
 
-        let ts_lang = (spec.language)();
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(&ts_lang)
+        parser.set_language(&compiled.ts_language)
             .with_context(|| format!("loading {} grammar", function.language))?;
 
         let tree = parser
@@ -144,16 +141,11 @@ pub fn discover_mutants(
             continue;
         };
 
-        for m in impls {
-            let query = Query::new(&ts_lang, m.query)
-                .with_context(|| format!("compiling {} mutation query", m.id))?;
-
-            let Some(target_idx) = query.capture_index_for_name("target") else {
-                continue;
-            };
+        for m in &compiled.mutators {
+            let target_idx = m.target_index;
 
             let mut cursor = QueryCursor::new();
-            let mut matches = cursor.matches(&query, function_node, source_bytes);
+            let mut matches = cursor.matches(&m.query, function_node, source_bytes);
 
             while let Some(captured) = matches.next() {
                 for capture in captured.captures {
@@ -163,7 +155,7 @@ pub fn discover_mutants(
 
                     let node = capture.node;
                     let mut original = node_text(node, source_bytes);
-                    let Some(replacement) = (m.replacement)(&original) else {
+                    let Some(replacement) = (m.spec.replacement)(&original) else {
                         continue;
                     };
 
@@ -188,7 +180,7 @@ pub fn discover_mutants(
                             candidate_file.display(),
                             node.start_position().row + 1,
                             node.start_position().column,
-                            m.id,
+                            m.spec.id,
                         ),
                         file: function.file.clone(),
                         language: function.language,
@@ -197,10 +189,10 @@ pub fn discover_mutants(
                         column: node.start_position().column,
                         start_byte,
                         end_byte: node.end_byte(),
-                        operator: m.operator,
-                        operator_category: m.category(),
-                        implementation: m.id.to_string(),
-                        description: (m.description)(&original, &replacement),
+                        operator: m.spec.operator,
+                        operator_category: m.spec.category(),
+                        implementation: m.spec.id.to_string(),
+                        description: (m.spec.description)(&original, &replacement),
                         original,
                         replacement,
                     });
@@ -357,9 +349,10 @@ mod discover_tests {
     fn discover_sets_language_qualified_implementation_and_id() {
         let functions = crate::lang::scan_directory(Path::new("tests/fixtures/mutate"))
             .expect("scanning fixtures");
-        let specs = crate::lang::supported_languages();
-        let candidates =
-            discover_mutants(&functions, specs, &OperatorFilter::allow_all()).unwrap();
+        let registry =
+            CompiledRegistry::compile(crate::lang::supported_languages(), &OperatorFilter::allow_all())
+                .unwrap();
+        let candidates = discover_mutants(&functions, &registry).unwrap();
 
         assert!(!candidates.is_empty(), "fixture should yield candidates");
         for c in &candidates {
@@ -417,9 +410,10 @@ mod operator_fixture_tests {
     /// them to the compact shape. Duplicate shapes at different locations dedupe.
     fn discovered(dir: &str) -> BTreeSet<ExpectedMutant> {
         let functions = crate::lang::scan_directory(Path::new(dir)).expect("scanning fixture");
-        let specs = crate::lang::supported_languages();
-        let candidates =
-            discover_mutants(&functions, specs, &OperatorFilter::allow_all()).unwrap();
+        let registry =
+            CompiledRegistry::compile(crate::lang::supported_languages(), &OperatorFilter::allow_all())
+                .unwrap();
+        let candidates = discover_mutants(&functions, &registry).unwrap();
         candidates
             .iter()
             .map(|c| ExpectedMutant {
@@ -437,9 +431,10 @@ mod operator_fixture_tests {
     /// `--operators` selection would.
     fn discovered_ops(dir: &str, ops: &[OperatorName]) -> BTreeSet<ExpectedMutant> {
         let functions = crate::lang::scan_directory(Path::new(dir)).expect("scanning fixture");
-        let specs = crate::lang::supported_languages();
         let filter = OperatorFilter::from_cli(ops, &[]);
-        let candidates = discover_mutants(&functions, specs, &filter).unwrap();
+        let registry =
+            CompiledRegistry::compile(crate::lang::supported_languages(), &filter).unwrap();
+        let candidates = discover_mutants(&functions, &registry).unwrap();
         candidates
             .iter()
             .map(|c| ExpectedMutant {
