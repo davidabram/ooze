@@ -62,19 +62,28 @@ fn resolve_coverage(
     coverage: &[String],
     lcov: Option<&std::path::Path>,
 ) -> anyhow::Result<Option<ResolvedCoverage>> {
-    if !coverage.is_empty() {
-        return Ok(Some(ResolvedCoverage {
-            map: crap::coverage::load_all(coverage)?,
-            reports: coverage.len(),
-        }));
-    }
-    if let Some(path) = lcov {
-        return Ok(Some(ResolvedCoverage {
-            map: crap::coverage::parse_lcov(path)?,
-            reports: 1,
-        }));
-    }
-    Ok(None)
+    use crap::coverage::{CoverageFormat, CoverageInput};
+
+    // `--coverage` specs take precedence; the deprecated `--lcov` flag is just an
+    // implicit lcov-format input. Each spec is parsed to a typed input once here.
+    let inputs: Vec<CoverageInput> = if !coverage.is_empty() {
+        coverage
+            .iter()
+            .map(|spec| CoverageInput::parse(spec))
+            .collect::<anyhow::Result<_>>()?
+    } else if let Some(path) = lcov {
+        vec![CoverageInput {
+            format: CoverageFormat::Lcov,
+            path: path.to_path_buf(),
+        }]
+    } else {
+        return Ok(None);
+    };
+
+    Ok(Some(ResolvedCoverage {
+        reports: inputs.len(),
+        map: crap::coverage::load_inputs(&inputs)?,
+    }))
 }
 
 /// Score `functions` against resolved coverage when present (printing match

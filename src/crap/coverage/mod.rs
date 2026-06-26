@@ -16,8 +16,6 @@ mod go_cover;
 mod jacoco;
 mod lcov;
 
-pub use lcov::parse_lcov;
-
 /// A parsed coverage report keyed by source file.
 pub type CoverageMap = HashMap<PathBuf, FileCoverage>;
 
@@ -52,32 +50,49 @@ impl CoverageFormat {
     }
 }
 
-/// Load coverage from a `--coverage` spec.
-///
-/// Accepts an explicit `format:path` (e.g. `cobertura:coverage.xml`) or a bare
-/// path that is auto-detected from its name and contents.
-pub fn load(spec: &str) -> Result<CoverageMap> {
-    // Only treat the prefix as a format if it's a keyword we recognize;
-    // this keeps Windows drive paths (`C:\...`) and plain paths working.
-    if let Some((keyword, rest)) = spec.split_once(':')
-        && let Some(format) = CoverageFormat::from_keyword(keyword)
-    {
-        return format.parse(Path::new(rest));
-    }
-
-    let path = Path::new(spec);
-    let format = detect(path)?;
-    format.parse(path)
+/// A resolved coverage source: a known format paired with a concrete path. Built
+/// once below the CLI boundary so the `format:path` string is parsed exactly once
+/// and never re-interpreted downstream.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoverageInput {
+    pub format: CoverageFormat,
+    pub path: PathBuf,
 }
 
-/// Load and merge several `--coverage` specs into a single map.
+impl CoverageInput {
+    /// Parse one `--coverage` spec: an explicit `format:path` (e.g.
+    /// `cobertura:coverage.xml`) or a bare path that is auto-detected now, so a
+    /// bad path surfaces at resolve time rather than mid-run.
+    pub fn parse(spec: &str) -> Result<Self> {
+        // Only treat the prefix as a format if it's a keyword we recognize;
+        // this keeps Windows drive paths (`C:\...`) and plain paths working.
+        if let Some((keyword, rest)) = spec.split_once(':')
+            && let Some(format) = CoverageFormat::from_keyword(keyword)
+        {
+            return Ok(Self {
+                format,
+                path: PathBuf::from(rest),
+            });
+        }
+
+        let path = PathBuf::from(spec);
+        let format = detect(&path)?;
+        Ok(Self { format, path })
+    }
+
+    pub fn load(&self) -> Result<CoverageMap> {
+        self.format.parse(&self.path)
+    }
+}
+
+/// Load and merge several resolved coverage inputs into a single map.
 ///
 /// Repos with split test suites (e.g. a JS frontend and a JVM backend) produce
 /// one report per suite; merging lets a single ooze run see all of them.
-pub fn load_all(specs: &[String]) -> Result<CoverageMap> {
+pub fn load_inputs(inputs: &[CoverageInput]) -> Result<CoverageMap> {
     let mut acc = CoverageMap::new();
-    for spec in specs {
-        merge_into(&mut acc, load(spec)?);
+    for input in inputs {
+        merge_into(&mut acc, input.load()?);
     }
     Ok(acc)
 }
@@ -171,6 +186,24 @@ mod tests {
         assert_eq!(foo.lines.get(&1), Some(&1));
         assert_eq!(foo.lines.get(&2), Some(&3)); // 0 + 3
         assert_eq!(foo.lines.get(&3), Some(&1));
+    }
+
+    #[test]
+    fn coverage_input_parses_explicit_format_without_touching_disk() {
+        let input = CoverageInput::parse("cobertura:does/not/exist.xml").unwrap();
+        assert_eq!(
+            input,
+            CoverageInput {
+                format: CoverageFormat::Cobertura,
+                path: PathBuf::from("does/not/exist.xml"),
+            }
+        );
+    }
+
+    #[test]
+    fn coverage_input_rejects_unknown_bare_path() {
+        // No recognizable keyword prefix and not a detectable path → error.
+        assert!(CoverageInput::parse("/no/such/coverage/file").is_err());
     }
 
     #[test]
