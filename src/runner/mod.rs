@@ -13,6 +13,9 @@ use tempfile::TempDir;
 use walkdir::WalkDir;
 
 pub mod overlay;
+pub mod template;
+
+pub use template::{ProbeEnvCtx, ProbeEnvTemplate};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceBackend {
@@ -256,7 +259,7 @@ pub struct BatchConfig<'a> {
     pub timeout: Option<Duration>,
     pub build_cache_dir: Option<&'a Path>,
     pub worker_build_cache_dirs: Option<&'a [PathBuf]>,
-    pub probe_env_templates: &'a [(String, String)],
+    pub probe_env_templates: &'a [ProbeEnvTemplate],
     pub runs_dir: &'a Path,
     pub progress: Option<fn(ProgressEvent<'_>)>,
 }
@@ -323,19 +326,13 @@ fn try_run_one(
     });
     let build_cache_dir = worker_build_cache.as_deref().or(cfg.build_cache_dir);
 
-    let extra_envs: Vec<(String, String)> = cfg
-        .probe_env_templates
-        .iter()
-        .map(|(k, v)| {
-            let v = v.replace("{worker}", &worker_idx.to_string());
-            let v = if let Some(dir) = build_cache_dir {
-                v.replace("{build_cache}", &dir.to_string_lossy())
-            } else {
-                v
-            };
-            (k.clone(), v)
-        })
-        .collect();
+    let extra_envs = template::eval_all(
+        cfg.probe_env_templates,
+        ProbeEnvCtx {
+            worker: worker_idx,
+            build_cache: build_cache_dir,
+        },
+    );
 
     run_probe(
         workspace.path(),
@@ -521,7 +518,7 @@ pub fn warmup_workers(
     probe: &[String],
     target_dirs: &[PathBuf],
     jobs: usize,
-    probe_env_templates: &[(String, String)],
+    probe_env_templates: &[ProbeEnvTemplate],
 ) -> Result<()> {
     if target_dirs.is_empty() {
         return Ok(());
@@ -535,14 +532,13 @@ pub fn warmup_workers(
             .par_iter()
             .enumerate()
             .try_for_each(|(idx, dir)| -> Result<()> {
-                let extra_envs: Vec<(String, String)> = probe_env_templates
-                    .iter()
-                    .map(|(k, v)| {
-                        let v = v.replace("{worker}", &idx.to_string());
-                        let v = v.replace("{build_cache}", &dir.to_string_lossy());
-                        (k.clone(), v)
-                    })
-                    .collect();
+                let extra_envs = template::eval_all(
+                    probe_env_templates,
+                    ProbeEnvCtx {
+                        worker: idx,
+                        build_cache: Some(dir),
+                    },
+                );
                 let status = warmup(workspace_path, probe, Some(dir), &extra_envs)?;
                 if !status.success() {
                     bail!("warmup failed in {} with status {status}", dir.display());

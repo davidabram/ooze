@@ -416,14 +416,20 @@ fn num_workers(jobs: usize, worker_build_cache_dirs: &[PathBuf]) -> usize {
 // Computes the {worker}-templated probe-env directories that should be created,
 // one per worker index, skipping env values that are not `{worker}`-templated or
 // not path-like.
-fn worker_probe_env_dirs(probe_env: &[(String, String)], num_workers: usize) -> Vec<PathBuf> {
+fn worker_probe_env_dirs(
+    probe_env: &[runner::ProbeEnvTemplate],
+    num_workers: usize,
+) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    for (_, v) in probe_env {
-        if !v.contains("{worker}") {
+    for t in probe_env {
+        if !t.references_worker() {
             continue;
         }
         for i in 0..num_workers {
-            let resolved = v.replace("{worker}", &i.to_string());
+            let resolved = t.eval(runner::ProbeEnvCtx {
+                worker: i,
+                build_cache: None,
+            });
             if looks_like_path(&resolved) {
                 dirs.push(PathBuf::from(resolved));
             }
@@ -1097,7 +1103,11 @@ fn main() -> anyhow::Result<()> {
 
             let exclude = resolve_exclude_list(exclude, &cfg.scope.exclude);
 
-            let probe_env = resolve_probe_env(probe_env, &cfg.probe.env)?;
+            let probe_env: Vec<runner::ProbeEnvTemplate> =
+                resolve_probe_env(probe_env, &cfg.probe.env)?
+                    .into_iter()
+                    .map(|(k, v)| runner::ProbeEnvTemplate::parse(k, &v))
+                    .collect();
 
             let operators = resolve_operators(
                 operators,
@@ -1208,18 +1218,13 @@ fn main() -> anyhow::Result<()> {
                 let preflight_build_cache = target_dir
                     .as_deref()
                     .or_else(|| worker_build_cache_dirs.first().map(std::path::PathBuf::as_path));
-                let preflight_envs: Vec<(String, String)> = probe_env
-                    .iter()
-                    .map(|(k, v)| {
-                        let v = v.replace("{worker}", "0");
-                        let v = if let Some(dir) = preflight_build_cache {
-                            v.replace("{build_cache}", &dir.to_string_lossy())
-                        } else {
-                            v
-                        };
-                        (k.clone(), v)
-                    })
-                    .collect();
+                let preflight_envs = runner::template::eval_all(
+                    &probe_env,
+                    runner::ProbeEnvCtx {
+                        worker: 0,
+                        build_cache: preflight_build_cache,
+                    },
+                );
                 let outcome = runner::preflight(
                     &repo_root,
                     &probe,
@@ -1286,14 +1291,13 @@ fn main() -> anyhow::Result<()> {
                     }
                     WarmupTarget::Shared(dir) => {
                         eprintln!("warming up shared build cache dir...");
-                        let extra: Vec<(String, String)> = probe_env
-                            .iter()
-                            .map(|(k, v)| {
-                                let v = v.replace("{worker}", "0");
-                                let v = v.replace("{build_cache}", &dir.to_string_lossy());
-                                (k.clone(), v)
-                            })
-                            .collect();
+                        let extra = runner::template::eval_all(
+                            &probe_env,
+                            runner::ProbeEnvCtx {
+                                worker: 0,
+                                build_cache: Some(dir),
+                            },
+                        );
                         let status = runner::warmup(&repo_root, &probe, Some(dir), &extra)?;
                         warmup_status_to_result(status)?;
                     }
@@ -1701,22 +1705,29 @@ mod tests {
 
     // --- worker_probe_env_dirs --------------------------------------------
 
+    fn templates(pairs: &[(&str, &str)]) -> Vec<runner::ProbeEnvTemplate> {
+        pairs
+            .iter()
+            .map(|(k, v)| runner::ProbeEnvTemplate::parse((*k).to_string(), v))
+            .collect()
+    }
+
     #[test]
     fn worker_probe_env_dirs_expands_one_per_worker() {
-        let env = vec![("CACHE".to_string(), "dir/{worker}".to_string())];
+        let env = templates(&[("CACHE", "dir/{worker}")]);
         let dirs = worker_probe_env_dirs(&env, 2);
         assert_eq!(dirs, vec![PathBuf::from("dir/0"), PathBuf::from("dir/1")]);
     }
 
     #[test]
     fn worker_probe_env_dirs_skips_values_without_template() {
-        let env = vec![("CACHE".to_string(), "dir/static".to_string())];
+        let env = templates(&[("CACHE", "dir/static")]);
         assert!(worker_probe_env_dirs(&env, 2).is_empty());
     }
 
     #[test]
     fn worker_probe_env_dirs_skips_non_path_values() {
-        let env = vec![("N".to_string(), "n{worker}".to_string())];
+        let env = templates(&[("N", "n{worker}")]);
         // "n0"/"n1" are not path-like, so nothing is created.
         assert!(worker_probe_env_dirs(&env, 2).is_empty());
     }
