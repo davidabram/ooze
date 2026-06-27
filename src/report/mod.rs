@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::core::{
     CrapEntry, MutantOutcome, MutantStatus, MutationCandidate, MutationRunReport, OperatorName,
 };
+use crate::source_path::FileKey;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct AgentTask {
@@ -36,10 +37,12 @@ type TasksByFile<'a> =
     std::collections::BTreeMap<String, std::collections::BTreeMap<String, TaskRefs<'a>>>;
 
 pub fn agent_tasks(report: &EnrichedRunReport) -> AgentTaskReport {
-    let func_index: HashMap<(&PathBuf, &String), &FunctionMutationSummary> = report
+    // Join survived outcomes back to their function summary by source identity,
+    // so a difference in path spelling never drops an enrichment.
+    let func_index: HashMap<(FileKey, &String), &FunctionMutationSummary> = report
         .functions
         .iter()
-        .map(|f| ((&f.file, &f.function), f))
+        .map(|f| ((FileKey::resolve(&f.file), &f.function), f))
         .collect();
 
     let mut tasks = Vec::new();
@@ -51,7 +54,10 @@ pub fn agent_tasks(report: &EnrichedRunReport) -> AgentTaskReport {
             continue;
         };
         let func_info = func_index
-            .get(&(&o.outcome.candidate.file, &o.outcome.candidate.function))
+            .get(&(
+                FileKey::resolve(&o.outcome.candidate.file),
+                &o.outcome.candidate.function,
+            ))
             .copied();
         tasks.push(AgentTask {
             id: format!("test-task-{:03}", tasks.len() + 1),
@@ -945,22 +951,35 @@ pub fn enrich(
     repo_root: &Path,
     context_lines: usize,
 ) -> EnrichedRunReport {
-    let crap_index: HashMap<(PathBuf, String), &CrapEntry> = crap_entries
+    // Crap entries come from a separate scan than the mutation outcomes, so the
+    // two can spell the same file differently. Join on source identity, not on
+    // the raw path string. The display path kept for the summary is the one the
+    // outcome carried, so output spelling is unchanged.
+    let crap_index: HashMap<(FileKey, String), &CrapEntry> = crap_entries
         .iter()
-        .map(|e| ((e.file.clone(), e.function.clone()), e))
+        .map(|e| {
+            (
+                (FileKey::resolve_under(repo_root, &e.file), e.function.clone()),
+                e,
+            )
+        })
         .collect();
 
-    let mut buckets: HashMap<(PathBuf, String), Vec<MutantOutcome>> = HashMap::new();
+    let mut buckets: HashMap<(FileKey, String), (PathBuf, Vec<MutantOutcome>)> = HashMap::new();
     for outcome in &report.outcomes {
-        buckets
-            .entry((outcome.candidate.file.clone(), outcome.candidate.function.clone()))
-            .or_default()
-            .push(outcome.clone());
+        let key = (
+            FileKey::resolve_under(repo_root, &outcome.candidate.file),
+            outcome.candidate.function.clone(),
+        );
+        let slot = buckets
+            .entry(key)
+            .or_insert_with(|| (outcome.candidate.file.clone(), Vec::new()));
+        slot.1.push(outcome.clone());
     }
 
     let mut functions: Vec<FunctionMutationSummary> = buckets
         .into_iter()
-        .map(|((file, function), outcomes)| {
+        .map(|((file_key, function), (file, outcomes))| {
             let total = outcomes.len();
             let killed = outcomes.iter().filter(|o| matches!(o.status, MutantStatus::Killed)).count();
             let survived = outcomes.iter().filter(|o| matches!(o.status, MutantStatus::Survived)).count();
@@ -974,7 +993,7 @@ pub fn enrich(
                 Some(killed as f64 / meaningful as f64 * 100.0)
             };
 
-            let entry = crap_index.get(&(file.clone(), function.clone())).copied();
+            let entry = crap_index.get(&(file_key, function.clone())).copied();
             let crap = entry.map(|e| e.crap);
             let coverage = entry.map(|e| e.coverage);
             let cyclomatic = entry.map(|e| e.cyclomatic);
@@ -1480,5 +1499,45 @@ mod tests {
             ReportDetail::Compact
         );
         assert_eq!(ReportFormat::Json.default_detail(), ReportDetail::Normal);
+    }
+
+    #[test]
+    fn enrich_joins_crap_across_path_spellings() {
+        use crate::core::{CrapEntry, MutationRunReport};
+
+        // A real file on disk so both spellings canonicalize to the same identity.
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir(root.join("src")).unwrap();
+        std::fs::write(root.join("src/x.rs"), "fn f() {}\n").unwrap();
+
+        // The mutation outcome carries an absolute path (as a run produces);
+        let mut outcome = make_outcome(MutantStatus::Survived);
+        outcome.outcome.candidate.file = root.join("src/x.rs");
+        outcome.outcome.candidate.function = "f".into();
+
+        // ...while the crap scan spelled the same file repo-relative. A raw
+        // PathBuf join would miss this; the FileKey identity join must not.
+        let crap = CrapEntry {
+            file: PathBuf::from("src/x.rs"),
+            language: Language::Rust,
+            function: "f".into(),
+            line: 1,
+            cyclomatic: 4,
+            coverage: 25.0,
+            crap: 42.0,
+        };
+
+        let report = MutationRunReport::from_outcomes(vec![outcome.outcome]);
+        let enriched = enrich(report, &[crap], root, 0);
+
+        let func = enriched
+            .functions
+            .iter()
+            .find(|f| f.function == "f")
+            .expect("function summary present");
+        assert_eq!(func.crap, Some(42.0), "crap must join despite path spelling");
+        assert_eq!(func.coverage, Some(25.0));
+        assert_eq!(func.cyclomatic, Some(4));
     }
 }

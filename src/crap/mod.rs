@@ -81,6 +81,12 @@ fn lookup_coverage<'a>(
 /// Find the coverage entry that corresponds to a scanned source file, returning
 /// its key. An exact path wins; otherwise we fall back to suffix matching in
 /// either direction (handles relative vs. absolute and package-rooted paths).
+///
+/// Deliberately *not* keyed on `SourcePath`: coverage keys are whatever the test
+/// tool emitted (`pkg/foo.rs`, `github.com/me/app/foo.go`, a CI-absolute path)
+/// and frequently do not resolve to a real file under our scan root, so
+/// canonical identity would fail to match exactly the cases this fuzzy suffix
+/// match exists to handle.
 fn match_coverage_key<'a>(
     source_file: &Path,
     coverage: &'a HashMap<PathBuf, FileCoverage>,
