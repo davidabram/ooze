@@ -1,0 +1,28 @@
+[scope]
+exclude = [
+  "target/**",
+  ".ooze/**",
+  "tests/fixtures/**"
+]
+
+[mutation]
+strategy = "actionable"
+limit = 25
+
+[runner]
+jobs = 4
+timeout_seconds = 180
+workspace_backend = "copy"
+warmup = true
+per_worker_cache = true
+
+[probe]
+command = ["cargo", "test"]
+env = [
+  "CARGO_TARGET_DIR={build_cache}"
+]
+
+[report]
+format = "json"
+detail = "normal"
+only_survivors = false

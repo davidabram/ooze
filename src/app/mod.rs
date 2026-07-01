@@ -186,6 +186,15 @@ fn git_changed_files(
     Ok(out)
 }
 
+fn parse_output_lines(stdout: &[u8], out: &mut std::collections::HashSet<String>) {
+    for line in String::from_utf8_lossy(stdout).lines() {
+        let line = line.trim();
+        if !line.is_empty() {
+            out.insert(line.to_string());
+        }
+    }
+}
+
 fn collect_git_paths(
     root: &std::path::Path,
     args: &[&str],
@@ -206,12 +215,7 @@ fn collect_git_paths(
             String::from_utf8_lossy(&output.stderr).trim()
         );
     }
-    for line in String::from_utf8_lossy(&output.stdout).lines() {
-        let line = line.trim();
-        if !line.is_empty() {
-            out.insert(line.to_string());
-        }
-    }
+    parse_output_lines(&output.stdout, out);
     Ok(())
 }
 
@@ -1357,5 +1361,34 @@ mod tests {
         assert!(!progress_enabled(true, true)); // quiet suppresses
         assert!(!progress_enabled(false, false)); // mode disallows
         assert!(!progress_enabled(true, false));
+    }
+
+    // --- collect_git_paths / parse_output_lines ---------------------------
+
+    #[test]
+    fn parse_output_lines_includes_non_empty_lines() {
+        let mut out = std::collections::HashSet::new();
+        parse_output_lines(b"src/foo.rs\nsrc/bar.rs\n", &mut out);
+        assert!(out.contains("src/foo.rs"));
+        assert!(out.contains("src/bar.rs"));
+        assert_eq!(out.len(), 2);
+    }
+
+    #[test]
+    fn parse_output_lines_skips_empty_and_whitespace_only_lines() {
+        let mut out = std::collections::HashSet::new();
+        parse_output_lines(b"src/foo.rs\n\n   \nsrc/bar.rs", &mut out);
+        assert_eq!(out.len(), 2, "empty/whitespace lines must not be inserted");
+        assert!(out.contains("src/foo.rs"));
+        assert!(out.contains("src/bar.rs"));
+    }
+
+    #[test]
+    fn collect_git_paths_returns_error_when_git_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut out = std::collections::HashSet::new();
+        // A plain tempdir is not a git repo, so any git command will fail.
+        let result = collect_git_paths(tmp.path(), &["diff", "--name-only"], &mut out);
+        assert!(result.is_err(), "expected error from failed git command");
     }
 }
