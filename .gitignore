@@ -23,3 +23,6 @@ lcov.info
 /target
 
 .ooze
+
+# Mutation report
+crap-mutant-report.md

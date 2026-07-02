@@ -24,5 +24,6 @@ env = [
 
 [report]
 format = "agent-tasks-markdown"
+output = "crap-mutant-report.md"
 detail = "normal"
 only_survivors = true
