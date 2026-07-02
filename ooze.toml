@@ -23,6 +23,6 @@ env = [
 ]
 
 [report]
-format = "json"
+format = "agent-tasks-markdown"
 detail = "normal"
-only_survivors = false
+only_survivors = true

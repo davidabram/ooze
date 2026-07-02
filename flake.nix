@@ -60,6 +60,9 @@
         ooze = craneLib.buildPackage (commonArgs // {
           inherit cargoArtifacts;
 
+          # The test suite shells out to git (worktree/doctor/cli tests).
+          nativeCheckInputs = [ pkgs.git ];
+
           meta = {
             description = "ooze";
             mainProgram = "ooze";
