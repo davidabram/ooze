@@ -64,6 +64,26 @@ Everything after `--` on `test-mutant(s)` is the probe command.
   isn't a cold compile. Doubles as a baseline check (warmup fails → batch
   aborts).
 
+Git worktrees (recommended inside a Git repo):
+
+```bash
+./target/release/ooze test-mutants \
+  --workspace-backend worktree \
+  --jobs 4 \
+  --per-worker-cache \
+  --warmup \
+  --probe-env CARGO_TARGET_DIR={build_cache} \
+  -- cargo test
+```
+
+The worktree backend creates one Git worktree per worker and reuses it across
+mutants. It is rootless, CI-friendly, and a good default for most projects —
+`--workspace-backend auto` picks it automatically inside a Git repository.
+Requires running inside a Git repository; mutants are applied against `HEAD`,
+so commit your changes first. Worktrees live under `.ooze/runs/worktrees` and
+are removed at the end of the run; only paths under that directory are cleaned
+destructively.
+
 Linux + overlayfs (no full repo copy per mutant; needs root):
 
 ```bash
@@ -107,7 +127,7 @@ Full per-language recipes in [docs/running-mutants.md](docs/running-mutants.md).
 | `--strategy`           | `discovery`, `actionable`, ...                                       |
 | `--changed-only BASE`  | Only mutate files changed vs `BASE` (e.g. `main`). For PR/CI runs.   |
 | `--timeout-seconds`    | Per-mutant probe timeout (→ `timeout` verdict).                      |
-| `--workspace-backend`  | `copy`, `overlay`, `auto`.                                           |
+| `--workspace-backend`  | `copy`, `overlay`, `worktree`, `auto` (worktree in a Git repo, else copy). |
 | `--exclude`            | Extra globs. Defaults + `.gitignore` always apply.                   |
 | `--coverage`           | Feed coverage into ordering. `format:path` or a bare path to auto-detect. Formats: `lcov`, `cobertura`, `jacoco`, `go-cover`. Repeatable; reports are merged. |
 | `--lcov`               | Deprecated alias for `--coverage lcov:<path>`.                       |

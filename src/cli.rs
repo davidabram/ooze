@@ -70,17 +70,22 @@ impl OutputFormat {
 pub(crate) enum WorkspaceBackendArg {
     Copy,
     Overlay,
+    Worktree,
     Auto,
 }
 
 impl WorkspaceBackendArg {
-    pub(crate) fn resolve(self) -> runner::WorkspaceBackend {
+    /// `auto` prefers the rootless worktree backend when `repo_root` is inside
+    /// a Git repository and falls back to copy otherwise. Overlay stays
+    /// explicit: its mount needs root, so it should never win by default.
+    pub(crate) fn resolve(self, repo_root: &std::path::Path) -> runner::WorkspaceBackend {
         match self {
             WorkspaceBackendArg::Copy => runner::WorkspaceBackend::Copy,
             WorkspaceBackendArg::Overlay => runner::WorkspaceBackend::Overlay,
+            WorkspaceBackendArg::Worktree => runner::WorkspaceBackend::Worktree,
             WorkspaceBackendArg::Auto => {
-                if runner::overlay::overlay_available() {
-                    runner::WorkspaceBackend::Overlay
+                if runner::worktree::is_git_repo(repo_root) {
+                    runner::WorkspaceBackend::Worktree
                 } else {
                     runner::WorkspaceBackend::Copy
                 }
@@ -342,5 +347,51 @@ mod tests {
     fn output_format_is_json_only_for_json() {
         assert!(OutputFormat::Json.is_json());
         assert!(!OutputFormat::Human.is_json());
+    }
+
+    #[test]
+    fn workspace_backend_arg_parses_worktree() {
+        let arg = <WorkspaceBackendArg as ValueEnum>::from_str("worktree", true)
+            .expect("worktree is a valid backend value");
+        assert!(matches!(arg, WorkspaceBackendArg::Worktree));
+    }
+
+    #[test]
+    fn explicit_backends_resolve_directly() {
+        let dir = std::path::Path::new(".");
+        assert_eq!(
+            WorkspaceBackendArg::Worktree.resolve(dir),
+            runner::WorkspaceBackend::Worktree
+        );
+        assert_eq!(
+            WorkspaceBackendArg::Copy.resolve(dir),
+            runner::WorkspaceBackend::Copy
+        );
+    }
+
+    #[test]
+    fn auto_prefers_worktree_inside_git_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ok = std::process::Command::new("git")
+            .arg("-C")
+            .arg(tmp.path())
+            .args(["init", "-q"])
+            .status()
+            .expect("running git init")
+            .success();
+        assert!(ok);
+        assert_eq!(
+            WorkspaceBackendArg::Auto.resolve(tmp.path()),
+            runner::WorkspaceBackend::Worktree
+        );
+    }
+
+    #[test]
+    fn auto_falls_back_to_copy_outside_git_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(
+            WorkspaceBackendArg::Auto.resolve(tmp.path()),
+            runner::WorkspaceBackend::Copy
+        );
     }
 }

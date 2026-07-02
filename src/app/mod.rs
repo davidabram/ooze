@@ -785,6 +785,30 @@ pub fn run() -> anyhow::Result<()> {
                 })?;
             }
 
+            let backend = workspace_backend.resolve(&repo_root);
+
+            // One worktree per worker, created up front and reused across
+            // mutants (cleaned up explicitly below: process::exit skips Drop).
+            // Created before preflight/warmup so those run inside the same
+            // workspaces the probes will use — running them in the repo root
+            // could reuse cache entries left by a previous run's last mutant.
+            let mut worktree_pool = if backend == runner::WorkspaceBackend::Worktree {
+                let workers = jobs.max(1);
+                eprintln!(
+                    "creating {workers} git worktree(s) under {}",
+                    runs_dir.join("worktrees").display()
+                );
+                Some(runner::worktree::WorktreePool::create(
+                    &repo_root, &runs_dir, workers,
+                )?)
+            } else {
+                None
+            };
+
+            let baseline_root = worktree_pool
+                .as_ref()
+                .map_or(repo_root.as_path(), |p| p.path_for(0));
+
             if preflight {
                 let preflight_build_cache = target_dir
                     .as_deref()
@@ -797,7 +821,7 @@ pub fn run() -> anyhow::Result<()> {
                     },
                 );
                 let outcome = runner::preflight(
-                    &repo_root,
+                    baseline_root,
                     &probe,
                     timeout,
                     &preflight_envs,
@@ -852,8 +876,17 @@ pub fn run() -> anyhow::Result<()> {
                             "warming up {} worker build cache dirs in parallel...",
                             worker_build_cache_dirs.len()
                         );
+                        let warmup_workspaces: Vec<PathBuf> = (0..worker_build_cache_dirs
+                            .len())
+                            .map(|i| {
+                                worktree_pool.as_ref().map_or_else(
+                                    || repo_root.clone(),
+                                    |p| p.path_for(i).to_path_buf(),
+                                )
+                            })
+                            .collect();
                         runner::warmup_workers(
-                            &repo_root,
+                            &warmup_workspaces,
                             &probe,
                             &worker_build_cache_dirs,
                             jobs,
@@ -869,7 +902,7 @@ pub fn run() -> anyhow::Result<()> {
                                 build_cache: Some(dir),
                             },
                         );
-                        let status = runner::warmup(&repo_root, &probe, Some(dir), &extra)?;
+                        let status = runner::warmup(baseline_root, &probe, Some(dir), &extra)?;
                         warmup_status_to_result(status)?;
                     }
                     WarmupTarget::Nothing => {}
@@ -894,13 +927,14 @@ pub fn run() -> anyhow::Result<()> {
             };
 
             let cfg = runner::BatchConfig {
-                backend: workspace_backend.resolve(),
+                backend,
                 timeout,
                 build_cache_dir: target_dir.as_deref(),
                 worker_build_cache_dirs: worker_build_cache_arg(&worker_build_cache_dirs),
                 probe_env_templates: &probe_env,
                 runs_dir: &runs_dir,
                 progress: progress_cb,
+                worktree_pool: worktree_pool.as_ref(),
             };
 
             let raw_report = runner::run_mutants_parallel(
@@ -910,6 +944,12 @@ pub fn run() -> anyhow::Result<()> {
                 jobs,
                 &cfg,
             )?;
+
+            if let Some(pool) = worktree_pool.as_mut()
+                && let Err(e) = pool.cleanup()
+            {
+                eprintln!("warning: failed to clean up git worktrees: {e:#}");
+            }
 
             let mut enriched = report::enrich(raw_report, &crap_entries, &repo_root, context_lines);
             report::apply_options(&mut enriched, report_opts);

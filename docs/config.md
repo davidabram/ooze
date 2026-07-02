@@ -61,7 +61,7 @@ candidate's `implementation` field reports the one that produced it, e.g.
 
 | Key | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `workspace_backend` | `string` | `"auto"` | How per-worker workspaces are materialized. |
+| `workspace_backend` | `string` | `"auto"` | How workspaces are materialized: `worktree` (Git, rootless), `copy`, `overlay` (needs root), or `auto` (worktree inside a Git repo, else copy). |
 | `jobs` | `int` | `2` | Parallel mutant runners. |
 | `timeout_seconds` | `int` | `120` | Per-mutant wall-clock cap. |
 | `preflight` | `bool` | `true` | Run the probe once before any mutant to verify the baseline is green. |

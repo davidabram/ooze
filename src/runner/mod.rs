@@ -14,6 +14,7 @@ use walkdir::WalkDir;
 
 pub mod overlay;
 pub mod template;
+pub mod worktree;
 
 pub use template::{ProbeEnvCtx, ProbeEnvTemplate};
 
@@ -21,6 +22,7 @@ pub use template::{ProbeEnvCtx, ProbeEnvTemplate};
 pub enum WorkspaceBackend {
     Copy,
     Overlay,
+    Worktree,
 }
 
 pub enum Workspace {
@@ -262,6 +264,10 @@ pub struct BatchConfig<'a> {
     pub probe_env_templates: &'a [ProbeEnvTemplate],
     pub runs_dir: &'a Path,
     pub progress: Option<fn(ProgressEvent<'_>)>,
+    /// Per-worker worktrees, required when `backend` is `Worktree`. Unlike the
+    /// other backends these are created once up front and reused across
+    /// mutants, so the pool lives outside the per-mutant run.
+    pub worktree_pool: Option<&'a worktree::WorktreePool>,
 }
 
 pub struct ProgressEvent<'a> {
@@ -282,6 +288,9 @@ fn create_workspace(
         }
         WorkspaceBackend::Overlay => {
             overlay::OverlayWorkspace::create(repo_root, runs_dir, run_id).map(Workspace::Overlay)
+        }
+        WorkspaceBackend::Worktree => {
+            bail!("worktree workspaces are pooled per worker, not created per mutant")
         }
     }
 }
@@ -314,13 +323,27 @@ fn try_run_one(
     cfg: &BatchConfig<'_>,
     run_id: &str,
 ) -> Result<MutantOutcome> {
-    let workspace = create_workspace(cfg.backend, repo_root, cfg.runs_dir, run_id)
-        .with_context(|| format!("creating workspace for {}", candidate.id))?;
-
-    let applied = apply_mutation(workspace.path(), repo_root, candidate)
-        .with_context(|| format!("applying mutation {}", candidate.id))?;
-
     let worker_idx = rayon::current_thread_index().unwrap_or(0);
+
+    // The worktree backend reuses one worktree per worker; the others build a
+    // fresh workspace per mutant. Keep the per-mutant workspace alive until
+    // the probe finishes.
+    let per_mutant_workspace;
+    let workspace_path: &Path = if cfg.backend == WorkspaceBackend::Worktree {
+        let pool = cfg
+            .worktree_pool
+            .context("worktree backend selected but no worktree pool was created")?;
+        pool.reset(worker_idx)
+            .with_context(|| format!("resetting worktree before {}", candidate.id))?;
+        pool.path_for(worker_idx)
+    } else {
+        per_mutant_workspace = create_workspace(cfg.backend, repo_root, cfg.runs_dir, run_id)
+            .with_context(|| format!("creating workspace for {}", candidate.id))?;
+        per_mutant_workspace.path()
+    };
+
+    let applied = apply_mutation(workspace_path, repo_root, candidate)
+        .with_context(|| format!("applying mutation {}", candidate.id))?;
     let worker_build_cache: Option<PathBuf> = cfg.worker_build_cache_dirs.and_then(|dirs| {
         dirs.get(worker_idx).cloned().or_else(|| dirs.first().cloned())
     });
@@ -334,14 +357,18 @@ fn try_run_one(
         },
     );
 
-    run_probe(
-        workspace.path(),
-        applied,
-        probe,
-        cfg.timeout,
-        &extra_envs,
-    )
-    .with_context(|| format!("running probe for {}", candidate.id))
+    let outcome = run_probe(workspace_path, applied, probe, cfg.timeout, &extra_envs)
+        .with_context(|| format!("running probe for {}", candidate.id))?;
+
+    // Leave the reused worktree clean for the next mutant; best-effort since
+    // the next mutant resets again before applying.
+    if cfg.backend == WorkspaceBackend::Worktree
+        && let Some(pool) = cfg.worktree_pool
+    {
+        let _ = pool.reset(worker_idx);
+    }
+
+    Ok(outcome)
 }
 
 fn run_id_for(idx: usize, candidate: &MutationCandidate) -> String {
@@ -513,14 +540,16 @@ pub fn default_build_cache_dir(cache_dir: &Path) -> PathBuf {
     cache_dir.join("build-cache")
 }
 
+/// `workspaces[i]` is the directory worker `i` warms up in (the repo root, or
+/// that worker's worktree); indices past the slice clamp to the last entry.
 pub fn warmup_workers(
-    workspace_path: &Path,
+    workspaces: &[PathBuf],
     probe: &[String],
     target_dirs: &[PathBuf],
     jobs: usize,
     probe_env_templates: &[ProbeEnvTemplate],
 ) -> Result<()> {
-    if target_dirs.is_empty() {
+    if target_dirs.is_empty() || workspaces.is_empty() {
         return Ok(());
     }
     let pool = rayon::ThreadPoolBuilder::new()
@@ -539,7 +568,8 @@ pub fn warmup_workers(
                         build_cache: Some(dir),
                     },
                 );
-                let status = warmup(workspace_path, probe, Some(dir), &extra_envs)?;
+                let workspace = &workspaces[idx.min(workspaces.len() - 1)];
+                let status = warmup(workspace, probe, Some(dir), &extra_envs)?;
                 if !status.success() {
                     bail!("warmup failed in {} with status {status}", dir.display());
                 }

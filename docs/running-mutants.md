@@ -17,13 +17,38 @@ the verdict:
 | `--limit`              | Cap candidates for a quick smoke run.                                |
 | `--strategy`           | Ordering: `discovery`, `actionable`, etc.                            |
 | `--timeout-seconds`    | Per-mutant probe timeout.                                            |
-| `--workspace-backend`  | `copy` (portable), `overlay` (Linux, faster; needs root), `auto`.    |
+| `--workspace-backend`  | `worktree` (Git, rootless), `copy` (portable), `overlay` (Linux; needs root), `auto` (worktree in a Git repo, else copy). |
 | `--exclude`            | Extra glob excludes, comma-separated. Defaults + `.gitignore` apply. |
 | `--warmup`             | Pre-build the probe in each worker dir before running mutants.       |
 | `--per-worker-cache`   | Give each worker its own build cache dir (avoids build lock churn).  |
 | `--probe-env KEY=VAL`  | Set env vars on probe + warmup. `{worker}` → worker index, `{build_cache}` → build cache path. |
 
 Everything after `--` is the probe command line.
+
+## Workspace backends
+
+- `worktree` — creates one Git worktree per worker and reuses it across
+  mutants (reset with `git reset --hard` + `git clean -fdx` between mutants).
+  Rootless, CI-friendly, and a good default for most projects. Requires
+  running inside a Git repository, and mutants are applied against `HEAD`, so
+  commit your changes first. Worktrees live under `.ooze/runs/worktrees` and
+  are removed when the run finishes; only paths under that directory are
+  cleaned destructively.
+- `copy` — copies the repo into a temp dir per mutant. Portable, works
+  anywhere, slowest for large repos.
+- `overlay` — OverlayFS mount per mutant. Linux only and needs root; never
+  chosen automatically.
+- `auto` — `worktree` inside a Git repository, otherwise `copy`.
+
+```bash
+./target/release/ooze test-mutants \
+  --workspace-backend worktree \
+  --jobs 4 \
+  --per-worker-cache \
+  --warmup \
+  --probe-env CARGO_TARGET_DIR={build_cache} \
+  -- cargo test
+```
 
 ## Rust (cargo)
 

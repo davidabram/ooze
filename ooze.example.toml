@@ -19,6 +19,7 @@ context_lines = 3
 # lcov = "lcov.info"              # deprecated alias for coverage = ["lcov:lcov.info"]
 
 [runner]
+# worktree (Git, rootless), copy, overlay (needs root), or auto (worktree inside a Git repo, else copy).
 workspace_backend = "auto"
 jobs = 2
 timeout_seconds = 120

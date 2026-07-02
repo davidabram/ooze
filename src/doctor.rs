@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::config::{self, OozeConfig};
 use crate::core::OperatorName;
-use crate::runner::overlay;
+use crate::runner::{overlay, worktree};
 
 #[derive(Debug, Clone, Copy, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -179,8 +179,25 @@ pub fn run(path: &Path) -> DoctorReport {
             }
         }
         "copy" => checks.push(ok("workspace_backend", "copy backend always available")),
+        "worktree" => {
+            if worktree::is_git_repo(&canonical) {
+                checks.push(ok(
+                    "workspace_backend",
+                    "worktree requested and inside a Git repository",
+                ));
+            } else {
+                checks.push(fail(
+                    "workspace_backend",
+                    "worktree requested but not inside a Git repository (run `git init` or use copy)",
+                ));
+            }
+        }
         _ => {
-            let resolved = if overlay_ok { "overlay" } else { "copy" };
+            let resolved = if worktree::is_git_repo(&canonical) {
+                "worktree"
+            } else {
+                "copy"
+            };
             checks.push(ok(
                 "workspace_backend",
                 format!("auto -> {resolved} (overlay_available={overlay_ok})"),
