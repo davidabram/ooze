@@ -236,6 +236,68 @@ fn test_mutant_succeeds_with_valid_id() {
     );
 }
 
+// ── doctor ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn doctor_human_reports_environment_and_recommendation() {
+    let tmp = tempdir();
+    std::fs::write(
+        tmp.path().join("Cargo.toml"),
+        "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
+    )
+    .unwrap();
+    for args in [
+        &["init", "-q"][..],
+        &["config", "user.email", "test@example.com"],
+        &["config", "user.name", "Test"],
+        &["add", "."],
+        &["commit", "-q", "-m", "init"],
+    ] {
+        let ok = Command::new("git")
+            .arg("-C")
+            .arg(tmp.path())
+            .args(args)
+            .status()
+            .expect("running git")
+            .success();
+        assert!(ok, "git {args:?} failed");
+    }
+
+    let out = ooze()
+        .args(["doctor", "--path", tmp.path().to_str().unwrap(), "--format", "human"])
+        .output()
+        .expect("failed to run ooze");
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    for expected in [
+        "type: Rust/Cargo",
+        "git repo: found",
+        "worktree backend: available",
+        "sccache:",
+        "Recommendation",
+        "ooze test-mutants --preset rust",
+    ] {
+        assert!(stdout.contains(expected), "missing {expected:?} in:\n{stdout}");
+    }
+}
+
+#[test]
+fn doctor_json_contains_stable_environment_fields() {
+    let tmp = tempdir();
+    let out = ooze()
+        .args(["doctor", "--path", tmp.path().to_str().unwrap(), "--format", "json"])
+        .output()
+        .expect("failed to run ooze");
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let json: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("doctor --format json emits JSON");
+    assert_eq!(json["project_type"], "unknown");
+    assert_eq!(json["git"]["available"], false);
+    assert_eq!(json["backends"]["worktree"]["available"], false);
+    assert!(json["cache"]["sccache"].is_boolean());
+    assert!(json["recommendation"]["command"].is_null());
+}
+
 // ── test-mutants preflight format ─────────────────────────────────────────────
 
 #[test]

@@ -18,7 +18,7 @@ pub fn is_git_repo(path: &Path) -> bool {
 }
 
 /// Root of the working tree containing `path`, if it is inside a Git repo.
-fn git_toplevel(path: &Path) -> Option<PathBuf> {
+pub fn git_toplevel(path: &Path) -> Option<PathBuf> {
     let output = Command::new("git")
         .arg("-C")
         .arg(path)

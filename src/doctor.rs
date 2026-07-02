@@ -20,9 +20,59 @@ pub struct CheckResult {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectType {
+    Rust,
+    Unknown,
+}
+
+impl ProjectType {
+    pub fn human(self) -> &'static str {
+        match self {
+            ProjectType::Rust => "Rust/Cargo",
+            ProjectType::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GitStatus {
+    pub available: bool,
+    pub root: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BackendStatus {
+    pub available: bool,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BackendsStatus {
+    pub worktree: BackendStatus,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CacheStatus {
+    pub sccache: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Recommendation {
+    /// `None` when no preset applies; the human output then suggests passing
+    /// a probe manually.
+    pub command: Option<String>,
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DoctorReport {
     pub path: PathBuf,
+    pub project_type: ProjectType,
+    pub git: GitStatus,
+    pub backends: BackendsStatus,
+    pub cache: CacheStatus,
+    pub recommendation: Recommendation,
     pub config_path: Option<PathBuf>,
     pub checks: Vec<CheckResult>,
     pub failed: usize,
@@ -121,6 +171,67 @@ fn which(cmd: &str) -> Option<PathBuf> {
     None
 }
 
+fn detect_project_type(path: &Path) -> ProjectType {
+    if path.join("Cargo.toml").is_file() {
+        ProjectType::Rust
+    } else {
+        ProjectType::Unknown
+    }
+}
+
+fn detect_git(path: &Path) -> GitStatus {
+    let root = worktree::git_toplevel(path);
+    GitStatus {
+        available: root.is_some(),
+        root,
+    }
+}
+
+fn worktree_backend_status(path: &Path, git: &GitStatus) -> BackendStatus {
+    if which("git").is_none() {
+        return BackendStatus {
+            available: false,
+            reason: Some("git is not installed".to_string()),
+        };
+    }
+    if !git.available {
+        return BackendStatus {
+            available: false,
+            reason: Some("not inside a Git repository".to_string()),
+        };
+    }
+    let usable = std::process::Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["worktree", "list"])
+        .output()
+        .is_ok_and(|o| o.status.success());
+    if usable {
+        BackendStatus {
+            available: true,
+            reason: None,
+        }
+    } else {
+        BackendStatus {
+            available: false,
+            reason: Some("`git worktree list` failed in this repository".to_string()),
+        }
+    }
+}
+
+fn recommend(project_type: ProjectType, worktree: &BackendStatus) -> Recommendation {
+    let command = match project_type {
+        ProjectType::Rust if worktree.available => {
+            Some("ooze test-mutants --preset rust".to_string())
+        }
+        ProjectType::Rust => {
+            Some("ooze test-mutants --preset rust --workspace-backend copy".to_string())
+        }
+        ProjectType::Unknown => None,
+    };
+    Recommendation { command }
+}
+
 pub fn run(path: &Path) -> DoctorReport {
     let mut checks: Vec<CheckResult> = Vec::new();
 
@@ -139,6 +250,14 @@ pub fn run(path: &Path) -> DoctorReport {
             path.to_path_buf()
         }
     };
+
+    let project_type = detect_project_type(&canonical);
+    let git = detect_git(&canonical);
+    let worktree_status = worktree_backend_status(&canonical, &git);
+    let cache = CacheStatus {
+        sccache: which("sccache").is_some(),
+    };
+    let recommendation = recommend(project_type, &worktree_status);
 
     let cfg_path = canonical.join(config::DEFAULT_CONFIG_NAME);
     let (cfg, cfg_loaded_from) = if cfg_path.exists() {
@@ -318,6 +437,13 @@ pub fn run(path: &Path) -> DoctorReport {
 
     DoctorReport {
         path: canonical,
+        project_type,
+        git,
+        backends: BackendsStatus {
+            worktree: worktree_status,
+        },
+        cache,
+        recommendation,
         config_path: cfg_loaded_from,
         checks,
         failed,
@@ -326,7 +452,49 @@ pub fn run(path: &Path) -> DoctorReport {
 }
 
 pub fn print_human(report: &DoctorReport) {
-    println!("ooze doctor: {}", report.path.display());
+    println!("ooze doctor");
+    println!();
+    println!("Project");
+    println!("  path: {}", report.path.display());
+    println!("  type: {}", report.project_type.human());
+    println!();
+    println!("Git");
+    if report.git.available {
+        println!("  git repo: found");
+        if let Some(root) = &report.git.root {
+            println!("  root: {}", root.display());
+        }
+    } else {
+        println!("  git repo: not found");
+    }
+    if report.backends.worktree.available {
+        println!("  worktree backend: available");
+    } else {
+        println!("  worktree backend: unavailable");
+        if let Some(reason) = &report.backends.worktree.reason {
+            println!("  reason: {reason}");
+        }
+    }
+    println!();
+    println!("Cache");
+    println!(
+        "  sccache: {}",
+        if report.cache.sccache { "found" } else { "not found" }
+    );
+    if report.project_type == ProjectType::Rust {
+        println!("  recommended Rust cache: per-worker CARGO_TARGET_DIR={{build_cache}}");
+    }
+    println!();
+    println!("Recommendation");
+    if let Some(cmd) = &report.recommendation.command {
+        println!("  {cmd}");
+    } else {
+        println!("  No preset recommendation available yet.");
+        println!("  Try specifying a probe manually, for example:");
+        println!("    ooze test-mutants -- <your test command>");
+    }
+    println!();
+    println!("Checks");
     if let Some(p) = &report.config_path {
         println!("  config: {}", p.display());
     } else {
@@ -352,6 +520,95 @@ pub fn print_human(report: &DoctorReport) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn write_cargo_toml(dir: &Path) {
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
+        )
+        .expect("write Cargo.toml");
+    }
+
+    fn init_git_repo(dir: &Path) {
+        let run = |args: &[&str]| {
+            let status = std::process::Command::new("git")
+                .arg("-C")
+                .arg(dir)
+                .args(args)
+                .status()
+                .expect("running git");
+            assert!(status.success(), "git {args:?} failed");
+        };
+        run(&["init", "-q"]);
+        run(&["config", "user.email", "test@example.com"]);
+        run(&["config", "user.name", "Test"]);
+        run(&["add", "."]);
+        run(&["commit", "-q", "-m", "init"]);
+    }
+
+    #[test]
+    fn cargo_git_repo_detects_rust_git_and_recommends_preset() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_cargo_toml(dir.path());
+        init_git_repo(dir.path());
+
+        let report = run(dir.path());
+        assert_eq!(report.project_type, ProjectType::Rust);
+        assert!(report.git.available, "git repo should be found");
+        assert_eq!(
+            report.git.root.as_deref(),
+            Some(report.path.as_path()),
+            "git root should be the repo itself"
+        );
+        assert!(report.backends.worktree.available);
+        assert_eq!(report.backends.worktree.reason, None);
+        assert_eq!(
+            report.recommendation.command.as_deref(),
+            Some("ooze test-mutants --preset rust")
+        );
+    }
+
+    #[test]
+    fn non_git_cargo_dir_detects_rust_but_worktree_unavailable() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_cargo_toml(dir.path());
+
+        let report = run(dir.path());
+        assert_eq!(report.project_type, ProjectType::Rust);
+        assert!(!report.git.available, "no git repo should be found");
+        assert!(!report.backends.worktree.available);
+        assert!(
+            report
+                .backends
+                .worktree
+                .reason
+                .as_deref()
+                .is_some_and(|r| r.contains("Git repository")),
+            "reason should explain the missing repo: {:?}",
+            report.backends.worktree.reason
+        );
+        assert_eq!(
+            report.recommendation.command.as_deref(),
+            Some("ooze test-mutants --preset rust --workspace-backend copy")
+        );
+    }
+
+    #[test]
+    fn unknown_dir_reports_unknown_type_and_no_recommendation() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let report = run(dir.path());
+        assert_eq!(report.project_type, ProjectType::Unknown);
+        assert_eq!(report.recommendation.command, None);
+    }
+
+    #[test]
+    fn report_is_built_regardless_of_sccache_presence() {
+        // sccache is optional: whatever the machine has, the report must come
+        // out whole with the flag simply reflecting PATH lookup.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let report = run(dir.path());
+        assert_eq!(report.cache.sccache, which("sccache").is_some());
+    }
 
     #[test]
     fn probe_command_check_warns_when_unset() {
