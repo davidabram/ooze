@@ -483,6 +483,9 @@ pub fn print_human(report: &DoctorReport) {
     );
     if report.project_type == ProjectType::Rust {
         println!("  recommended Rust cache: per-worker CARGO_TARGET_DIR={{build_cache}}");
+        if report.cache.sccache {
+            println!("  sccache is opt-in: add --probe-env RUSTC_WRAPPER=sccache");
+        }
     }
     println!();
     println!("Recommendation");

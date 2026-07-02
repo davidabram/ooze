@@ -38,8 +38,14 @@ defaults:
   `CARGO_TARGET_DIR`)
 - probe `cargo test` (only when no probe is given after `--` and none is set
   in `ooze.toml`)
-- `--probe-env RUSTC_WRAPPER=sccache` when `sccache` is on PATH and
-  `RUSTC_WRAPPER` isn't already set
+
+The preset never enables `sccache` automatically — the same command expands
+the same way on every machine. If you want it, opt in explicitly (ooze doctor
+suggests this when it finds sccache):
+
+```bash
+ooze test-mutants --preset rust --probe-env RUSTC_WRAPPER=sccache
+```
 
 Presets are default-fillers, not overrides: explicit CLI flags and `ooze.toml`
 values always win. The applied fills are printed on stderr as

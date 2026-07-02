@@ -196,7 +196,7 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         .map(|(k, v)| runner::ProbeEnvTemplate::parse(k, &v))
         .collect();
     if rust_preset {
-        preset_fills.extend(rust_preset_probe_env_fills(&mut probe_env, sccache_on_path()));
+        preset_fills.extend(rust_preset_probe_env_fills(&mut probe_env));
     }
 
     let operators = resolve_operators(
@@ -271,10 +271,12 @@ fn probe_env_has_key(probe_env: &[runner::ProbeEnvTemplate], key: &str) -> bool 
 /// Append the rust preset's probe-env defaults to `probe_env` when the user
 /// hasn't set the same key themselves. Returns a description of each fill for
 /// the preset debug line.
-fn rust_preset_probe_env_fills(
-    probe_env: &mut Vec<runner::ProbeEnvTemplate>,
-    sccache_available: bool,
-) -> Vec<String> {
+///
+/// Deliberately does NOT inject `RUSTC_WRAPPER=sccache` when sccache happens
+/// to be on PATH: the preset must expand to the same run on every machine.
+/// sccache stays opt-in via `--probe-env RUSTC_WRAPPER=sccache` (doctor
+/// suggests this when it detects sccache).
+fn rust_preset_probe_env_fills(probe_env: &mut Vec<runner::ProbeEnvTemplate>) -> Vec<String> {
     let mut fills = Vec::new();
     if !probe_env_has_key(probe_env, "CARGO_TARGET_DIR") {
         probe_env.push(runner::ProbeEnvTemplate::parse(
@@ -283,28 +285,7 @@ fn rust_preset_probe_env_fills(
         ));
         fills.push("probe_env += CARGO_TARGET_DIR={build_cache}".to_string());
     }
-    if sccache_available
-        && !probe_env_has_key(probe_env, "RUSTC_WRAPPER")
-        && std::env::var_os("RUSTC_WRAPPER").is_none()
-    {
-        probe_env.push(runner::ProbeEnvTemplate::parse(
-            "RUSTC_WRAPPER".to_string(),
-            "sccache",
-        ));
-        fills.push("probe_env += RUSTC_WRAPPER=sccache (sccache found on PATH)".to_string());
-    }
     fills
-}
-
-/// Whether an `sccache` executable is reachable via PATH.
-fn sccache_on_path() -> bool {
-    let Some(paths) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&paths).any(|dir| {
-        let candidate = dir.join("sccache");
-        candidate.is_file()
-    })
 }
 
 #[cfg(test)]
@@ -484,31 +465,29 @@ mod tests {
     }
 
     #[test]
-    fn probe_env_fills_add_rustc_wrapper_when_sccache_available() {
-        if std::env::var_os("RUSTC_WRAPPER").is_some() {
-            return; // ambient wrapper wins by design; nothing to test here
-        }
+    fn probe_env_fills_only_cargo_target_dir() {
         let mut env = Vec::new();
-        let fills = rust_preset_probe_env_fills(&mut env, true);
+        let fills = rust_preset_probe_env_fills(&mut env);
         assert_eq!(env_values(&env, "CARGO_TARGET_DIR"), ["/bc"]);
-        assert_eq!(env_values(&env, "RUSTC_WRAPPER"), ["sccache"]);
-        assert_eq!(fills.len(), 2);
+        assert_eq!(fills.len(), 1);
     }
 
     #[test]
-    fn probe_env_fills_skip_rustc_wrapper_without_sccache() {
+    fn probe_env_fills_never_inject_rustc_wrapper() {
+        // sccache is opt-in: the preset must expand identically whether or
+        // not sccache is installed, so RUSTC_WRAPPER is never injected.
         let mut env = Vec::new();
-        rust_preset_probe_env_fills(&mut env, false);
+        rust_preset_probe_env_fills(&mut env);
         assert!(env_values(&env, "RUSTC_WRAPPER").is_empty());
     }
 
     #[test]
-    fn probe_env_fills_respect_existing_rustc_wrapper() {
+    fn probe_env_fills_keep_existing_entries() {
         let mut env = vec![runner::ProbeEnvTemplate::parse(
             "RUSTC_WRAPPER".to_string(),
             "mine",
         )];
-        rust_preset_probe_env_fills(&mut env, true);
+        rust_preset_probe_env_fills(&mut env);
         assert_eq!(env_values(&env, "RUSTC_WRAPPER"), ["mine"]);
     }
 }

@@ -78,6 +78,7 @@
             pkg-config
             openssl
             jq
+            sccache
             claude-code
           ];
 
