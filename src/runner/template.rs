@@ -67,6 +67,11 @@ impl ProbeEnvTemplate {
         Self { key, segs }
     }
 
+    /// The env var name this template sets.
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
     /// Whether the value references `{worker}` (so it expands per worker index).
     pub fn references_worker(&self) -> bool {
         self.segs.contains(&Seg::Worker)

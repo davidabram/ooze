@@ -329,13 +329,15 @@ fn try_run_one(
     // fresh workspace per mutant. Keep the per-mutant workspace alive until
     // the probe finishes.
     let per_mutant_workspace;
+    let pooled_worktree;
     let workspace_path: &Path = if cfg.backend == WorkspaceBackend::Worktree {
         let pool = cfg
             .worktree_pool
             .context("worktree backend selected but no worktree pool was created")?;
         pool.reset(worker_idx)
             .with_context(|| format!("resetting worktree before {}", candidate.id))?;
-        pool.path_for(worker_idx)
+        pooled_worktree = pool.path_for(worker_idx);
+        &pooled_worktree
     } else {
         per_mutant_workspace = create_workspace(cfg.backend, repo_root, cfg.runs_dir, run_id)
             .with_context(|| format!("creating workspace for {}", candidate.id))?;

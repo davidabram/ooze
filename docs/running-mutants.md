@@ -17,6 +17,7 @@ the verdict:
 | `--limit`              | Cap candidates for a quick smoke run.                                |
 | `--strategy`           | Ordering: `discovery`, `actionable`, etc.                            |
 | `--timeout-seconds`    | Per-mutant probe timeout.                                            |
+| `--preset`             | Language preset that fills unset options with ecosystem defaults (see below). Only `rust` for now. |
 | `--workspace-backend`  | `worktree` (Git, rootless), `copy` (portable), `overlay` (Linux; needs root), `auto` (worktree in a Git repo, else copy). |
 | `--exclude`            | Extra glob excludes, comma-separated. Defaults + `.gitignore` apply. |
 | `--warmup`             | Pre-build the probe in each worker dir before running mutants.       |
@@ -24,6 +25,40 @@ the verdict:
 | `--probe-env KEY=VAL`  | Set env vars on probe + warmup. `{worker}` → worker index, `{build_cache}` → build cache path. |
 
 Everything after `--` is the probe command line.
+
+## Presets
+
+`--preset rust` fills every runner option you left unset with good Rust
+defaults:
+
+- `--workspace-backend worktree`
+- `--per-worker-cache`
+- `--warmup`
+- `--probe-env CARGO_TARGET_DIR={build_cache}` (skipped if you already set
+  `CARGO_TARGET_DIR`)
+- probe `cargo test` (only when no probe is given after `--` and none is set
+  in `ooze.toml`)
+- `--probe-env RUSTC_WRAPPER=sccache` when `sccache` is on PATH and
+  `RUSTC_WRAPPER` isn't already set
+
+Presets are default-fillers, not overrides: explicit CLI flags and `ooze.toml`
+values always win. The applied fills are printed on stderr as
+`ooze: preset rust: ...` so the expansion stays visible.
+
+```bash
+# everything defaulted
+ooze test-mutants --preset rust
+
+# explicit probe wins over the preset's `cargo test`
+ooze test-mutants --preset rust -- cargo test --lib
+
+# explicit backend wins over the preset's worktree
+ooze test-mutants --preset rust --workspace-backend overlay
+```
+
+The preset requires a `Cargo.toml` at the project path, and its worktree
+default requires running inside a Git repository (you'll get a clear error
+otherwise; pass `--workspace-backend copy` to opt out).
 
 ## Workspace backends
 

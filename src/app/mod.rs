@@ -807,7 +807,7 @@ pub fn run() -> anyhow::Result<()> {
 
             let baseline_root = worktree_pool
                 .as_ref()
-                .map_or(repo_root.as_path(), |p| p.path_for(0));
+                .map_or_else(|| repo_root.clone(), |p| p.path_for(0));
 
             if preflight {
                 let preflight_build_cache = target_dir
@@ -821,7 +821,7 @@ pub fn run() -> anyhow::Result<()> {
                     },
                 );
                 let outcome = runner::preflight(
-                    baseline_root,
+                    &baseline_root,
                     &probe,
                     timeout,
                     &preflight_envs,
@@ -865,6 +865,12 @@ pub fn run() -> anyhow::Result<()> {
                     } else {
                         println!("{}", serde_json::to_string_pretty(&payload)?);
                     }
+                    // process::exit skips Drop, so release the worktrees here.
+                    if let Some(pool) = worktree_pool.as_mut()
+                        && let Err(e) = pool.cleanup()
+                    {
+                        eprintln!("warning: failed to clean up git worktrees: {e:#}");
+                    }
                     std::process::exit(report::OozeExitCode::PreflightFailed.code());
                 }
             }
@@ -881,7 +887,7 @@ pub fn run() -> anyhow::Result<()> {
                             .map(|i| {
                                 worktree_pool.as_ref().map_or_else(
                                     || repo_root.clone(),
-                                    |p| p.path_for(i).to_path_buf(),
+                                    |p| p.path_for(i),
                                 )
                             })
                             .collect();
@@ -902,7 +908,7 @@ pub fn run() -> anyhow::Result<()> {
                                 build_cache: Some(dir),
                             },
                         );
-                        let status = runner::warmup(baseline_root, &probe, Some(dir), &extra)?;
+                        let status = runner::warmup(&baseline_root, &probe, Some(dir), &extra)?;
                         warmup_status_to_result(status)?;
                     }
                     WarmupTarget::Nothing => {}

@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::cli::{TestMutantsArgs, WorkspaceBackendArg};
+use crate::cli::{Preset, TestMutantsArgs, WorkspaceBackendArg};
 use crate::{config, mutate, report, runner, scheduler};
 
 /// Everything `test-mutants` needs to run, with every CLI/config/default decision
@@ -64,6 +64,7 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         per_worker_cache,
         warmup,
         workspace_backend,
+        preset,
         cache_dir,
         runs_dir,
         format,
@@ -93,6 +94,17 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         eprintln!("ooze: loaded config from {}", p.display());
     }
 
+    let rust_preset = preset == Some(Preset::Rust);
+    if rust_preset && !path.join("Cargo.toml").exists() {
+        anyhow::bail!(
+            "rust preset requires a Cargo.toml at the project path ({})",
+            path.display()
+        );
+    }
+    // Human-readable record of every default the preset filled, printed once
+    // below so preset expansion stays debuggable.
+    let mut preset_fills: Vec<String> = Vec::new();
+
     let strategy = match strategy {
         Some(s) => s,
         None => match cfg.mutation.strategy.as_deref() {
@@ -106,12 +118,26 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         .or(cfg.runner.timeout_seconds)
         .map(Duration::from_secs);
     let build_cache_dir = build_cache_dir.or(cfg.runner.build_cache_dir.clone());
-    let per_worker_cache = resolve_bool_flag(per_worker_cache, cfg.runner.per_worker_cache);
-    let warmup = resolve_bool_flag(warmup, cfg.runner.warmup);
+    let per_worker_cache = if !per_worker_cache && cfg.runner.per_worker_cache.is_none() && rust_preset {
+        preset_fills.push("per_worker_cache=true".into());
+        true
+    } else {
+        resolve_bool_flag(per_worker_cache, cfg.runner.per_worker_cache)
+    };
+    let warmup = if !warmup && cfg.runner.warmup.is_none() && rust_preset {
+        preset_fills.push("warmup=true".into());
+        true
+    } else {
+        resolve_bool_flag(warmup, cfg.runner.warmup)
+    };
     let workspace_backend = match workspace_backend {
         Some(w) => w,
         None => match cfg.runner.workspace_backend.as_deref() {
             Some(s) => parse_workspace_backend_str(s)?,
+            None if rust_preset => {
+                preset_fills.push("workspace_backend=worktree".into());
+                WorkspaceBackendArg::Worktree
+            }
             None => WorkspaceBackendArg::Auto,
         },
     };
@@ -165,10 +191,13 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
     let exclude = resolve_exclude_list(exclude, &cfg.scope.exclude);
     let excludes = resolve_excludes(&path, &exclude);
 
-    let probe_env: Vec<runner::ProbeEnvTemplate> = resolve_probe_env(probe_env, &cfg.probe.env)?
+    let mut probe_env: Vec<runner::ProbeEnvTemplate> = resolve_probe_env(probe_env, &cfg.probe.env)?
         .into_iter()
         .map(|(k, v)| runner::ProbeEnvTemplate::parse(k, &v))
         .collect();
+    if rust_preset {
+        preset_fills.extend(rust_preset_probe_env_fills(&mut probe_env, sccache_on_path()));
+    }
 
     let operators = resolve_operators(
         operators,
@@ -190,11 +219,18 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
     if probe.is_empty() {
         if let Some(cmd) = cfg.probe.command.as_ref() {
             probe.clone_from(cmd);
+        } else if rust_preset {
+            preset_fills.push("probe=`cargo test`".into());
+            probe = vec!["cargo".to_string(), "test".to_string()];
         } else {
             anyhow::bail!(
                 "missing probe command; pass one after `--` or set [probe].command in ooze.toml"
             );
         }
+    }
+
+    if !preset_fills.is_empty() {
+        eprintln!("ooze: preset rust: {}", preset_fills.join(", "));
     }
 
     Ok(ResolvedTestMutants {
@@ -226,4 +262,253 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         changed_only,
         progress_enabled,
     })
+}
+
+fn probe_env_has_key(probe_env: &[runner::ProbeEnvTemplate], key: &str) -> bool {
+    probe_env.iter().any(|t| t.key() == key)
+}
+
+/// Append the rust preset's probe-env defaults to `probe_env` when the user
+/// hasn't set the same key themselves. Returns a description of each fill for
+/// the preset debug line.
+fn rust_preset_probe_env_fills(
+    probe_env: &mut Vec<runner::ProbeEnvTemplate>,
+    sccache_available: bool,
+) -> Vec<String> {
+    let mut fills = Vec::new();
+    if !probe_env_has_key(probe_env, "CARGO_TARGET_DIR") {
+        probe_env.push(runner::ProbeEnvTemplate::parse(
+            "CARGO_TARGET_DIR".to_string(),
+            "{build_cache}",
+        ));
+        fills.push("probe_env += CARGO_TARGET_DIR={build_cache}".to_string());
+    }
+    if sccache_available
+        && !probe_env_has_key(probe_env, "RUSTC_WRAPPER")
+        && std::env::var_os("RUSTC_WRAPPER").is_none()
+    {
+        probe_env.push(runner::ProbeEnvTemplate::parse(
+            "RUSTC_WRAPPER".to_string(),
+            "sccache",
+        ));
+        fills.push("probe_env += RUSTC_WRAPPER=sccache (sccache found on PATH)".to_string());
+    }
+    fills
+}
+
+/// Whether an `sccache` executable is reachable via PATH.
+fn sccache_on_path() -> bool {
+    let Some(paths) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&paths).any(|dir| {
+        let candidate = dir.join("sccache");
+        candidate.is_file()
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::{Cli, Commands};
+    use clap::Parser as _;
+    use std::path::Path;
+
+    fn parse_args(extra: &[&str]) -> TestMutantsArgs {
+        let mut argv = vec!["ooze", "test-mutants"];
+        argv.extend_from_slice(extra);
+        let cli = Cli::try_parse_from(argv).expect("args should parse");
+        match cli.command {
+            Commands::TestMutants(a) => *a,
+            _ => unreachable!("parsed a test-mutants invocation"),
+        }
+    }
+
+    /// Temp dir with a Cargo.toml and an empty ooze.toml, so resolution is
+    /// hermetic (independent of the real repo's config and cwd).
+    fn cargo_project() -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("Cargo.toml"),
+            "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("ooze.toml"), "").unwrap();
+        tmp
+    }
+
+    fn resolve_in(dir: &Path, extra: &[&str]) -> anyhow::Result<ResolvedTestMutants> {
+        let path = dir.display().to_string();
+        let config = dir.join("ooze.toml").display().to_string();
+        let mut argv: Vec<&str> = vec!["--path", &path, "--config", &config];
+        argv.extend_from_slice(extra);
+        test_mutants(parse_args(&argv))
+    }
+
+    fn env_values(probe_env: &[runner::ProbeEnvTemplate], key: &str) -> Vec<String> {
+        let ctx = runner::ProbeEnvCtx {
+            worker: 0,
+            build_cache: Some(Path::new("/bc")),
+        };
+        probe_env
+            .iter()
+            .filter(|t| t.key() == key)
+            .map(|t| t.eval(ctx))
+            .collect()
+    }
+
+    #[test]
+    fn preset_rust_parses() {
+        let args = parse_args(&["--preset", "rust"]);
+        assert_eq!(args.preset, Some(Preset::Rust));
+    }
+
+    #[test]
+    fn preset_unknown_fails_to_parse() {
+        let Err(err) = Cli::try_parse_from(["ooze", "test-mutants", "--preset", "gopher"]) else {
+            panic!("unknown preset must be rejected");
+        };
+        assert!(
+            err.to_string().contains("gopher"),
+            "error should name the bad value: {err}"
+        );
+    }
+
+    #[test]
+    fn rust_preset_defaults_to_worktree_backend() {
+        let dir = cargo_project();
+        let r = resolve_in(dir.path(), &["--preset", "rust"]).unwrap();
+        assert_eq!(r.workspace_backend, WorkspaceBackendArg::Worktree);
+    }
+
+    #[test]
+    fn explicit_backend_overrides_preset_default() {
+        let dir = cargo_project();
+        let r = resolve_in(
+            dir.path(),
+            &["--preset", "rust", "--workspace-backend", "overlay"],
+        )
+        .unwrap();
+        assert_eq!(r.workspace_backend, WorkspaceBackendArg::Overlay);
+    }
+
+    #[test]
+    fn config_backend_overrides_preset_default() {
+        let dir = cargo_project();
+        std::fs::write(
+            dir.path().join("ooze.toml"),
+            "[runner]\nworkspace_backend = \"copy\"\n",
+        )
+        .unwrap();
+        let r = resolve_in(dir.path(), &["--preset", "rust"]).unwrap();
+        assert_eq!(r.workspace_backend, WorkspaceBackendArg::Copy);
+    }
+
+    #[test]
+    fn rust_preset_enables_per_worker_cache_and_warmup() {
+        let dir = cargo_project();
+        let r = resolve_in(dir.path(), &["--preset", "rust"]).unwrap();
+        assert!(r.per_worker_cache);
+        assert!(r.warmup);
+    }
+
+    #[test]
+    fn config_can_disable_warmup_despite_preset() {
+        let dir = cargo_project();
+        std::fs::write(dir.path().join("ooze.toml"), "[runner]\nwarmup = false\n").unwrap();
+        let r = resolve_in(dir.path(), &["--preset", "rust"]).unwrap();
+        assert!(!r.warmup, "explicit config choice must win over preset");
+        assert!(r.per_worker_cache, "unset option still gets preset default");
+    }
+
+    #[test]
+    fn rust_preset_injects_cargo_target_dir() {
+        let dir = cargo_project();
+        let r = resolve_in(dir.path(), &["--preset", "rust"]).unwrap();
+        assert_eq!(env_values(&r.probe_env, "CARGO_TARGET_DIR"), ["/bc"]);
+    }
+
+    #[test]
+    fn rust_preset_keeps_existing_cargo_target_dir() {
+        let dir = cargo_project();
+        let r = resolve_in(
+            dir.path(),
+            &["--preset", "rust", "--probe-env", "CARGO_TARGET_DIR=custom"],
+        )
+        .unwrap();
+        assert_eq!(
+            env_values(&r.probe_env, "CARGO_TARGET_DIR"),
+            ["custom"],
+            "user value kept, no duplicate injected"
+        );
+    }
+
+    #[test]
+    fn rust_preset_defaults_probe_to_cargo_test() {
+        let dir = cargo_project();
+        let r = resolve_in(dir.path(), &["--preset", "rust"]).unwrap();
+        assert_eq!(r.probe, ["cargo", "test"]);
+    }
+
+    #[test]
+    fn explicit_probe_overrides_preset_default() {
+        let dir = cargo_project();
+        let r = resolve_in(
+            dir.path(),
+            &["--preset", "rust", "--", "cargo", "test", "--lib"],
+        )
+        .unwrap();
+        assert_eq!(r.probe, ["cargo", "test", "--lib"]);
+    }
+
+    #[test]
+    fn missing_probe_without_preset_still_errors() {
+        let dir = cargo_project();
+        let Err(err) = resolve_in(dir.path(), &[]) else {
+            panic!("resolution without a probe must fail");
+        };
+        assert!(err.to_string().contains("missing probe command"));
+    }
+
+    #[test]
+    fn rust_preset_errors_without_cargo_toml() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("ooze.toml"), "").unwrap();
+        let Err(err) = resolve_in(tmp.path(), &["--preset", "rust"]) else {
+            panic!("rust preset outside a cargo project must fail");
+        };
+        assert!(
+            err.to_string().contains("Cargo.toml"),
+            "error should mention Cargo.toml: {err}"
+        );
+    }
+
+    #[test]
+    fn probe_env_fills_add_rustc_wrapper_when_sccache_available() {
+        if std::env::var_os("RUSTC_WRAPPER").is_some() {
+            return; // ambient wrapper wins by design; nothing to test here
+        }
+        let mut env = Vec::new();
+        let fills = rust_preset_probe_env_fills(&mut env, true);
+        assert_eq!(env_values(&env, "CARGO_TARGET_DIR"), ["/bc"]);
+        assert_eq!(env_values(&env, "RUSTC_WRAPPER"), ["sccache"]);
+        assert_eq!(fills.len(), 2);
+    }
+
+    #[test]
+    fn probe_env_fills_skip_rustc_wrapper_without_sccache() {
+        let mut env = Vec::new();
+        rust_preset_probe_env_fills(&mut env, false);
+        assert!(env_values(&env, "RUSTC_WRAPPER").is_empty());
+    }
+
+    #[test]
+    fn probe_env_fills_respect_existing_rustc_wrapper() {
+        let mut env = vec![runner::ProbeEnvTemplate::parse(
+            "RUSTC_WRAPPER".to_string(),
+            "mine",
+        )];
+        rust_preset_probe_env_fills(&mut env, true);
+        assert_eq!(env_values(&env, "RUSTC_WRAPPER"), ["mine"]);
+    }
 }

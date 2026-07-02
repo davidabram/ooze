@@ -47,10 +47,26 @@ Everything after `--` on `test-mutant(s)` is the probe command.
 ## Quick start (Rust)
 
 ```bash
+./target/release/ooze test-mutants --preset rust
+```
+
+The `rust` preset fills any options you left unset with good Rust defaults:
+the `worktree` backend, per-worker `CARGO_TARGET_DIR` build caches, warmup,
+and `cargo test` as the probe. Explicit CLI flags and `ooze.toml` values
+always override preset defaults, so this uses your probe, not the default:
+
+```bash
+./target/release/ooze test-mutants --preset rust -- cargo test --lib
+```
+
+The preset is shorthand for (approximately):
+
+```bash
 ./target/release/ooze test-mutants \
   --path . \
   --jobs 4 \
   --timeout-seconds 180 \
+  --workspace-backend worktree \
   --per-worker-cache \
   --warmup \
   --probe-env CARGO_TARGET_DIR={build_cache} \
@@ -127,6 +143,7 @@ Full per-language recipes in [docs/running-mutants.md](docs/running-mutants.md).
 | `--strategy`           | `discovery`, `actionable`, ...                                       |
 | `--changed-only BASE`  | Only mutate files changed vs `BASE` (e.g. `main`). For PR/CI runs.   |
 | `--timeout-seconds`    | Per-mutant probe timeout (→ `timeout` verdict).                      |
+| `--preset`             | Language preset filling unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, `CARGO_TARGET_DIR={build_cache}`, probe `cargo test`. |
 | `--workspace-backend`  | `copy`, `overlay`, `worktree`, `auto` (worktree in a Git repo, else copy). |
 | `--exclude`            | Extra globs. Defaults + `.gitignore` always apply.                   |
 | `--coverage`           | Feed coverage into ordering. `format:path` or a bare path to auto-detect. Formats: `lcov`, `cobertura`, `jacoco`, `go-cover`. Repeatable; reports are merged. |

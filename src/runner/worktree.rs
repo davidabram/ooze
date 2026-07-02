@@ -14,12 +14,22 @@ const WORKTREES_SUBDIR: &str = "worktrees";
 const WORKTREE_PREFIX: &str = "wt-";
 
 pub fn is_git_repo(path: &Path) -> bool {
-    Command::new("git")
+    git_toplevel(path).is_some()
+}
+
+/// Root of the working tree containing `path`, if it is inside a Git repo.
+fn git_toplevel(path: &Path) -> Option<PathBuf> {
+    let output = Command::new("git")
         .arg("-C")
         .arg(path)
         .args(["rev-parse", "--show-toplevel"])
         .output()
-        .is_ok_and(|o| o.status.success())
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let top = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!top.is_empty()).then(|| PathBuf::from(top))
 }
 
 fn git(repo: &Path, args: &[&str]) -> Result<()> {
@@ -45,7 +55,12 @@ fn git(repo: &Path, args: &[&str]) -> Result<()> {
 pub struct WorktreePool {
     repo_root: PathBuf,
     worktrees_dir: PathBuf,
+    /// The worktree roots (what `git worktree add` created).
     paths: Vec<PathBuf>,
+    /// `repo_root` relative to the repo toplevel. A worktree always checks out
+    /// the whole repo, so when ooze targets a subdirectory of it, workers must
+    /// operate in that same subdirectory of each worktree.
+    subdir: PathBuf,
 }
 
 impl WorktreePool {
@@ -53,17 +68,21 @@ impl WorktreePool {
     /// `<runs_dir>/worktrees/wt-{i}`. Stale worktrees left by a crashed run
     /// are removed automatically (they live under an ooze-managed path).
     pub fn create(repo_root: &Path, runs_dir: &Path, workers: usize) -> Result<Self> {
-        if !is_git_repo(repo_root) {
+        let Some(toplevel) = git_toplevel(repo_root) else {
             bail!(
                 "the worktree workspace backend requires a Git repository, but {} is not inside one. \
                  Run `git init` (and commit your code) or choose --workspace-backend copy.",
                 repo_root.display()
             );
-        }
+        };
 
         let repo_root = repo_root
             .canonicalize()
             .with_context(|| format!("canonicalizing {}", repo_root.display()))?;
+        let subdir = repo_root
+            .strip_prefix(&toplevel)
+            .unwrap_or(Path::new(""))
+            .to_path_buf();
         let worktrees_dir = runs_dir.join(WORKTREES_SUBDIR);
 
         remove_stale_worktrees(&repo_root, &worktrees_dir)?;
@@ -92,12 +111,20 @@ impl WorktreePool {
             repo_root,
             worktrees_dir,
             paths,
+            subdir,
         })
     }
 
-    /// Worktree path for a worker index. Indices beyond the pool clamp to the
-    /// first worktree (mirrors how per-worker cache dirs are picked).
-    pub fn path_for(&self, worker: usize) -> &Path {
+    /// The directory worker `worker` should operate in: the worktree location
+    /// corresponding to the targeted project path (a subdirectory of the
+    /// worktree when ooze targets a subdirectory of the repo). Indices beyond
+    /// the pool clamp to the first worktree (mirrors how per-worker cache
+    /// dirs are picked).
+    pub fn path_for(&self, worker: usize) -> PathBuf {
+        self.worktree_root(worker).join(&self.subdir)
+    }
+
+    fn worktree_root(&self, worker: usize) -> &Path {
         self.paths
             .get(worker)
             .unwrap_or_else(|| &self.paths[0])
@@ -109,7 +136,7 @@ impl WorktreePool {
     /// test output). Destructive, but only ever runs inside an ooze-managed
     /// worktree under `.ooze/runs/worktrees`.
     pub fn reset(&self, worker: usize) -> Result<()> {
-        let wt = self.path_for(worker);
+        let wt = self.worktree_root(worker);
         git(wt, &["reset", "--hard", "HEAD"])
             .with_context(|| format!("resetting worktree {}", wt.display()))?;
         git(wt, &["clean", "-fdx"])
@@ -145,6 +172,10 @@ impl Drop for WorktreePool {
 /// Remove leftover `wt-*` worktrees from a previous (crashed) run. Only
 /// touches entries directly under the ooze-managed worktrees dir.
 fn remove_stale_worktrees(repo_root: &Path, worktrees_dir: &Path) -> Result<()> {
+    // Always drop metadata for registered worktrees whose directories no
+    // longer exist (e.g. a crashed run whose runs dir was already deleted).
+    let _ = git(repo_root, &["worktree", "prune"]);
+
     if !worktrees_dir.exists() {
         return Ok(());
     }
@@ -241,7 +272,7 @@ mod tests {
         let runs = tmp.path().join(".ooze/runs");
 
         let pool = WorktreePool::create(tmp.path(), &runs, 1).unwrap();
-        let wt = pool.path_for(0).to_path_buf();
+        let wt = pool.path_for(0);
 
         std::fs::write(wt.join("file.txt"), "mutated\n").unwrap();
         std::fs::create_dir_all(wt.join("target")).unwrap();
@@ -275,12 +306,44 @@ mod tests {
 
         // Simulate a crashed run: worktrees exist but cleanup never ran.
         let pool = WorktreePool::create(tmp.path(), &runs, 1).unwrap();
-        let stale = pool.path_for(0).to_path_buf();
+        let stale = pool.path_for(0);
         std::mem::forget(pool);
         assert!(stale.exists());
 
         let pool = WorktreePool::create(tmp.path(), &runs, 1).unwrap();
         assert!(pool.path_for(0).exists(), "fresh worktree usable after stale cleanup");
+    }
+
+    #[test]
+    fn subdirectory_target_maps_into_worktree_subdir() {
+        let tmp = tempfile::tempdir().unwrap();
+        init_git_repo(tmp.path());
+        let sub = tmp.path().join("crates/app");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("code.txt"), "x\n").unwrap();
+        let run = |args: &[&str]| {
+            assert!(
+                Command::new("git")
+                    .arg("-C")
+                    .arg(tmp.path())
+                    .args(args)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        };
+        run(&["add", "."]);
+        run(&["commit", "-q", "-m", "subdir"]);
+
+        let runs = tmp.path().join(".ooze/runs");
+        let pool = WorktreePool::create(&sub, &runs, 1).unwrap();
+        let p = pool.path_for(0);
+        assert!(
+            p.ends_with("wt-0/crates/app"),
+            "worker path should be the subdir inside the worktree: {}",
+            p.display()
+        );
+        assert!(p.join("code.txt").exists());
     }
 
     #[test]

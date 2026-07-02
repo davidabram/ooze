@@ -66,7 +66,15 @@ impl OutputFormat {
     }
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+/// A language preset: fills runner options the user left unset with good
+/// defaults for that ecosystem. Explicit CLI flags and `ooze.toml` values
+/// always win over preset defaults.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum Preset {
+    Rust,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(crate) enum WorkspaceBackendArg {
     Copy,
     Overlay,
@@ -271,6 +279,9 @@ pub(crate) struct TestMutantsArgs {
 
     #[arg(long, value_enum)]
     pub(crate) workspace_backend: Option<WorkspaceBackendArg>,
+
+    #[arg(long, value_enum, help = "Language preset that fills unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, CARGO_TARGET_DIR={build_cache}, probe `cargo test`. Explicit flags and ooze.toml win.")]
+    pub(crate) preset: Option<Preset>,
 
     #[arg(long)]
     pub(crate) cache_dir: Option<PathBuf>,
