@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+use crate::cli::Preset;
 use crate::config::{self, OozeConfig};
 use crate::core::OperatorName;
 use crate::runner::{overlay, worktree};
@@ -59,10 +60,25 @@ pub struct CacheStatus {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+pub struct PresetFill {
+    /// The default, in the same `option=value` form `test-mutants` prints
+    /// when it expands the preset.
+    pub fill: String,
+    /// `Some` when `ooze.toml` already sets this option, so the preset will
+    /// leave it alone; holds the winning config entry for display.
+    pub overridden_by: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Recommendation {
     /// `None` when no preset applies; the human output then suggests passing
     /// a probe manually.
     pub command: Option<String>,
+    /// What `--preset` in `command` would fill, each checked against the
+    /// loaded `ooze.toml`. Empty when `command` is `None`. Fills overridden
+    /// by an explicit flag in `command` itself (e.g. `--workspace-backend
+    /// copy`) are omitted entirely.
+    pub preset_fills: Vec<PresetFill>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -219,17 +235,62 @@ fn worktree_backend_status(path: &Path, git: &GitStatus) -> BackendStatus {
     }
 }
 
-fn recommend(project_type: ProjectType, worktree: &BackendStatus) -> Recommendation {
-    let command = match project_type {
-        ProjectType::Rust if worktree.available => {
-            Some("ooze test-mutants --preset rust".to_string())
-        }
-        ProjectType::Rust => {
-            Some("ooze test-mutants --preset rust --workspace-backend copy".to_string())
-        }
-        ProjectType::Unknown => None,
+/// The `ooze.toml` entry that stops the rust preset from applying `fill`, if
+/// any. Mirrors the suppression rules in `app::resolve::test_mutants`: a set
+/// config key wins over the preset regardless of its value.
+fn rust_fill_override(fill: &str, cfg: &OozeConfig) -> Option<String> {
+    if fill.starts_with("probe=") {
+        cfg.probe
+            .command
+            .as_ref()
+            .map(|c| format!("[probe].command = `{}`", c.join(" ")))
+    } else if fill.starts_with("workspace_backend=") {
+        cfg.runner
+            .workspace_backend
+            .as_ref()
+            .map(|b| format!("[runner].workspace_backend = \"{b}\""))
+    } else if fill.starts_with("per_worker_cache=") {
+        cfg.runner
+            .per_worker_cache
+            .map(|v| format!("[runner].per_worker_cache = {v}"))
+    } else if fill.starts_with("warmup=") {
+        cfg.runner.warmup.map(|v| format!("[runner].warmup = {v}"))
+    } else if fill.starts_with("probe_env += CARGO_TARGET_DIR") {
+        cfg.probe
+            .env
+            .iter()
+            .find(|e| e.split('=').next() == Some("CARGO_TARGET_DIR"))
+            .map(|e| format!("[probe].env has `{e}`"))
+    } else {
+        None
+    }
+}
+
+fn recommend(project_type: ProjectType, worktree: &BackendStatus, cfg: &OozeConfig) -> Recommendation {
+    let rust_fills = || {
+        Preset::Rust.fills().iter().map(|f| PresetFill {
+            fill: f.to_string(),
+            overridden_by: rust_fill_override(f, cfg),
+        })
     };
-    Recommendation { command }
+    match project_type {
+        ProjectType::Rust if worktree.available => Recommendation {
+            command: Some("ooze test-mutants --preset rust".to_string()),
+            preset_fills: rust_fills().collect(),
+        },
+        ProjectType::Rust => Recommendation {
+            // The explicit --workspace-backend flag wins over the preset, so
+            // the worktree fill would never apply; drop it from the list.
+            command: Some("ooze test-mutants --preset rust --workspace-backend copy".to_string()),
+            preset_fills: rust_fills()
+                .filter(|f| !f.fill.starts_with("workspace_backend="))
+                .collect(),
+        },
+        ProjectType::Unknown => Recommendation {
+            command: None,
+            preset_fills: Vec::new(),
+        },
+    }
 }
 
 pub fn run(path: &Path) -> DoctorReport {
@@ -257,11 +318,10 @@ pub fn run(path: &Path) -> DoctorReport {
     let cache = CacheStatus {
         sccache: which("sccache").is_some(),
     };
-    let recommendation = recommend(project_type, &worktree_status);
 
     let cfg_path = canonical.join(config::DEFAULT_CONFIG_NAME);
     let (cfg, cfg_loaded_from) = if cfg_path.exists() {
-        match config::load_config(Some(&cfg_path)) {
+        match config::load_config(Some(&cfg_path), &canonical) {
             Ok((c, loaded)) => {
                 checks.push(ok(
                     "ooze_toml",
@@ -281,6 +341,10 @@ pub fn run(path: &Path) -> DoctorReport {
         ));
         (OozeConfig::default(), None)
     };
+
+    // After config load so preset fills can be checked against ooze.toml
+    // (a parse failure falls back to defaults, i.e. every fill shows active).
+    let recommendation = recommend(project_type, &worktree_status, &cfg);
 
     checks.push(probe_command_check(cfg.probe.command.as_ref()));
 
@@ -491,6 +555,17 @@ pub fn print_human(report: &DoctorReport) {
     println!("Recommendation");
     if let Some(cmd) = &report.recommendation.command {
         println!("  {cmd}");
+        if !report.recommendation.preset_fills.is_empty() {
+            println!("  the preset fills options you leave unset (CLI flags and ooze.toml win):");
+            for f in &report.recommendation.preset_fills {
+                match &f.overridden_by {
+                    None => println!("    {}", f.fill),
+                    Some(winner) => {
+                        println!("    {} (inactive: ooze.toml wins with {winner})", f.fill)
+                    }
+                }
+            }
+        }
     } else {
         println!("  No preset recommendation available yet.");
         println!("  Try specifying a probe manually, for example:");
@@ -569,6 +644,21 @@ mod tests {
             report.recommendation.command.as_deref(),
             Some("ooze test-mutants --preset rust")
         );
+        let fills: Vec<&str> = report
+            .recommendation
+            .preset_fills
+            .iter()
+            .map(|f| f.fill.as_str())
+            .collect();
+        assert_eq!(fills, Preset::Rust.fills());
+        assert!(
+            report
+                .recommendation
+                .preset_fills
+                .iter()
+                .all(|f| f.overridden_by.is_none()),
+            "no ooze.toml in the fixture, so every fill is active"
+        );
     }
 
     #[test]
@@ -594,6 +684,65 @@ mod tests {
             report.recommendation.command.as_deref(),
             Some("ooze test-mutants --preset rust --workspace-backend copy")
         );
+        assert!(
+            !report
+                .recommendation
+                .preset_fills
+                .iter()
+                .any(|f| f.fill.starts_with("workspace_backend=")),
+            "explicit --workspace-backend copy makes the worktree fill dead: {:?}",
+            report.recommendation.preset_fills
+        );
+        assert!(
+            report
+                .recommendation
+                .preset_fills
+                .iter()
+                .any(|f| f.fill == "probe=`cargo test`"),
+            "remaining fills still listed: {:?}",
+            report.recommendation.preset_fills
+        );
+    }
+
+    #[test]
+    fn ooze_toml_settings_mark_preset_fills_overridden() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_cargo_toml(dir.path());
+        std::fs::write(
+            dir.path().join(config::DEFAULT_CONFIG_NAME),
+            "[runner]\nwarmup = false\nworkspace_backend = \"copy\"\n\n\
+             [probe]\ncommand = [\"cargo\", \"nextest\", \"run\"]\n\
+             env = [\"CARGO_TARGET_DIR=/tmp/t\"]\n",
+        )
+        .expect("write config");
+
+        let report = run(dir.path());
+        let override_of = |prefix: &str| {
+            report
+                .recommendation
+                .preset_fills
+                .iter()
+                .find(|f| f.fill.starts_with(prefix))
+                .unwrap_or_else(|| panic!("fill {prefix:?} missing"))
+                .overridden_by
+                .clone()
+        };
+        assert_eq!(
+            override_of("warmup=").as_deref(),
+            Some("[runner].warmup = false")
+        );
+        assert_eq!(
+            override_of("probe=").as_deref(),
+            Some("[probe].command = `cargo nextest run`")
+        );
+        assert_eq!(
+            override_of("probe_env").as_deref(),
+            Some("[probe].env has `CARGO_TARGET_DIR=/tmp/t`")
+        );
+        // Note: no git repo in this fixture, so the recommended command pins
+        // --workspace-backend copy and the worktree fill is omitted, even
+        // though the config also sets a backend.
+        assert!(override_of("per_worker_cache=").is_none());
     }
 
     #[test]
@@ -602,6 +751,7 @@ mod tests {
         let report = run(dir.path());
         assert_eq!(report.project_type, ProjectType::Unknown);
         assert_eq!(report.recommendation.command, None);
+        assert!(report.recommendation.preset_fills.is_empty());
     }
 
     #[test]

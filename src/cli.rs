@@ -74,6 +74,25 @@ pub(crate) enum Preset {
     Rust,
 }
 
+impl Preset {
+    /// Every default this preset fills when neither a CLI flag nor `ooze.toml`
+    /// sets the option, in the same `option=value` form `app::resolve` prints
+    /// on its "ooze: preset rust: ..." line. `doctor` shows this list so the
+    /// recommended command is not a black box; keep the strings in sync with
+    /// the fills in `app::resolve::test_mutants`.
+    pub(crate) fn fills(self) -> &'static [&'static str] {
+        match self {
+            Preset::Rust => &[
+                "probe=`cargo test`",
+                "workspace_backend=worktree",
+                "per_worker_cache=true",
+                "warmup=true",
+                "probe_env += CARGO_TARGET_DIR={build_cache}",
+            ],
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(crate) enum WorkspaceBackendArg {
     Copy,
@@ -244,7 +263,7 @@ pub(crate) enum Commands {
 /// every `Commands` value.
 #[derive(clap::Args)]
 pub(crate) struct TestMutantsArgs {
-    #[arg(long, help = "Path to ooze.toml config (default: ./ooze.toml if present).")]
+    #[arg(long, help = "Path to ooze.toml config (default: <path>/ooze.toml if present).")]
     pub(crate) config: Option<PathBuf>,
 
     #[arg(long, default_value = ".")]

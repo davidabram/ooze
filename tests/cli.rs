@@ -276,6 +276,9 @@ fn doctor_human_reports_environment_and_recommendation() {
         "sccache:",
         "Recommendation",
         "ooze test-mutants --preset rust",
+        "the preset fills options you leave unset",
+        "probe=`cargo test`",
+        "workspace_backend=worktree",
     ] {
         assert!(stdout.contains(expected), "missing {expected:?} in:\n{stdout}");
     }
@@ -296,6 +299,7 @@ fn doctor_json_contains_stable_environment_fields() {
     assert_eq!(json["backends"]["worktree"]["available"], false);
     assert!(json["cache"]["sccache"].is_boolean());
     assert!(json["recommendation"]["command"].is_null());
+    assert_eq!(json["recommendation"]["preset_fills"], serde_json::json!([]));
 }
 
 // ── test-mutants preflight format ─────────────────────────────────────────────

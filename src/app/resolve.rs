@@ -90,7 +90,7 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         probe,
     } = args;
 
-    let (cfg, cfg_loaded_from) = config::load_config(config_path.as_deref())?;
+    let (cfg, cfg_loaded_from) = config::load_config(config_path.as_deref(), &path)?;
     if let Some(p) = &cfg_loaded_from {
         eprintln!("ooze: loaded config from {}", p.display());
     }
@@ -471,6 +471,32 @@ mod tests {
             err.to_string().contains("Cargo.toml"),
             "error should mention Cargo.toml: {err}"
         );
+    }
+
+    #[test]
+    fn preset_fills_list_matches_resolution() {
+        // `Preset::fills()` is what doctor advertises the preset will do;
+        // verify every advertised fill against actual resolution in a bare
+        // cargo project so the list can't drift from this module.
+        let dir = cargo_project();
+        let r = resolve_in(dir.path(), &["--preset", "rust"]).unwrap();
+        for fill in Preset::Rust.fills() {
+            match *fill {
+                "probe=`cargo test`" => assert_eq!(r.probe, ["cargo", "test"]),
+                "workspace_backend=worktree" => {
+                    assert_eq!(r.workspace_backend, WorkspaceBackendArg::Worktree)
+                }
+                "per_worker_cache=true" => assert!(r.per_worker_cache),
+                "warmup=true" => assert!(r.warmup),
+                "probe_env += CARGO_TARGET_DIR={build_cache}" => {
+                    assert_eq!(env_values(&r.probe_env, "CARGO_TARGET_DIR"), ["/bc"])
+                }
+                other => panic!(
+                    "Preset::Rust.fills() advertises {other:?} but this test knows no \
+                     matching fill in resolve; update fills() or extend this test"
+                ),
+            }
+        }
     }
 
     #[test]
