@@ -40,6 +40,7 @@ pub(crate) struct ResolvedTestMutants {
     pub(crate) probe: Vec<String>,
     pub(crate) changed_only: Option<String>,
     pub(crate) progress_enabled: bool,
+    pub(crate) pre_run: Option<Vec<String>>,
 }
 
 /// Merge CLI args, the resolved `ooze.toml`, and defaults into a runnable struct.
@@ -233,6 +234,13 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         eprintln!("ooze: preset rust: {}", preset_fills.join(", "));
     }
 
+    let pre_run = match cfg.runner.pre_run.clone() {
+        Some(cmd) if cmd.is_empty() => {
+            anyhow::bail!("[runner].pre_run must not be an empty command")
+        }
+        other => other,
+    };
+
     Ok(ResolvedTestMutants {
         path,
         strategy,
@@ -261,6 +269,7 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         probe,
         changed_only,
         progress_enabled,
+        pre_run,
     })
 }
 

@@ -53,6 +53,9 @@ pub struct RunnerConfigToml {
     pub cache_dir: Option<PathBuf>,
     pub runs_dir: Option<PathBuf>,
     pub build_cache_dir: Option<PathBuf>,
+    /// Command run once from the project root before the mutation run
+    /// (e.g. generating a coverage file the run then consumes).
+    pub pre_run: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, Default)]

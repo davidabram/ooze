@@ -8,6 +8,7 @@ exclude = [
 [mutation]
 strategy = "actionable"
 limit = 25
+coverage = ["lcov:lcov.info"]
 
 [runner]
 jobs = 4
@@ -15,6 +16,7 @@ timeout_seconds = 180
 workspace_backend = "auto"
 warmup = true
 per_worker_cache = true
+pre_run = ["cargo", "llvm-cov", "--lcov", "--output-path", "lcov.info"]
 
 [probe]
 command = ["cargo", "test"]

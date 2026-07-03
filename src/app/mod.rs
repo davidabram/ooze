@@ -451,6 +451,21 @@ fn progress_enabled(quiet: bool, progress_resolved: bool) -> bool {
     !quiet && progress_resolved
 }
 
+/// Run the `[runner].pre_run` command once from the project root, inheriting
+/// stdio so the user sees its output live. Fails the run on a nonzero exit.
+fn run_pre_run_command(cmd: &[String], path: &std::path::Path) -> anyhow::Result<()> {
+    eprintln!("ooze: pre-run: {}", cmd.join(" "));
+    let status = std::process::Command::new(&cmd[0])
+        .args(&cmd[1..])
+        .current_dir(path)
+        .status()
+        .with_context(|| format!("spawning pre_run command {:?}", cmd[0]))?;
+    if !status.success() {
+        anyhow::bail!("pre_run command {:?} failed with {status}", cmd.join(" "));
+    }
+    Ok(())
+}
+
 fn parse_report_format_str(s: &str) -> anyhow::Result<report::ReportFormat> {
     <report::ReportFormat as ValueEnum>::from_str(s, true)
         .map_err(|e| anyhow::anyhow!("invalid report format {s:?}: {e}"))
@@ -706,7 +721,12 @@ pub fn run() -> anyhow::Result<()> {
                 probe,
                 changed_only,
                 progress_enabled,
+                pre_run,
             } = resolve::test_mutants(*args)?;
+
+            if let Some(cmd) = &pre_run {
+                run_pre_run_command(cmd, &path)?;
+            }
 
             let registry = lang::CompiledRegistry::compile(lang::supported_languages(), &filter)?;
             let functions = lang::scan_directory_with_registry(&registry, &path, &excludes)?;
