@@ -1,102 +1,12 @@
 [
   {
     "language": "javascript",
-    "operator": "array_empty_literal",
-    "implementation": "javascript.array_empty_literal",
-    "function": "arrayLiteral",
-    "original": "[1, 2, 3]",
-    "replacement": "[]",
-    "line": 67
-  },
-  {
-    "language": "javascript",
-    "operator": "await_removal",
-    "implementation": "javascript.await_removal",
-    "function": "awaitValue",
-    "original": "await promise",
-    "replacement": "promise",
-    "line": 82
-  },
-  {
-    "language": "javascript",
-    "operator": "comparison_boundary",
-    "implementation": "javascript.comparison_boundary",
+    "operator": "swap_boolean",
+    "implementation": "javascript.swap_boolean",
     "function": "core",
-    "original": "<",
-    "replacement": "<=",
-    "line": 23
-  },
-  {
-    "language": "javascript",
-    "operator": "comparison_negation",
-    "implementation": "javascript.comparison_negation",
-    "function": "core",
-    "original": "<",
-    "replacement": ">=",
-    "line": 23
-  },
-  {
-    "language": "javascript",
-    "operator": "includes_negation",
-    "implementation": "javascript.includes_negation",
-    "function": "membership",
-    "original": "items.includes(item)",
-    "replacement": "!(items.includes(item))",
-    "line": 39
-  },
-  {
-    "language": "javascript",
-    "operator": "iterator_any_all",
-    "implementation": "javascript.iterator_any_all",
-    "function": "quantifier",
-    "original": "some",
-    "replacement": "every",
-    "line": 28
-  },
-  {
-    "language": "javascript",
-    "operator": "negate_equality",
-    "implementation": "javascript.negate_equality",
-    "function": "core",
-    "original": "===",
-    "replacement": "!==",
-    "line": 19
-  },
-  {
-    "language": "javascript",
-    "operator": "nullish_coalescing_removal",
-    "implementation": "javascript.nullish_coalescing_removal",
-    "function": "fallback",
-    "original": "value ?? fallbackValue",
-    "replacement": "value",
-    "line": 47
-  },
-  {
-    "language": "javascript",
-    "operator": "object_empty_literal",
-    "implementation": "javascript.object_empty_literal",
-    "function": "objectLiteral",
-    "original": "{ a: 1, b: 2 }",
-    "replacement": "{}",
-    "line": 72
-  },
-  {
-    "language": "javascript",
-    "operator": "optional_chaining_removal",
-    "implementation": "javascript.optional_chaining_removal",
-    "function": "optionalAccess",
-    "original": "user?.name",
-    "replacement": "user.name",
-    "line": 52
-  },
-  {
-    "language": "javascript",
-    "operator": "optional_chaining_removal",
-    "implementation": "javascript.optional_chaining_removal",
-    "function": "optionalCall",
-    "original": "fn?.()",
-    "replacement": "fn()",
-    "line": 57
+    "original": "true",
+    "replacement": "false",
+    "line": 10
   },
   {
     "language": "javascript",
@@ -118,6 +28,24 @@
   },
   {
     "language": "javascript",
+    "operator": "swap_logical",
+    "implementation": "javascript.swap_logical",
+    "function": "core",
+    "original": "&&",
+    "replacement": "||",
+    "line": 19
+  },
+  {
+    "language": "javascript",
+    "operator": "negate_equality",
+    "implementation": "javascript.negate_equality",
+    "function": "core",
+    "original": "===",
+    "replacement": "!==",
+    "line": 19
+  },
+  {
+    "language": "javascript",
     "operator": "return_boolean",
     "implementation": "javascript.return_boolean",
     "function": "core",
@@ -127,12 +55,30 @@
   },
   {
     "language": "javascript",
-    "operator": "string_boundary_method_swap",
-    "implementation": "javascript.string_boundary_method_swap",
-    "function": "boundary",
-    "original": "endsWith",
-    "replacement": "startsWith",
-    "line": 34
+    "operator": "comparison_boundary",
+    "implementation": "javascript.comparison_boundary",
+    "function": "core",
+    "original": "<",
+    "replacement": "<=",
+    "line": 23
+  },
+  {
+    "language": "javascript",
+    "operator": "comparison_negation",
+    "implementation": "javascript.comparison_negation",
+    "function": "core",
+    "original": "<",
+    "replacement": ">=",
+    "line": 23
+  },
+  {
+    "language": "javascript",
+    "operator": "iterator_any_all",
+    "implementation": "javascript.iterator_any_all",
+    "function": "quantifier",
+    "original": "some",
+    "replacement": "every",
+    "line": 28
   },
   {
     "language": "javascript",
@@ -148,36 +94,9 @@
     "operator": "string_empty_literal",
     "implementation": "javascript.string_empty_literal",
     "function": "boundary",
-    "original": "\".txt\"",
-    "replacement": "\"\"",
-    "line": 34
-  },
-  {
-    "language": "javascript",
-    "operator": "string_empty_literal",
-    "implementation": "javascript.string_empty_literal",
-    "function": "boundary",
     "original": "\"pre\"",
     "replacement": "\"\"",
     "line": 34
-  },
-  {
-    "language": "javascript",
-    "operator": "string_empty_literal",
-    "implementation": "javascript.string_empty_literal",
-    "function": "stringLiteral",
-    "original": "\"hello\"",
-    "replacement": "\"\"",
-    "line": 77
-  },
-  {
-    "language": "javascript",
-    "operator": "swap_boolean",
-    "implementation": "javascript.swap_boolean",
-    "function": "core",
-    "original": "true",
-    "replacement": "false",
-    "line": 10
   },
   {
     "language": "javascript",
@@ -190,12 +109,57 @@
   },
   {
     "language": "javascript",
-    "operator": "swap_logical",
-    "implementation": "javascript.swap_logical",
-    "function": "core",
-    "original": "&&",
-    "replacement": "||",
-    "line": 19
+    "operator": "string_boundary_method_swap",
+    "implementation": "javascript.string_boundary_method_swap",
+    "function": "boundary",
+    "original": "endsWith",
+    "replacement": "startsWith",
+    "line": 34
+  },
+  {
+    "language": "javascript",
+    "operator": "string_empty_literal",
+    "implementation": "javascript.string_empty_literal",
+    "function": "boundary",
+    "original": "\".txt\"",
+    "replacement": "\"\"",
+    "line": 34
+  },
+  {
+    "language": "javascript",
+    "operator": "includes_negation",
+    "implementation": "javascript.includes_negation",
+    "function": "membership",
+    "original": "items.includes(item)",
+    "replacement": "!(items.includes(item))",
+    "line": 39
+  },
+  {
+    "language": "javascript",
+    "operator": "nullish_coalescing_removal",
+    "implementation": "javascript.nullish_coalescing_removal",
+    "function": "fallback",
+    "original": "value ?? fallbackValue",
+    "replacement": "value",
+    "line": 47
+  },
+  {
+    "language": "javascript",
+    "operator": "optional_chaining_removal",
+    "implementation": "javascript.optional_chaining_removal",
+    "function": "optionalAccess",
+    "original": "user?.name",
+    "replacement": "user.name",
+    "line": 52
+  },
+  {
+    "language": "javascript",
+    "operator": "optional_chaining_removal",
+    "implementation": "javascript.optional_chaining_removal",
+    "function": "optionalCall",
+    "original": "fn?.()",
+    "replacement": "fn()",
+    "line": 57
   },
   {
     "language": "javascript",
@@ -205,5 +169,95 @@
     "original": "flag ? a : b",
     "replacement": "flag ? b : a",
     "line": 62
+  },
+  {
+    "language": "javascript",
+    "operator": "negate_equality",
+    "implementation": "javascript.negate_equality",
+    "function": "zeroOne",
+    "original": "===",
+    "replacement": "!==",
+    "line": 70
+  },
+  {
+    "language": "javascript",
+    "operator": "integer_zero_one",
+    "implementation": "javascript.integer_zero_one",
+    "function": "zeroOne",
+    "original": "0",
+    "replacement": "1",
+    "line": 70
+  },
+  {
+    "language": "javascript",
+    "operator": "integer_zero_one",
+    "implementation": "javascript.integer_zero_one",
+    "function": "zeroOne",
+    "original": "1",
+    "replacement": "0",
+    "line": 71
+  },
+  {
+    "language": "javascript",
+    "operator": "integer_zero_one",
+    "implementation": "javascript.integer_zero_one",
+    "function": "zeroOne",
+    "original": "0",
+    "replacement": "1",
+    "line": 73
+  },
+  {
+    "language": "javascript",
+    "operator": "array_empty_literal",
+    "implementation": "javascript.array_empty_literal",
+    "function": "arrayLiteral",
+    "original": "[1, 2, 3]",
+    "replacement": "[]",
+    "line": 78
+  },
+  {
+    "language": "javascript",
+    "operator": "integer_zero_one",
+    "implementation": "javascript.integer_zero_one",
+    "function": "arrayLiteral",
+    "original": "1",
+    "replacement": "0",
+    "line": 78
+  },
+  {
+    "language": "javascript",
+    "operator": "object_empty_literal",
+    "implementation": "javascript.object_empty_literal",
+    "function": "objectLiteral",
+    "original": "{ a: 1, b: 2 }",
+    "replacement": "{}",
+    "line": 83
+  },
+  {
+    "language": "javascript",
+    "operator": "integer_zero_one",
+    "implementation": "javascript.integer_zero_one",
+    "function": "objectLiteral",
+    "original": "1",
+    "replacement": "0",
+    "line": 83
+  },
+  {
+    "language": "javascript",
+    "operator": "string_empty_literal",
+    "implementation": "javascript.string_empty_literal",
+    "function": "stringLiteral",
+    "original": "\"hello\"",
+    "replacement": "\"\"",
+    "line": 88
+  },
+  {
+    "language": "javascript",
+    "operator": "await_removal",
+    "implementation": "javascript.await_removal",
+    "function": "awaitValue",
+    "original": "await promise",
+    "replacement": "promise",
+    "line": 93
   }
 ]

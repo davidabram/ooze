@@ -62,6 +62,17 @@ export function choose(flag: boolean, a: number, b: number): number {
   return flag ? a : b;
 }
 
+export function zeroOne(x: number): number {
+  // The `0`/`1` literals drive integer_zero_one (0 -> 1, 1 -> 0); `x === 0`
+  // also drives negate_equality. The `1`s in arrayLiteral/objectLiteral below
+  // fire integer_zero_one too. No ternary here: that would drag this function
+  // into the advanced ternary_arm_swap expectations.
+  if (x === 0) {
+    return 1;
+  }
+  return 0;
+}
+
 export function arrayLiteral(): number[] {
   // `[1, 2, 3]` drives array_empty_literal (-> []).
   return [1, 2, 3];

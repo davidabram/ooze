@@ -103,6 +103,25 @@ the project path, and fills:
 
 Python also keeps a shared cache root rather than `--per-worker-cache`.
 
+## Preset and operator coverage
+
+Where each preset language stands (operator counts are registered mutation
+operators; `ooze operators` lists them all, `ooze languages` shows support
+levels):
+
+| Language              | Preset | Scanner | Operators     | E2E verified |
+| --------------------- | ------ | ------- | ------------- | ------------ |
+| Rust                  | yes    | yes     | 23            | yes          |
+| Go                    | yes    | yes     | 5 (baseline)  | yes          |
+| JavaScript/TypeScript | yes    | yes     | 18            | yes          |
+| Python                | yes    | yes     | 20            | yes          |
+
+The baseline operator set every language covers: boolean literal swap,
+equality negation, comparison boundary, logical and/or swap, and integer 0/1
+swap. Note `integer_zero_one` is `default_enabled: false` in every language
+(it tends to be noisy); enable it explicitly with
+`--operators integer_zero_one` or `[mutation].operators`.
+
 Presets are default-fillers, not overrides: explicit CLI flags and `ooze.toml`
 values always win. The applied fills are printed on stderr as
 `ooze: preset <name>: ...` so the expansion stays visible. `ooze doctor` shows

@@ -66,6 +66,16 @@ mutators! {
         },
         describe: |original, replacement| format!("Swap logical {original} -> {replacement}"),
     },
+    IntegerZeroOne {
+        replace: |original| match original {
+            "0" => Some("1".to_string()),
+            "1" => Some("0".to_string()),
+            _ => None,
+        },
+        describe: |original, replacement| {
+            format!("Swap integer literal {original} -> {replacement}")
+        },
+    },
     RemoveNot {
         replace: |original| {
             let rest = original.strip_prefix('!')?.trim_start();
