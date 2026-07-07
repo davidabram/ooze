@@ -35,7 +35,11 @@ E.g. --coverage cobertura:coverage.xml";
 
 fn parse_operator(s: &str) -> Result<core::OperatorName, String> {
     core::OperatorName::parse(s).ok_or_else(|| {
-        let names: Vec<&str> = core::OperatorName::ALL.iter().copied().map(core::OperatorName::as_str).collect();
+        let names: Vec<&str> = core::OperatorName::ALL
+            .iter()
+            .copied()
+            .map(core::OperatorName::as_str)
+            .collect();
         format!("unknown operator {s:?}; known: {}", names.join(", "))
     })
 }
@@ -310,7 +314,11 @@ pub(crate) enum Commands {
         path: PathBuf,
         #[arg(long, value_enum, default_value = "json")]
         format: OutputFormat,
-        #[arg(long, value_delimiter = ',', help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git.")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git."
+        )]
         exclude: Vec<String>,
     },
     #[command(about = "List available mutation operators and their metadata")]
@@ -318,12 +326,16 @@ pub(crate) enum Commands {
         #[arg(long, value_enum, default_value = "json")]
         format: OutputFormat,
     },
-    #[command(about = "List supported languages and how far their support goes (scan-only vs mutation)")]
+    #[command(
+        about = "List supported languages and how far their support goes (scan-only vs mutation)"
+    )]
     Languages {
         #[arg(long, value_enum, default_value = "json")]
         format: OutputFormat,
     },
-    #[command(about = "Plan a mutation run without executing probes: shows selection, scores, and applied excludes")]
+    #[command(
+        about = "Plan a mutation run without executing probes: shows selection, scores, and applied excludes"
+    )]
     PlanMutants {
         #[arg(long, default_value = ".")]
         path: PathBuf,
@@ -343,10 +355,18 @@ pub(crate) enum Commands {
         #[arg(long, value_enum, default_value = "json")]
         format: OutputFormat,
 
-        #[arg(long, value_delimiter = ',', help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git.")]
+        #[arg(
+            long,
+            value_delimiter = ',',
+            help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git."
+        )]
         exclude: Vec<String>,
 
-        #[arg(long, value_name = "BASE", help = "Only mutate files changed versus BASE (e.g. `main`): git diff BASE...HEAD plus uncommitted and untracked changes.")]
+        #[arg(
+            long,
+            value_name = "BASE",
+            help = "Only mutate files changed versus BASE (e.g. `main`): git diff BASE...HEAD plus uncommitted and untracked changes."
+        )]
         changed_only: Option<String>,
 
         #[arg(long, value_delimiter = ',', value_parser = parse_operator, help = "Restrict to these operators (comma-separated).")]
@@ -355,10 +375,16 @@ pub(crate) enum Commands {
         #[arg(long = "exclude-operators", value_delimiter = ',', value_parser = parse_operator, help = "Drop these operators (comma-separated).")]
         exclude_operators: Vec<core::OperatorName>,
 
-        #[arg(long, help = "Disable static skip rules (test files, assertion/panic macros, generated files).")]
+        #[arg(
+            long,
+            help = "Disable static skip rules (test files, assertion/panic macros, generated files)."
+        )]
         no_static_skips: bool,
 
-        #[arg(long, help = "Include the full list of skipped candidates in the output.")]
+        #[arg(
+            long,
+            help = "Include the full list of skipped candidates in the output."
+        )]
         show_skipped: bool,
     },
     #[command(about = "Apply a mutation in a copy-on-write workspace and print the diff")]
@@ -379,7 +405,10 @@ pub(crate) enum Commands {
         #[arg(long, help = "Overwrite an existing config file")]
         force: bool,
 
-        #[arg(long, help = "Language preset: rust, go, python, node, java-gradle, java-maven, ruby. Prompted interactively if omitted.")]
+        #[arg(
+            long,
+            help = "Language preset: rust, go, python, node, java-gradle, java-maven, ruby. Prompted interactively if omitted."
+        )]
         language: Option<String>,
     },
     #[command(about = "Warm up the shared build cache before running mutants")]
@@ -398,7 +427,12 @@ pub(crate) enum Commands {
         #[arg(long, default_value = ".")]
         path: PathBuf,
 
-        #[arg(long, value_enum, default_value = "human", help = "Output format: human or json")]
+        #[arg(
+            long,
+            value_enum,
+            default_value = "human",
+            help = "Output format: human or json"
+        )]
         format: OutputFormat,
     },
     #[command(about = "Apply a mutation in a workspace, run a probe, and classify the result")]
@@ -419,7 +453,10 @@ pub(crate) enum Commands {
 /// every `Commands` value.
 #[derive(clap::Args)]
 pub(crate) struct TestMutantsArgs {
-    #[arg(long, help = "Path to ooze.toml config (default: <path>/ooze.toml if present).")]
+    #[arg(
+        long,
+        help = "Path to ooze.toml config (default: <path>/ooze.toml if present)."
+    )]
     pub(crate) config: Option<PathBuf>,
 
     #[arg(long, default_value = ".")]
@@ -443,19 +480,32 @@ pub(crate) struct TestMutantsArgs {
     #[arg(long)]
     pub(crate) timeout_seconds: Option<u64>,
 
-    #[arg(long, help = "Shared build cache dir for probe runs (default: <cache_dir>/build-cache). Reference it as {build_cache} in --probe-env.")]
+    #[arg(
+        long,
+        help = "Shared build cache dir for probe runs (default: <cache_dir>/build-cache). Reference it as {build_cache} in --probe-env."
+    )]
     pub(crate) build_cache_dir: Option<PathBuf>,
 
-    #[arg(long, help = "Give each worker its own build-cache-job-{i} dir instead of a shared one")]
+    #[arg(
+        long,
+        help = "Give each worker its own build-cache-job-{i} dir instead of a shared one"
+    )]
     pub(crate) per_worker_cache: bool,
 
-    #[arg(long, help = "Pre-build the probe in each worker target dir before running mutants")]
+    #[arg(
+        long,
+        help = "Pre-build the probe in each worker target dir before running mutants"
+    )]
     pub(crate) warmup: bool,
 
     #[arg(long, value_enum)]
     pub(crate) workspace_backend: Option<WorkspaceBackendArg>,
 
-    #[arg(long, value_enum, help = "Language preset that fills unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, CARGO_TARGET_DIR={build_cache}, probe `cargo test`. `go`: worktree backend, warmup, shared GOCACHE={build_cache}/go-build, GOTMPDIR={build_cache}, probe `go test ./...`. `node`: worktree backend, warmup, package-manager cache envs under {build_cache}, probe from lockfile detection (bun/pnpm/yarn/npm test). `python`: worktree backend, warmup, PYTHONPYCACHEPREFIX={build_cache}/pycache, PYTEST_ADDOPTS=--cache-clear, TMPDIR={build_cache}/tmp, probe `pytest`. Explicit flags and ooze.toml win.")]
+    #[arg(
+        long,
+        value_enum,
+        help = "Language preset that fills unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, CARGO_TARGET_DIR={build_cache}, probe `cargo test`. `go`: worktree backend, warmup, shared GOCACHE={build_cache}/go-build, GOTMPDIR={build_cache}, probe `go test ./...`. `node`: worktree backend, warmup, package-manager cache envs under {build_cache}, probe from lockfile detection (bun/pnpm/yarn/npm test). `python`: worktree backend, warmup, PYTHONPYCACHEPREFIX={build_cache}/pycache, PYTEST_ADDOPTS=--cache-clear, TMPDIR={build_cache}/tmp, probe `pytest`. Explicit flags and ooze.toml win."
+    )]
     pub(crate) preset: Option<Preset>,
 
     #[arg(long)]
@@ -464,13 +514,21 @@ pub(crate) struct TestMutantsArgs {
     #[arg(long)]
     pub(crate) runs_dir: Option<PathBuf>,
 
-    #[arg(long, value_enum, help = "Report format: json, human, agent-tasks-json, agent-tasks-markdown, github-annotations, sarif")]
+    #[arg(
+        long,
+        value_enum,
+        help = "Report format: json, human, agent-tasks-json, agent-tasks-markdown, github-annotations, sarif"
+    )]
     pub(crate) format: Option<report::ReportFormat>,
 
     #[arg(long, help = "Write report to a file instead of stdout.")]
     pub(crate) output: Option<PathBuf>,
 
-    #[arg(long, value_enum, help = "Report verbosity baseline: compact, normal, or full. Defaults per format (human/agent-tasks/sarif=compact, json=normal).")]
+    #[arg(
+        long,
+        value_enum,
+        help = "Report verbosity baseline: compact, normal, or full. Defaults per format (human/agent-tasks/sarif=compact, json=normal)."
+    )]
     pub(crate) report_detail: Option<report::ReportDetail>,
 
     #[arg(long, help = "Omit unified diffs from the report.")]
@@ -485,10 +543,18 @@ pub(crate) struct TestMutantsArgs {
     #[arg(long, help = "Keep only survived mutants in the report outcomes.")]
     pub(crate) only_survivors: bool,
 
-    #[arg(long, value_delimiter = ',', help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git.")]
+    #[arg(
+        long,
+        value_delimiter = ',',
+        help = "Additional exclude globs (comma-separated). Defaults always exclude target, .ooze, .git."
+    )]
     pub(crate) exclude: Vec<String>,
 
-    #[arg(long, value_name = "BASE", help = "Only mutate files changed versus BASE (e.g. `main`): git diff BASE...HEAD plus uncommitted and untracked changes.")]
+    #[arg(
+        long,
+        value_name = "BASE",
+        help = "Only mutate files changed versus BASE (e.g. `main`): git diff BASE...HEAD plus uncommitted and untracked changes."
+    )]
     pub(crate) changed_only: Option<String>,
 
     #[arg(long = "probe-env", value_parser = parse_key_val, help = "KEY=VALUE env var to set on probe (and warmup). {worker} in VALUE expands to the worker index. Repeatable.")]
@@ -500,22 +566,40 @@ pub(crate) struct TestMutantsArgs {
     #[arg(long = "exclude-operators", value_delimiter = ',', value_parser = parse_operator, help = "Drop these operators (comma-separated).")]
     pub(crate) exclude_operators: Vec<core::OperatorName>,
 
-    #[arg(long, help = "Disable static skip rules (test files, assertion/panic macros, generated files).")]
+    #[arg(
+        long,
+        help = "Disable static skip rules (test files, assertion/panic macros, generated files)."
+    )]
     pub(crate) no_static_skips: bool,
 
-    #[arg(long, help = "Lines of source context around each survived mutant (0 disables).")]
+    #[arg(
+        long,
+        help = "Lines of source context around each survived mutant (0 disables)."
+    )]
     pub(crate) context_lines: Option<usize>,
 
-    #[arg(long, help = "Run the probe once on unmodified code first; abort if it fails or times out.")]
+    #[arg(
+        long,
+        help = "Run the probe once on unmodified code first; abort if it fails or times out."
+    )]
     pub(crate) preflight: bool,
 
-    #[arg(long, help = "Exit 0 even if survivors are found (timeouts/errors still surface).")]
+    #[arg(
+        long,
+        help = "Exit 0 even if survivors are found (timeouts/errors still surface)."
+    )]
     pub(crate) no_fail_on_survivors: bool,
 
-    #[arg(long, help = "Treat timeout/error outcomes as non-fatal for exit code purposes.")]
+    #[arg(
+        long,
+        help = "Treat timeout/error outcomes as non-fatal for exit code purposes."
+    )]
     pub(crate) allow_incomplete: bool,
 
-    #[arg(long, help = "Suppress per-mutant progress output (same as --progress never).")]
+    #[arg(
+        long,
+        help = "Suppress per-mutant progress output (same as --progress never)."
+    )]
     pub(crate) quiet: bool,
 
     #[arg(long, value_enum, default_value_t = ProgressMode::Auto, help = "Per-mutant progress on stderr: auto (TTY and not CI), always, or never.")]

@@ -199,9 +199,8 @@ fn remove_stale_worktrees(repo_root: &Path, worktrees_dir: &Path) -> Result<()> 
             &["worktree", "remove", "--force", &path.to_string_lossy()],
         );
         if path.exists() {
-            std::fs::remove_dir_all(&path).with_context(|| {
-                format!("removing stale ooze worktree {}", path.display())
-            })?;
+            std::fs::remove_dir_all(&path)
+                .with_context(|| format!("removing stale ooze worktree {}", path.display()))?;
         }
     }
 
@@ -280,7 +279,10 @@ mod tests {
 
         pool.reset(0).unwrap();
 
-        assert_eq!(std::fs::read_to_string(wt.join("file.txt")).unwrap(), "hello\n");
+        assert_eq!(
+            std::fs::read_to_string(wt.join("file.txt")).unwrap(),
+            "hello\n"
+        );
         assert!(!wt.join("target").exists(), "untracked dirs cleaned");
     }
 
@@ -311,7 +313,10 @@ mod tests {
         assert!(stale.exists());
 
         let pool = WorktreePool::create(tmp.path(), &runs, 1).unwrap();
-        assert!(pool.path_for(0).exists(), "fresh worktree usable after stale cleanup");
+        assert!(
+            pool.path_for(0).exists(),
+            "fresh worktree usable after stale cleanup"
+        );
     }
 
     #[test]

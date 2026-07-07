@@ -1,10 +1,8 @@
 use super::LanguageSpec;
 use crate::lang::mutators;
 
-const FUNCTIONS_QUERY: &str =
-    include_str!("../../queries/javascript/functions.scm");
-const BRANCHES_QUERY: &str =
-    include_str!("../../queries/javascript/branches.scm");
+const FUNCTIONS_QUERY: &str = include_str!("../../queries/javascript/functions.scm");
+const BRANCHES_QUERY: &str = include_str!("../../queries/javascript/branches.scm");
 
 // JavaScript's mutator implementations (expands to `pub const MUTATORS`). The
 // registry (`crate::mutate::registry`) aggregates this slice with the others'.

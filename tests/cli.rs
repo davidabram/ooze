@@ -16,7 +16,11 @@ fn scan_json_outputs_valid_json() {
         .args(["scan", "--path", "tests/fixtures/lang", "--format", "json"])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8(out.stdout).unwrap();
     serde_json::from_str::<serde_json::Value>(&stdout)
         .expect("stdout should be valid JSON when --format json");
@@ -28,7 +32,11 @@ fn scan_non_json_produces_no_output() {
         .args(["scan", "--path", "tests/fixtures/lang", "--format", "human"])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(
         out.stdout.is_empty(),
         "expected no stdout for non-json format, got: {}",
@@ -41,10 +49,20 @@ fn scan_non_json_produces_no_output() {
 #[test]
 fn mutants_json_outputs_valid_json() {
     let out = ooze()
-        .args(["mutants", "--path", "tests/fixtures/mutate", "--format", "json"])
+        .args([
+            "mutants",
+            "--path",
+            "tests/fixtures/mutate",
+            "--format",
+            "json",
+        ])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8(out.stdout).unwrap();
     serde_json::from_str::<serde_json::Value>(&stdout)
         .expect("stdout should be valid JSON when --format json");
@@ -53,10 +71,20 @@ fn mutants_json_outputs_valid_json() {
 #[test]
 fn mutants_non_json_produces_no_output() {
     let out = ooze()
-        .args(["mutants", "--path", "tests/fixtures/mutate", "--format", "human"])
+        .args([
+            "mutants",
+            "--path",
+            "tests/fixtures/mutate",
+            "--format",
+            "human",
+        ])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(
         out.stdout.is_empty(),
         "expected no stdout for non-json format, got: {}",
@@ -72,10 +100,14 @@ fn operators_json_outputs_valid_json() {
         .args(["operators", "--format", "json"])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8(out.stdout).unwrap();
-    let ops: serde_json::Value = serde_json::from_str(&stdout)
-        .expect("stdout should be valid JSON when --format json");
+    let ops: serde_json::Value =
+        serde_json::from_str(&stdout).expect("stdout should be valid JSON when --format json");
     let ops = ops.as_array().expect("operators output is an array");
 
     // Each operator reports the languages that implement it. `remove_try` is
@@ -94,7 +126,9 @@ fn operators_json_outputs_valid_json() {
         .iter()
         .find(|o| o["name"] == "swap_boolean")
         .expect("swap_boolean listed");
-    let langs = swap_boolean["languages"].as_array().expect("languages array");
+    let langs = swap_boolean["languages"]
+        .as_array()
+        .expect("languages array");
     assert!(
         langs.len() > 1 && langs.contains(&serde_json::json!("rust")),
         "swap_boolean spans multiple languages incl. rust"
@@ -107,9 +141,16 @@ fn operators_non_json_outputs_text() {
         .args(["operators", "--format", "human"])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8(out.stdout).unwrap();
-    assert!(!stdout.is_empty(), "expected text output for non-json format");
+    assert!(
+        !stdout.is_empty(),
+        "expected text output for non-json format"
+    );
     assert!(
         serde_json::from_str::<serde_json::Value>(&stdout).is_err(),
         "non-json format should not produce JSON"
@@ -122,7 +163,11 @@ fn languages_json_reports_support_levels() {
         .args(["languages", "--format", "json"])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8(out.stdout).unwrap();
     let langs: serde_json::Value =
         serde_json::from_str(&stdout).expect("stdout should be valid JSON when --format json");
@@ -161,7 +206,11 @@ fn languages_non_json_outputs_text() {
         .args(["languages", "--format", "human"])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8(out.stdout).unwrap();
     assert!(stdout.contains("rust"), "human output lists languages");
     assert!(
@@ -175,10 +224,20 @@ fn languages_non_json_outputs_text() {
 #[test]
 fn plan_mutants_json_outputs_valid_json() {
     let out = ooze()
-        .args(["plan-mutants", "--path", "tests/fixtures/mutate", "--format", "json"])
+        .args([
+            "plan-mutants",
+            "--path",
+            "tests/fixtures/mutate",
+            "--format",
+            "json",
+        ])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8(out.stdout).unwrap();
     serde_json::from_str::<serde_json::Value>(&stdout)
         .expect("stdout should be valid JSON when --format json");
@@ -187,10 +246,20 @@ fn plan_mutants_json_outputs_valid_json() {
 #[test]
 fn plan_mutants_non_json_produces_no_output() {
     let out = ooze()
-        .args(["plan-mutants", "--path", "tests/fixtures/mutate", "--format", "human"])
+        .args([
+            "plan-mutants",
+            "--path",
+            "tests/fixtures/mutate",
+            "--format",
+            "human",
+        ])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(
         out.stdout.is_empty(),
         "expected no stdout for non-json format, got: {}",
@@ -203,10 +272,22 @@ fn plan_mutants_non_json_produces_no_output() {
 #[test]
 fn test_mutant_fails_with_unknown_id() {
     let out = ooze()
-        .args(["test-mutant", "--path", "tests/fixtures/mutate", "--id", "nonexistent-id", "--", "echo", "ok"])
+        .args([
+            "test-mutant",
+            "--path",
+            "tests/fixtures/mutate",
+            "--id",
+            "nonexistent-id",
+            "--",
+            "echo",
+            "ok",
+        ])
         .output()
         .expect("failed to run ooze");
-    assert!(!out.status.success(), "expected failure for unknown mutation id");
+    assert!(
+        !out.status.success(),
+        "expected failure for unknown mutation id"
+    );
 }
 
 #[test]
@@ -223,11 +304,25 @@ fn test_mutant_succeeds_with_valid_id() {
     assert!(mutants_out.status.success());
     let candidates: Vec<serde_json::Value> =
         serde_json::from_slice(&mutants_out.stdout).expect("mutants output should be JSON");
-    assert!(!candidates.is_empty(), "expected at least one mutation candidate");
-    let id = candidates[0]["id"].as_str().expect("candidate should have an id field");
+    assert!(
+        !candidates.is_empty(),
+        "expected at least one mutation candidate"
+    );
+    let id = candidates[0]["id"]
+        .as_str()
+        .expect("candidate should have an id field");
 
     let out = ooze()
-        .args(["test-mutant", "--path", fixture_str, "--id", id, "--", "echo", "ok"])
+        .args([
+            "test-mutant",
+            "--path",
+            fixture_str,
+            "--id",
+            id,
+            "--",
+            "echo",
+            "ok",
+        ])
         .output()
         .expect("failed to run test-mutant");
     assert!(
@@ -272,10 +367,20 @@ fn doctor_human_reports_environment_and_recommendation() {
     }
 
     let out = ooze()
-        .args(["doctor", "--path", tmp.path().to_str().unwrap(), "--format", "human"])
+        .args([
+            "doctor",
+            "--path",
+            tmp.path().to_str().unwrap(),
+            "--format",
+            "human",
+        ])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8(out.stdout).unwrap();
     for expected in [
         "type: Rust/Cargo",
@@ -288,7 +393,10 @@ fn doctor_human_reports_environment_and_recommendation() {
         "probe=`cargo test`",
         "workspace_backend=worktree",
     ] {
-        assert!(stdout.contains(expected), "missing {expected:?} in:\n{stdout}");
+        assert!(
+            stdout.contains(expected),
+            "missing {expected:?} in:\n{stdout}"
+        );
     }
 }
 
@@ -296,10 +404,20 @@ fn doctor_human_reports_environment_and_recommendation() {
 fn doctor_json_contains_stable_environment_fields() {
     let tmp = tempdir();
     let out = ooze()
-        .args(["doctor", "--path", tmp.path().to_str().unwrap(), "--format", "json"])
+        .args([
+            "doctor",
+            "--path",
+            tmp.path().to_str().unwrap(),
+            "--format",
+            "json",
+        ])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let json: serde_json::Value =
         serde_json::from_slice(&out.stdout).expect("doctor --format json emits JSON");
     assert_eq!(json["project_type"], "unknown");
@@ -307,7 +425,10 @@ fn doctor_json_contains_stable_environment_fields() {
     assert_eq!(json["backends"]["worktree"]["available"], false);
     assert!(json["cache"]["sccache"].is_boolean());
     assert!(json["recommendation"]["command"].is_null());
-    assert_eq!(json["recommendation"]["preset_fills"], serde_json::json!([]));
+    assert_eq!(
+        json["recommendation"]["preset_fills"],
+        serde_json::json!([])
+    );
 }
 
 // ── test-mutants preflight format ─────────────────────────────────────────────
@@ -318,18 +439,26 @@ fn test_mutants_preflight_failure_json_prints_to_stdout() {
     let out = ooze()
         .args([
             "test-mutants",
-            "--path", "tests/fixtures/mutate",
+            "--path",
+            "tests/fixtures/mutate",
             "--preflight",
-            "--format", "json",
-            "--limit", "0",
-            "--cache-dir", tmp.path().join("cache").to_str().unwrap(),
-            "--runs-dir", tmp.path().join("runs").to_str().unwrap(),
+            "--format",
+            "json",
+            "--limit",
+            "0",
+            "--cache-dir",
+            tmp.path().join("cache").to_str().unwrap(),
+            "--runs-dir",
+            tmp.path().join("runs").to_str().unwrap(),
             "--",
             "false",
         ])
         .output()
         .expect("failed to run ooze");
-    assert!(!out.status.success(), "preflight failure should exit non-zero");
+    assert!(
+        !out.status.success(),
+        "preflight failure should exit non-zero"
+    );
     serde_json::from_slice::<serde_json::Value>(&out.stdout)
         .expect("preflight failure with --format json should print JSON to stdout");
 }
@@ -340,18 +469,26 @@ fn test_mutants_preflight_failure_human_prints_to_stderr() {
     let out = ooze()
         .args([
             "test-mutants",
-            "--path", "tests/fixtures/mutate",
+            "--path",
+            "tests/fixtures/mutate",
             "--preflight",
-            "--format", "human",
-            "--limit", "0",
-            "--cache-dir", tmp.path().join("cache").to_str().unwrap(),
-            "--runs-dir", tmp.path().join("runs").to_str().unwrap(),
+            "--format",
+            "human",
+            "--limit",
+            "0",
+            "--cache-dir",
+            tmp.path().join("cache").to_str().unwrap(),
+            "--runs-dir",
+            tmp.path().join("runs").to_str().unwrap(),
             "--",
             "false",
         ])
         .output()
         .expect("failed to run ooze");
-    assert!(!out.status.success(), "preflight failure should exit non-zero");
+    assert!(
+        !out.status.success(),
+        "preflight failure should exit non-zero"
+    );
     assert!(
         out.stdout.is_empty(),
         "preflight failure with --format human should not print to stdout"
@@ -367,28 +504,54 @@ fn test_mutants_preflight_failure_human_prints_to_stderr() {
 #[test]
 fn apply_mutant_fails_with_unknown_id() {
     let out = ooze()
-        .args(["apply-mutant", "--path", "tests/fixtures/mutate", "--id", "nonexistent-id"])
+        .args([
+            "apply-mutant",
+            "--path",
+            "tests/fixtures/mutate",
+            "--id",
+            "nonexistent-id",
+        ])
         .output()
         .expect("failed to run ooze");
-    assert!(!out.status.success(), "expected failure for unknown mutation id");
+    assert!(
+        !out.status.success(),
+        "expected failure for unknown mutation id"
+    );
 }
 
 #[test]
 fn apply_mutant_succeeds_with_valid_id() {
     // Get a real candidate ID from the fixture.
     let mutants_out = ooze()
-        .args(["mutants", "--path", "tests/fixtures/mutate", "--format", "json"])
+        .args([
+            "mutants",
+            "--path",
+            "tests/fixtures/mutate",
+            "--format",
+            "json",
+        ])
         .output()
         .expect("failed to run mutants");
     assert!(mutants_out.status.success());
     let candidates: Vec<serde_json::Value> =
         serde_json::from_slice(&mutants_out.stdout).expect("mutants output should be JSON");
-    assert!(!candidates.is_empty(), "expected at least one mutation candidate");
-    let id = candidates[0]["id"].as_str().expect("candidate should have an id field");
+    assert!(
+        !candidates.is_empty(),
+        "expected at least one mutation candidate"
+    );
+    let id = candidates[0]["id"]
+        .as_str()
+        .expect("candidate should have an id field");
 
     // Apply that specific mutation and verify we get a diff.
     let out = ooze()
-        .args(["apply-mutant", "--path", "tests/fixtures/mutate", "--id", id])
+        .args([
+            "apply-mutant",
+            "--path",
+            "tests/fixtures/mutate",
+            "--id",
+            id,
+        ])
         .output()
         .expect("failed to run apply-mutant");
     assert!(
@@ -409,7 +572,13 @@ fn init_config_creates_file_when_missing() {
     let tmp = tempdir();
     let cfg = tmp.path().join("ooze.toml");
     let out = ooze()
-        .args(["init-config", "--path", cfg.to_str().unwrap(), "--language", "rust"])
+        .args([
+            "init-config",
+            "--path",
+            cfg.to_str().unwrap(),
+            "--language",
+            "rust",
+        ])
         .output()
         .expect("failed to run ooze");
     assert!(
@@ -426,10 +595,19 @@ fn init_config_fails_when_file_exists_without_force() {
     let cfg = tmp.path().join("ooze.toml");
     std::fs::write(&cfg, "existing").unwrap();
     let out = ooze()
-        .args(["init-config", "--path", cfg.to_str().unwrap(), "--language", "rust"])
+        .args([
+            "init-config",
+            "--path",
+            cfg.to_str().unwrap(),
+            "--language",
+            "rust",
+        ])
         .output()
         .expect("failed to run ooze");
-    assert!(!out.status.success(), "should fail when file exists and --force is not set");
+    assert!(
+        !out.status.success(),
+        "should fail when file exists and --force is not set"
+    );
 }
 
 #[test]
@@ -438,7 +616,14 @@ fn init_config_overwrites_with_force() {
     let cfg = tmp.path().join("ooze.toml");
     std::fs::write(&cfg, "old-content").unwrap();
     let out = ooze()
-        .args(["init-config", "--path", cfg.to_str().unwrap(), "--language", "rust", "--force"])
+        .args([
+            "init-config",
+            "--path",
+            cfg.to_str().unwrap(),
+            "--language",
+            "rust",
+            "--force",
+        ])
         .output()
         .expect("failed to run ooze");
     assert!(
@@ -479,10 +664,20 @@ fn snapshot_sorted(mut mutants: Vec<serde_json::Value>) -> Vec<serde_json::Value
 #[test]
 fn rust_operator_fixture_matches_snapshot() {
     let out = ooze()
-        .args(["mutants", "--path", "tests/fixtures/operators/rust/all.rs", "--format", "json"])
+        .args([
+            "mutants",
+            "--path",
+            "tests/fixtures/operators/rust/all.rs",
+            "--format",
+            "json",
+        ])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 
     let discovered: Vec<serde_json::Value> =
         serde_json::from_slice(&out.stdout).expect("mutants output should be JSON");
@@ -514,10 +709,20 @@ fn rust_operator_fixture_matches_snapshot() {
 #[test]
 fn python_operator_fixture_matches_snapshot() {
     let out = ooze()
-        .args(["mutants", "--path", "tests/fixtures/operators/python/all.py", "--format", "json"])
+        .args([
+            "mutants",
+            "--path",
+            "tests/fixtures/operators/python/all.py",
+            "--format",
+            "json",
+        ])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 
     let discovered: Vec<serde_json::Value> =
         serde_json::from_slice(&out.stdout).expect("mutants output should be JSON");
@@ -549,10 +754,20 @@ fn python_operator_fixture_matches_snapshot() {
 #[test]
 fn javascript_operator_fixture_matches_snapshot() {
     let out = ooze()
-        .args(["mutants", "--path", "tests/fixtures/operators/javascript/all.js", "--format", "json"])
+        .args([
+            "mutants",
+            "--path",
+            "tests/fixtures/operators/javascript/all.js",
+            "--format",
+            "json",
+        ])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 
     let discovered: Vec<serde_json::Value> =
         serde_json::from_slice(&out.stdout).expect("mutants output should be JSON");
@@ -584,10 +799,20 @@ fn javascript_operator_fixture_matches_snapshot() {
 #[test]
 fn typescript_operator_fixture_matches_snapshot() {
     let out = ooze()
-        .args(["mutants", "--path", "tests/fixtures/operators/typescript/all.ts", "--format", "json"])
+        .args([
+            "mutants",
+            "--path",
+            "tests/fixtures/operators/typescript/all.ts",
+            "--format",
+            "json",
+        ])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 
     let discovered: Vec<serde_json::Value> =
         serde_json::from_slice(&out.stdout).expect("mutants output should be JSON");
@@ -619,10 +844,20 @@ fn typescript_operator_fixture_matches_snapshot() {
 #[test]
 fn go_operator_fixture_matches_snapshot() {
     let out = ooze()
-        .args(["mutants", "--path", "tests/fixtures/operators/go/all.go", "--format", "json"])
+        .args([
+            "mutants",
+            "--path",
+            "tests/fixtures/operators/go/all.go",
+            "--format",
+            "json",
+        ])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
 
     let discovered: Vec<serde_json::Value> =
         serde_json::from_slice(&out.stdout).expect("mutants output should be JSON");
@@ -709,11 +944,16 @@ fn go_preset_end_to_end_discovers_and_classifies_mutants() {
     let out = ooze()
         .args([
             "test-mutants",
-            "--path", tmp.path().to_str().unwrap(),
-            "--preset", "go",
-            "--limit", "1",
-            "--jobs", "1",
-            "--format", "json",
+            "--path",
+            tmp.path().to_str().unwrap(),
+            "--preset",
+            "go",
+            "--limit",
+            "1",
+            "--jobs",
+            "1",
+            "--format",
+            "json",
         ])
         .output()
         .expect("failed to run test-mutants");
@@ -727,7 +967,9 @@ fn go_preset_end_to_end_discovers_and_classifies_mutants() {
         serde_json::from_slice(&out.stdout).expect("test-mutants should output JSON");
     let outcomes = report["outcomes"].as_array().expect("report has outcomes");
     assert_eq!(outcomes.len(), 1, "expected exactly one tested mutant");
-    let status = outcomes[0]["status"].as_str().expect("outcome has a status");
+    let status = outcomes[0]["status"]
+        .as_str()
+        .expect("outcome has a status");
     assert!(
         ["killed", "survived", "timeout", "error"].contains(&status),
         "unexpected outcome status {status:?}"
@@ -745,7 +987,11 @@ fn crap_json_format_outputs_valid_json() {
         .args(["crap", "--path", "tests/fixtures/lang", "--format", "json"])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8(out.stdout).unwrap();
     assert!(!stdout.is_empty(), "expected JSON output for --format json");
     serde_json::from_str::<serde_json::Value>(&stdout)
@@ -758,7 +1004,11 @@ fn crap_non_json_format_produces_no_stdout() {
         .args(["crap", "--path", "tests/fixtures/lang", "--format", "human"])
         .output()
         .expect("failed to run ooze");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(
         out.stdout.is_empty(),
         "expected no stdout for non-json format, got: {}",

@@ -79,9 +79,7 @@ impl CompiledRegistry {
 
     /// Look up the compiled language registered for a file extension.
     pub fn for_extension(&self, ext: &str) -> Option<&CompiledLanguage> {
-        self.langs
-            .iter()
-            .find(|c| c.spec.extensions.contains(&ext))
+        self.langs.iter().find(|c| c.spec.extensions.contains(&ext))
     }
 
     // Threaded into file-grouped discovery in a later step; for now only the

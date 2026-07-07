@@ -1,16 +1,16 @@
-mod core;
-mod source_path;
-mod lang;
-mod crap;
-mod mutate;
-mod runner;
-mod skip;
-mod scheduler;
-mod report;
-mod config;
-mod doctor;
-mod cli;
 mod app;
+mod cli;
+mod config;
+mod core;
+mod crap;
+mod doctor;
+mod lang;
+mod mutate;
+mod report;
+mod runner;
+mod scheduler;
+mod skip;
+mod source_path;
 
 fn main() -> anyhow::Result<()> {
     app::run()

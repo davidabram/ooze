@@ -337,7 +337,8 @@ pub struct SarifRegion {
 }
 
 pub fn sarif(report: &EnrichedRunReport) -> SarifLog {
-    let mut rules: std::collections::BTreeMap<String, SarifRule> = std::collections::BTreeMap::new();
+    let mut rules: std::collections::BTreeMap<String, SarifRule> =
+        std::collections::BTreeMap::new();
     let mut results = Vec::new();
 
     for o in &report.outcomes {
@@ -359,23 +360,25 @@ pub fn sarif(report: &EnrichedRunReport) -> SarifLog {
                     .to_string(),
             },
             help: SarifMessage {
-                text: o
-                    .test_suggestion
-                    .as_ref().map_or_else(|| {
+                text: o.test_suggestion.as_ref().map_or_else(
+                    || {
                         "Add a test that distinguishes the original behavior from the mutant."
                             .to_string()
-                    }, |s| s.operator_hint.clone()),
+                    },
+                    |s| s.operator_hint.clone(),
+                ),
             },
         });
 
-        let text = o
-            .test_suggestion
-            .as_ref().map_or_else(|| {
+        let text = o.test_suggestion.as_ref().map_or_else(
+            || {
                 format!(
                     "Survived mutant in `{}`: `{}` -> `{}`.",
                     c.function, c.original, c.replacement
                 )
-            }, |s| s.prompt.clone());
+            },
+            |s| s.prompt.clone(),
+        );
 
         let uri = c
             .file
@@ -513,7 +516,9 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
 
     let mut file_counts: BTreeMap<String, usize> = BTreeMap::new();
     for t in &report.tasks {
-        *file_counts.entry(t.file.to_string_lossy().into_owned()).or_insert(0) += 1;
+        *file_counts
+            .entry(t.file.to_string_lossy().into_owned())
+            .or_insert(0) += 1;
     }
     let mut file_list: Vec<(String, usize)> = file_counts.into_iter().collect();
     file_list.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
@@ -521,7 +526,10 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
     // --- Summary ---
     let _ = writeln!(out, "## Summary\n");
     let _ = writeln!(out, "- Raw mutations: {raw_count}");
-    let _ = writeln!(out, "- Unique mutation records after dedupe: {unique_mutations}");
+    let _ = writeln!(
+        out,
+        "- Unique mutation records after dedupe: {unique_mutations}"
+    );
     if unique_location_count < unique_mutations {
         let _ = writeln!(
             out,
@@ -529,7 +537,11 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
         );
     }
     if raw_count > unique_mutations {
-        let _ = writeln!(out, "- Duplicates removed: {}", raw_count - unique_mutations);
+        let _ = writeln!(
+            out,
+            "- Duplicates removed: {}",
+            raw_count - unique_mutations
+        );
     }
     let _ = writeln!(out, "- Files affected: {}\n", file_list.len());
     out.push_str("Most affected files:\n\n");
@@ -548,11 +560,17 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
         }
     }
     // deduped is already sorted by priority_score desc, so targets preserves that order
-    let _ = writeln!(out, "## Target{}\n", if targets.len() == 1 { "" } else { "s" });
+    let _ = writeln!(
+        out,
+        "## Target{}\n",
+        if targets.len() == 1 { "" } else { "s" }
+    );
     for t in &targets {
         let crap = t.crap.map_or_else(|| "n/a".into(), |v| format!("{v:.1}"));
         let cc = t.cyclomatic.map_or_else(|| "n/a".into(), |v| v.to_string());
-        let cov = t.coverage.map_or_else(|| "n/a".into(), |v| format!("{v:.1}%"));
+        let cov = t
+            .coverage
+            .map_or_else(|| "n/a".into(), |v| format!("{v:.1}%"));
         let _ = writeln!(out, "### `{}::{}`\n", t.file.display(), t.function);
         let _ = writeln!(
             out,
@@ -655,11 +673,14 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
         if !high_snippets.is_empty() {
             let _ = writeln!(out, "### Context\n");
             for (line, line_tasks) in &high_snippets {
-                if let Some(ctx) =
-                    line_tasks.iter().find_map(|(t, _)| t.source_context.as_ref())
+                if let Some(ctx) = line_tasks
+                    .iter()
+                    .find_map(|(t, _)| t.source_context.as_ref())
                 {
-                    let mutations: Vec<&str> =
-                        line_tasks.iter().map(|(t, _)| t.mutation.as_str()).collect();
+                    let mutations: Vec<&str> = line_tasks
+                        .iter()
+                        .map(|(t, _)| t.mutation.as_str())
+                        .collect();
                     let _ = writeln!(out, "**Line {}** — {}\n", line, mutations.join(", "));
                     out.push_str("```text\n");
                     out.push_str(&ctx.snippet);
@@ -959,7 +980,10 @@ pub fn enrich(
         .iter()
         .map(|e| {
             (
-                (FileKey::resolve_under(repo_root, &e.file), e.function.clone()),
+                (
+                    FileKey::resolve_under(repo_root, &e.file),
+                    e.function.clone(),
+                ),
                 e,
             )
         })
@@ -981,10 +1005,22 @@ pub fn enrich(
         .into_iter()
         .map(|((file_key, function), (file, outcomes))| {
             let total = outcomes.len();
-            let killed = outcomes.iter().filter(|o| matches!(o.status, MutantStatus::Killed)).count();
-            let survived = outcomes.iter().filter(|o| matches!(o.status, MutantStatus::Survived)).count();
-            let timeout = outcomes.iter().filter(|o| matches!(o.status, MutantStatus::Timeout)).count();
-            let error = outcomes.iter().filter(|o| matches!(o.status, MutantStatus::Error)).count();
+            let killed = outcomes
+                .iter()
+                .filter(|o| matches!(o.status, MutantStatus::Killed))
+                .count();
+            let survived = outcomes
+                .iter()
+                .filter(|o| matches!(o.status, MutantStatus::Survived))
+                .count();
+            let timeout = outcomes
+                .iter()
+                .filter(|o| matches!(o.status, MutantStatus::Timeout))
+                .count();
+            let error = outcomes
+                .iter()
+                .filter(|o| matches!(o.status, MutantStatus::Error))
+                .count();
 
             let meaningful = killed + survived;
             let mutation_score = if meaningful == 0 {
@@ -1053,10 +1089,22 @@ pub fn enrich(
         .into_iter()
         .map(|(op, outs)| {
             let total = outs.len();
-            let killed = outs.iter().filter(|o| matches!(o.status, MutantStatus::Killed)).count();
-            let survived = outs.iter().filter(|o| matches!(o.status, MutantStatus::Survived)).count();
-            let timeout = outs.iter().filter(|o| matches!(o.status, MutantStatus::Timeout)).count();
-            let error = outs.iter().filter(|o| matches!(o.status, MutantStatus::Error)).count();
+            let killed = outs
+                .iter()
+                .filter(|o| matches!(o.status, MutantStatus::Killed))
+                .count();
+            let survived = outs
+                .iter()
+                .filter(|o| matches!(o.status, MutantStatus::Survived))
+                .count();
+            let timeout = outs
+                .iter()
+                .filter(|o| matches!(o.status, MutantStatus::Timeout))
+                .count();
+            let error = outs
+                .iter()
+                .filter(|o| matches!(o.status, MutantStatus::Error))
+                .count();
             let meaningful = killed + survived;
             let mutation_score = if meaningful == 0 {
                 None
@@ -1074,7 +1122,11 @@ pub fn enrich(
             }
         })
         .collect();
-    operators.sort_by(|a, b| b.total.cmp(&a.total).then_with(|| a.operator.cmp(&b.operator)));
+    operators.sort_by(|a, b| {
+        b.total
+            .cmp(&a.total)
+            .then_with(|| a.operator.cmp(&b.operator))
+    });
 
     let outcomes: Vec<EnrichedOutcome> = report
         .outcomes
@@ -1114,7 +1166,8 @@ pub fn human(report: &EnrichedRunReport) -> String {
     let mut out = String::new();
 
     let score = report
-        .mutation_score.map_or_else(|| "n/a".to_string(), |s| format!("{s:.1}%"));
+        .mutation_score
+        .map_or_else(|| "n/a".to_string(), |s| format!("{s:.1}%"));
 
     let _ = writeln!(
         out,
@@ -1127,7 +1180,8 @@ pub fn human(report: &EnrichedRunReport) -> String {
         out.push_str("Per-operator:\n");
         for op in &report.operators {
             let ms = op
-                .mutation_score.map_or_else(|| "n/a".into(), |v| format!("{v:.1}%"));
+                .mutation_score
+                .map_or_else(|| "n/a".into(), |v| format!("{v:.1}%"));
             let _ = writeln!(
                 out,
                 "  {:<18} total {:>3}  killed {:>3}  survived {:>3}  score {}",
@@ -1157,8 +1211,12 @@ pub fn human(report: &EnrichedRunReport) -> String {
     for (i, f) in top.iter().enumerate() {
         let crap = f.crap.map_or_else(|| "n/a".into(), |v| format!("{v:.1}"));
         let cc = f.cyclomatic.map_or_else(|| "n/a".into(), |v| v.to_string());
-        let cov = f.coverage.map_or_else(|| "n/a".into(), |v| format!("{v:.1}%"));
-        let ms = f.mutation_score.map_or_else(|| "n/a".into(), |v| format!("{v:.1}%"));
+        let cov = f
+            .coverage
+            .map_or_else(|| "n/a".into(), |v| format!("{v:.1}%"));
+        let ms = f
+            .mutation_score
+            .map_or_else(|| "n/a".into(), |v| format!("{v:.1}%"));
 
         let _ = writeln!(out, "{}. {}::{}", i + 1, f.file.display(), f.function);
         let _ = writeln!(
@@ -1178,11 +1236,7 @@ pub fn human(report: &EnrichedRunReport) -> String {
                     s.candidate.original,
                     s.candidate.replacement
                 );
-                let _ = writeln!(
-                    out,
-                    "     suggestion: {}",
-                    s.test_suggestion.prompt
-                );
+                let _ = writeln!(out, "     suggestion: {}", s.test_suggestion.prompt);
                 if let Some(ctx) = &s.source_context {
                     out.push_str("     context:\n");
                     for snippet_line in ctx.snippet.lines() {
@@ -1203,7 +1257,13 @@ mod tests {
     use crate::core::{Language, OperatorCategory};
     use std::path::PathBuf;
 
-    fn make_task(file: &str, line: usize, operator: OperatorName, mutation: &str, priority: f64) -> AgentTask {
+    fn make_task(
+        file: &str,
+        line: usize,
+        operator: OperatorName,
+        mutation: &str,
+        priority: f64,
+    ) -> AgentTask {
         AgentTask {
             id: format!("task-{priority}"),
             file: PathBuf::from(file),
@@ -1225,9 +1285,23 @@ mod tests {
     #[test]
     fn agent_tasks_markdown_dedup_keeps_higher_priority() {
         // Two tasks with identical dedup key; second has higher priority_score.
-        let low = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 1.0);
-        let high = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 99.0);
-        let report = AgentTaskReport { tasks: vec![low, high] };
+        let low = make_task(
+            "src/lib.rs",
+            10,
+            OperatorName::NegateEquality,
+            "== -> !=",
+            1.0,
+        );
+        let high = make_task(
+            "src/lib.rs",
+            10,
+            OperatorName::NegateEquality,
+            "== -> !=",
+            99.0,
+        );
+        let report = AgentTaskReport {
+            tasks: vec![low, high],
+        };
         let md = agent_tasks_markdown(&report);
         // The high-priority task's id contains "99" — it must appear in the output.
         assert!(
@@ -1239,9 +1313,23 @@ mod tests {
     #[test]
     fn agent_tasks_markdown_dedup_keeps_higher_priority_when_first_is_higher() {
         // First task has higher priority_score; second is lower.
-        let high = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 99.0);
-        let low = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 1.0);
-        let report = AgentTaskReport { tasks: vec![high, low] };
+        let high = make_task(
+            "src/lib.rs",
+            10,
+            OperatorName::NegateEquality,
+            "== -> !=",
+            99.0,
+        );
+        let low = make_task(
+            "src/lib.rs",
+            10,
+            OperatorName::NegateEquality,
+            "== -> !=",
+            1.0,
+        );
+        let report = AgentTaskReport {
+            tasks: vec![high, low],
+        };
         let md = agent_tasks_markdown(&report);
         assert!(
             md.contains("99"),
@@ -1279,13 +1367,28 @@ mod tests {
         // Kills line 435 `> -> >=`: with equal priority_score, `>` keeps the
         // first task while `>=` switches to the later one. Both share a dedup
         // key but differ in operator_hint, which is printed in the table.
-        let mut a = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 5.0);
+        let mut a = make_task(
+            "src/lib.rs",
+            10,
+            OperatorName::NegateEquality,
+            "== -> !=",
+            5.0,
+        );
         a.operator_hint = "ALPHAHINT".to_string();
-        let mut b = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 5.0);
+        let mut b = make_task(
+            "src/lib.rs",
+            10,
+            OperatorName::NegateEquality,
+            "== -> !=",
+            5.0,
+        );
         b.operator_hint = "BETAHINT".to_string();
         let report = AgentTaskReport { tasks: vec![a, b] };
         let md = agent_tasks_markdown(&report);
-        assert!(md.contains("ALPHAHINT"), "should keep first task's hint:\n{md}");
+        assert!(
+            md.contains("ALPHAHINT"),
+            "should keep first task's hint:\n{md}"
+        );
         assert!(
             !md.contains("BETAHINT"),
             "should not switch to later equal-priority task:\n{md}"
@@ -1296,8 +1399,20 @@ mod tests {
     fn summary_reports_duplicates_and_dup_marker() {
         // raw_count > unique_mutations prints "Duplicates removed" (line 480) and
         // dup > 1 prints the "(+N)" marker (line 568).
-        let a = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 5.0);
-        let b = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 5.0);
+        let a = make_task(
+            "src/lib.rs",
+            10,
+            OperatorName::NegateEquality,
+            "== -> !=",
+            5.0,
+        );
+        let b = make_task(
+            "src/lib.rs",
+            10,
+            OperatorName::NegateEquality,
+            "== -> !=",
+            5.0,
+        );
         let report = AgentTaskReport { tasks: vec![a, b] };
         let md = agent_tasks_markdown(&report);
         assert!(
@@ -1311,8 +1426,20 @@ mod tests {
     fn summary_omits_duplicates_when_none() {
         // raw_count == unique_mutations: no "Duplicates removed" (line 480 `>=`)
         // and every dup == 1, so no "(+" marker (line 568 `>=`).
-        let a = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 5.0);
-        let b = make_task("src/lib.rs", 20, OperatorName::NegateEquality, "== -> !=", 4.0);
+        let a = make_task(
+            "src/lib.rs",
+            10,
+            OperatorName::NegateEquality,
+            "== -> !=",
+            5.0,
+        );
+        let b = make_task(
+            "src/lib.rs",
+            20,
+            OperatorName::NegateEquality,
+            "== -> !=",
+            4.0,
+        );
         let report = AgentTaskReport { tasks: vec![a, b] };
         let md = agent_tasks_markdown(&report);
         assert!(
@@ -1327,8 +1454,20 @@ mod tests {
         // Two mutations on the same line: unique_location_count(1) <
         // unique_mutations(2) prints the "Unique source locations" line
         // (line 474 `< -> >=`).
-        let a = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 5.0);
-        let b = make_task("src/lib.rs", 10, OperatorName::ComparisonBoundary, "> -> >=", 4.0);
+        let a = make_task(
+            "src/lib.rs",
+            10,
+            OperatorName::NegateEquality,
+            "== -> !=",
+            5.0,
+        );
+        let b = make_task(
+            "src/lib.rs",
+            10,
+            OperatorName::ComparisonBoundary,
+            "> -> >=",
+            4.0,
+        );
         let report = AgentTaskReport { tasks: vec![a, b] };
         let md = agent_tasks_markdown(&report);
         assert!(
@@ -1341,8 +1480,20 @@ mod tests {
     fn summary_omits_unique_locations_for_one_op_per_line() {
         // One mutation per distinct line: count == unique, line omitted
         // (line 474 `< -> <=`).
-        let a = make_task("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 5.0);
-        let b = make_task("src/lib.rs", 20, OperatorName::NegateEquality, "== -> !=", 4.0);
+        let a = make_task(
+            "src/lib.rs",
+            10,
+            OperatorName::NegateEquality,
+            "== -> !=",
+            5.0,
+        );
+        let b = make_task(
+            "src/lib.rs",
+            20,
+            OperatorName::NegateEquality,
+            "== -> !=",
+            4.0,
+        );
         let report = AgentTaskReport { tasks: vec![a, b] };
         let md = agent_tasks_markdown(&report);
         assert!(
@@ -1358,13 +1509,39 @@ mod tests {
         // The non-empty High bucket prints its section (line 527) and, since the
         // High task carries source_context, a Context block with its prompt
         // (line 593 `==`, line 602 negations).
-        let a = make_task_ctx("src/lib.rs", 10, OperatorName::NegateEquality, "== -> !=", 9.0, "PROMPT_A");
-        let b = make_task_ctx("src/lib.rs", 20, OperatorName::ComparisonBoundary, "> -> >=", 5.0, "PROMPT_B");
-        let c = make_task_ctx("src/lib.rs", 30, OperatorName::ComparisonNegation, "< -> >=", 1.0, "PROMPT_C");
-        let report = AgentTaskReport { tasks: vec![a, b, c] };
+        let a = make_task_ctx(
+            "src/lib.rs",
+            10,
+            OperatorName::NegateEquality,
+            "== -> !=",
+            9.0,
+            "PROMPT_A",
+        );
+        let b = make_task_ctx(
+            "src/lib.rs",
+            20,
+            OperatorName::ComparisonBoundary,
+            "> -> >=",
+            5.0,
+            "PROMPT_B",
+        );
+        let c = make_task_ctx(
+            "src/lib.rs",
+            30,
+            OperatorName::ComparisonNegation,
+            "< -> >=",
+            1.0,
+            "PROMPT_C",
+        );
+        let report = AgentTaskReport {
+            tasks: vec![a, b, c],
+        };
         let md = agent_tasks_markdown(&report);
 
-        assert!(md.contains("## High Priority"), "high section present (527):\n{md}");
+        assert!(
+            md.contains("## High Priority"),
+            "high section present (527):\n{md}"
+        );
         assert!(
             !md.contains("### `src/lib.rs`\n"),
             "file header suppressed for single target:\n{md}"
@@ -1373,7 +1550,10 @@ mod tests {
             !md.contains("#### "),
             "function header suppressed for single target:\n{md}"
         );
-        assert!(md.contains("### Context"), "high context section emitted:\n{md}");
+        assert!(
+            md.contains("### Context"),
+            "high context section emitted:\n{md}"
+        );
         assert!(
             md.contains("PROMPT_A"),
             "high task's prompt appears in its Context block:\n{md}"
@@ -1436,7 +1616,10 @@ mod tests {
             make_outcome(MutantStatus::Survived),
             make_outcome(MutantStatus::Killed),
         ]);
-        apply_options(&mut report, ReportOptions::from_detail(ReportDetail::Compact));
+        apply_options(
+            &mut report,
+            ReportOptions::from_detail(ReportDetail::Compact),
+        );
         assert_eq!(report.outcomes.len(), 1, "only the survivor should remain");
         let o = &report.outcomes[0].outcome;
         assert!(o.diff.is_empty());
@@ -1447,7 +1630,10 @@ mod tests {
     #[test]
     fn normal_keeps_diff_but_drops_probe_output() {
         let mut report = report_with(vec![make_outcome(MutantStatus::Killed)]);
-        apply_options(&mut report, ReportOptions::from_detail(ReportDetail::Normal));
+        apply_options(
+            &mut report,
+            ReportOptions::from_detail(ReportDetail::Normal),
+        );
         assert_eq!(report.outcomes.len(), 1, "non-survivors are kept");
         let o = &report.outcomes[0].outcome;
         assert_eq!(o.diff, "some diff");
@@ -1536,7 +1722,11 @@ mod tests {
             .iter()
             .find(|f| f.function == "f")
             .expect("function summary present");
-        assert_eq!(func.crap, Some(42.0), "crap must join despite path spelling");
+        assert_eq!(
+            func.crap,
+            Some(42.0),
+            "crap must join despite path spelling"
+        );
         assert_eq!(func.coverage, Some(25.0));
         assert_eq!(func.cyclomatic, Some(4));
     }

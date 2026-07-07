@@ -136,8 +136,8 @@ pub fn discover_mutants(
             continue;
         }
 
-        let source = std::fs::read_to_string(file)
-            .with_context(|| format!("reading {}", file.display()))?;
+        let source =
+            std::fs::read_to_string(file).with_context(|| format!("reading {}", file.display()))?;
 
         let mut parser = tree_sitter::Parser::new();
         parser
@@ -168,12 +168,18 @@ pub fn discover_mutants(
     // Deterministic output independent of file grouping / mutator order, so
     // `mutants` and `plan-mutants` are stable across runs.
     candidates.sort_by(|a, b| {
-        (a.file.as_path(), a.line, a.column, a.implementation.as_str()).cmp(&(
-            b.file.as_path(),
-            b.line,
-            b.column,
-            b.implementation.as_str(),
-        ))
+        (
+            a.file.as_path(),
+            a.line,
+            a.column,
+            a.implementation.as_str(),
+        )
+            .cmp(&(
+                b.file.as_path(),
+                b.line,
+                b.column,
+                b.implementation.as_str(),
+            ))
     });
     Ok(candidates)
 }
@@ -259,8 +265,7 @@ fn dedupe_overlapping(candidates: Vec<MutationCandidate>) -> Vec<MutationCandida
     let mut kept: Vec<MutationCandidate> = Vec::with_capacity(candidates.len());
 
     for cand in candidates {
-        let (start, end, repl) =
-            canonical_edit(cand.start_byte, &cand.original, &cand.replacement);
+        let (start, end, repl) = canonical_edit(cand.start_byte, &cand.original, &cand.replacement);
         let key = (cand.file.clone(), start, end, repl);
 
         if let Some(&idx) = slot_for_key.get(&key) {
@@ -385,9 +390,11 @@ mod discover_tests {
     fn discover_sets_language_qualified_implementation_and_id() {
         let functions = crate::lang::scan_directory(Path::new("tests/fixtures/mutate"))
             .expect("scanning fixtures");
-        let registry =
-            CompiledRegistry::compile(crate::lang::supported_languages(), &OperatorFilter::allow_all())
-                .unwrap();
+        let registry = CompiledRegistry::compile(
+            crate::lang::supported_languages(),
+            &OperatorFilter::allow_all(),
+        )
+        .unwrap();
         let candidates = discover_mutants(&functions, &registry).unwrap();
 
         assert!(!candidates.is_empty(), "fixture should yield candidates");
@@ -425,12 +432,18 @@ mod discover_tests {
         let sorted = {
             let mut s = first.clone();
             s.sort_by(|a, b| {
-                (a.file.as_path(), a.line, a.column, a.implementation.as_str()).cmp(&(
-                    b.file.as_path(),
-                    b.line,
-                    b.column,
-                    b.implementation.as_str(),
-                ))
+                (
+                    a.file.as_path(),
+                    a.line,
+                    a.column,
+                    a.implementation.as_str(),
+                )
+                    .cmp(&(
+                        b.file.as_path(),
+                        b.line,
+                        b.column,
+                        b.implementation.as_str(),
+                    ))
             });
             s
         };
@@ -483,9 +496,11 @@ mod operator_fixture_tests {
     /// them to the compact shape. Duplicate shapes at different locations dedupe.
     fn discovered(dir: &str) -> BTreeSet<ExpectedMutant> {
         let functions = crate::lang::scan_directory(Path::new(dir)).expect("scanning fixture");
-        let registry =
-            CompiledRegistry::compile(crate::lang::supported_languages(), &OperatorFilter::allow_all())
-                .unwrap();
+        let registry = CompiledRegistry::compile(
+            crate::lang::supported_languages(),
+            &OperatorFilter::allow_all(),
+        )
+        .unwrap();
         let candidates = discover_mutants(&functions, &registry).unwrap();
         candidates
             .iter()
@@ -574,8 +589,20 @@ mod operator_fixture_tests {
             expect(Rust, "iterator_any_all", IteratorAnyAll, "any", "all"),
             // Each match-arm boolean pattern is matched by both match_bool_pattern
             // and swap_boolean; the identical mutants dedupe to match_bool_pattern.
-            expect(Rust, "match_bool_pattern", MatchBoolPattern, "true", "false"),
-            expect(Rust, "match_bool_pattern", MatchBoolPattern, "false", "true"),
+            expect(
+                Rust,
+                "match_bool_pattern",
+                MatchBoolPattern,
+                "true",
+                "false",
+            ),
+            expect(
+                Rust,
+                "match_bool_pattern",
+                MatchBoolPattern,
+                "false",
+                "true",
+            ),
             // `Ok(true)`: ok_err_boolean and swap_boolean coincide; keep ok_err_boolean.
             expect(Rust, "ok_err_boolean", OkErrBoolean, "true", "false"),
             // `Some(true)`: some_boolean and swap_boolean coincide on the literal
@@ -599,7 +626,13 @@ mod operator_fixture_tests {
                 "200",
                 "panic!(\"ooze mutant\")",
             ),
-            expect(Rust, "empty_vec_macro", EmptyVecMacro, "vec![3, 4, 5]", "vec![]"),
+            expect(
+                Rust,
+                "empty_vec_macro",
+                EmptyVecMacro,
+                "vec![3, 4, 5]",
+                "vec![]",
+            ),
             expect(
                 Rust,
                 "saturating_checked_swap",
@@ -685,7 +718,13 @@ mod operator_fixture_tests {
             expect(Python, "returns_boolean", ReturnBoolean, "False", "True"),
             expect(Python, "returns_boolean", NoneReturn, "True", "None"),
             expect(Python, "returns_boolean", NoneReturn, "False", "None"),
-            expect(Python, "returns_boolean", TruthinessNegation, "flag", "not (flag)"),
+            expect(
+                Python,
+                "returns_boolean",
+                TruthinessNegation,
+                "flag",
+                "not (flag)",
+            ),
             // `value.isdigit()` drives negate_predicate_method; the call also feeds none_return.
             expect(
                 Python,
@@ -722,9 +761,8 @@ mod operator_fixture_tests {
     fn python_specific_operator_fixture_discovers_expected_mutants() {
         use Language::Python;
         use OperatorName::{
-            ComprehensionFilterRemoval, DictGetDefaultRemoval, EmptyCollectionLiteral,
-            InNegation, IntegerZeroOne, IsNoneNegation, LenZeroBoundary, NoneReturn,
-            TruthinessNegation,
+            ComprehensionFilterRemoval, DictGetDefaultRemoval, EmptyCollectionLiteral, InNegation,
+            IntegerZeroOne, IsNoneNegation, LenZeroBoundary, NoneReturn, TruthinessNegation,
         };
 
         let got = discovered("tests/fixtures/operators/python_specific");
@@ -762,13 +800,7 @@ mod operator_fixture_tests {
                 "",
             ),
             expect(Python, "none_return", NoneReturn, "value", "None"),
-            expect(
-                Python,
-                "empty_list",
-                EmptyCollectionLiteral,
-                "[a, b]",
-                "[]",
-            ),
+            expect(Python, "empty_list", EmptyCollectionLiteral, "[a, b]", "[]"),
         ]
         .into_iter()
         .collect();
@@ -809,7 +841,11 @@ mod operator_fixture_tests {
         // The queries match syntax nodes only, so `true == false` in a comment and
         // `"x == y && true"` in a string literal must never yield mutants.
         let got = discovered("tests/fixtures/operators/go/ignore.go");
-        assert_eq!(got, BTreeSet::new(), "comment/string content must not mutate");
+        assert_eq!(
+            got,
+            BTreeSet::new(),
+            "comment/string content must not mutate"
+        );
     }
 
     #[test]
@@ -863,15 +899,63 @@ mod operator_fixture_tests {
                 "user?.name",
                 "user.name",
             ),
-            expect(JavaScript, "optionalCall", OptionalChainingRemoval, "fn?.()", "fn()"),
-            expect(JavaScript, "choose", TernaryArmSwap, "flag ? a : b", "flag ? b : a"),
-            expect(JavaScript, "arrayLiteral", ArrayEmptyLiteral, "[1, 2, 3]", "[]"),
-            expect(JavaScript, "objectLiteral", ObjectEmptyLiteral, "{ a: 1, b: 2 }", "{}"),
-            expect(JavaScript, "stringLiteral", StringEmptyLiteral, "\"hello\"", "\"\""),
+            expect(
+                JavaScript,
+                "optionalCall",
+                OptionalChainingRemoval,
+                "fn?.()",
+                "fn()",
+            ),
+            expect(
+                JavaScript,
+                "choose",
+                TernaryArmSwap,
+                "flag ? a : b",
+                "flag ? b : a",
+            ),
+            expect(
+                JavaScript,
+                "arrayLiteral",
+                ArrayEmptyLiteral,
+                "[1, 2, 3]",
+                "[]",
+            ),
+            expect(
+                JavaScript,
+                "objectLiteral",
+                ObjectEmptyLiteral,
+                "{ a: 1, b: 2 }",
+                "{}",
+            ),
+            expect(
+                JavaScript,
+                "stringLiteral",
+                StringEmptyLiteral,
+                "\"hello\"",
+                "\"\"",
+            ),
             // `boundary`'s prefix/suffix string arguments are also non-empty literals.
-            expect(JavaScript, "boundary", StringEmptyLiteral, "\"pre\"", "\"\""),
-            expect(JavaScript, "boundary", StringEmptyLiteral, "\".txt\"", "\"\""),
-            expect(JavaScript, "awaitValue", AwaitRemoval, "await promise", "promise"),
+            expect(
+                JavaScript,
+                "boundary",
+                StringEmptyLiteral,
+                "\"pre\"",
+                "\"\"",
+            ),
+            expect(
+                JavaScript,
+                "boundary",
+                StringEmptyLiteral,
+                "\".txt\"",
+                "\"\"",
+            ),
+            expect(
+                JavaScript,
+                "awaitValue",
+                AwaitRemoval,
+                "await promise",
+                "promise",
+            ),
         ]
         .into_iter()
         .collect();
@@ -906,15 +990,63 @@ mod operator_fixture_tests {
                 "user?.name",
                 "user.name",
             ),
-            expect(TypeScript, "optionalCall", OptionalChainingRemoval, "fn?.()", "fn()"),
-            expect(TypeScript, "choose", TernaryArmSwap, "flag ? a : b", "flag ? b : a"),
-            expect(TypeScript, "arrayLiteral", ArrayEmptyLiteral, "[1, 2, 3]", "[]"),
-            expect(TypeScript, "objectLiteral", ObjectEmptyLiteral, "{ a: 1, b: 2 }", "{}"),
-            expect(TypeScript, "stringLiteral", StringEmptyLiteral, "\"hello\"", "\"\""),
+            expect(
+                TypeScript,
+                "optionalCall",
+                OptionalChainingRemoval,
+                "fn?.()",
+                "fn()",
+            ),
+            expect(
+                TypeScript,
+                "choose",
+                TernaryArmSwap,
+                "flag ? a : b",
+                "flag ? b : a",
+            ),
+            expect(
+                TypeScript,
+                "arrayLiteral",
+                ArrayEmptyLiteral,
+                "[1, 2, 3]",
+                "[]",
+            ),
+            expect(
+                TypeScript,
+                "objectLiteral",
+                ObjectEmptyLiteral,
+                "{ a: 1, b: 2 }",
+                "{}",
+            ),
+            expect(
+                TypeScript,
+                "stringLiteral",
+                StringEmptyLiteral,
+                "\"hello\"",
+                "\"\"",
+            ),
             // `boundary`'s prefix/suffix string arguments are also non-empty literals.
-            expect(TypeScript, "boundary", StringEmptyLiteral, "\"pre\"", "\"\""),
-            expect(TypeScript, "boundary", StringEmptyLiteral, "\".txt\"", "\"\""),
-            expect(TypeScript, "awaitValue", AwaitRemoval, "await promise", "promise"),
+            expect(
+                TypeScript,
+                "boundary",
+                StringEmptyLiteral,
+                "\"pre\"",
+                "\"\"",
+            ),
+            expect(
+                TypeScript,
+                "boundary",
+                StringEmptyLiteral,
+                "\".txt\"",
+                "\"\"",
+            ),
+            expect(
+                TypeScript,
+                "awaitValue",
+                AwaitRemoval,
+                "await promise",
+                "promise",
+            ),
         ]
         .into_iter()
         .collect();

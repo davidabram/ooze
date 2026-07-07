@@ -154,7 +154,9 @@ running inside a Git repository (you'll get a clear error otherwise; pass
   are removed when the run finishes; only paths under that directory are
   cleaned destructively.
 - `copy` — copies the repo into a temp dir per mutant. Portable, works
-  anywhere, slowest for large repos.
+  anywhere, slowest for large repos. Automatically attempts reflink /
+  copy-on-write file cloning when supported by the filesystem, and falls
+  back to regular copying otherwise.
 - `overlay` — OverlayFS mount per mutant. Linux only and needs root; never
   chosen automatically.
 - `auto` — `worktree` inside a Git repository, otherwise `copy`.

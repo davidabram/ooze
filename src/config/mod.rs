@@ -14,18 +14,24 @@ pub fn load_config(
     path: Option<&Path>,
     project_dir: &Path,
 ) -> anyhow::Result<(OozeConfig, Option<PathBuf>)> {
-    let resolved = if let Some(p) = path { Some(p.to_path_buf()) } else {
+    let resolved = if let Some(p) = path {
+        Some(p.to_path_buf())
+    } else {
         let default = project_dir.join(DEFAULT_CONFIG_NAME);
-        if default.exists() { Some(default) } else { None }
+        if default.exists() {
+            Some(default)
+        } else {
+            None
+        }
     };
 
     let Some(p) = resolved else {
         return Ok((OozeConfig::default(), None));
     };
 
-    let text = std::fs::read_to_string(&p)
-        .with_context(|| format!("reading config {}", p.display()))?;
-    let config: OozeConfig = toml::from_str(&text)
-        .with_context(|| format!("parsing config {}", p.display()))?;
+    let text =
+        std::fs::read_to_string(&p).with_context(|| format!("reading config {}", p.display()))?;
+    let config: OozeConfig =
+        toml::from_str(&text).with_context(|| format!("parsing config {}", p.display()))?;
     Ok((config, Some(p)))
 }

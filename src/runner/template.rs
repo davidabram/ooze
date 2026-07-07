@@ -118,7 +118,10 @@ mod tests {
     use std::path::Path;
 
     fn ctx(worker: usize, build_cache: Option<&Path>) -> ProbeEnvCtx<'_> {
-        ProbeEnvCtx { worker, build_cache }
+        ProbeEnvCtx {
+            worker,
+            build_cache,
+        }
     }
 
     #[test]
@@ -147,10 +150,7 @@ mod tests {
     #[test]
     fn mixed_placeholders_and_adjacent_tokens() {
         let t = ProbeEnvTemplate::parse("K".into(), "{worker}-{build_cache}/sub");
-        assert_eq!(
-            t.eval(ctx(7, Some(Path::new("/cache")))),
-            "7-/cache/sub"
-        );
+        assert_eq!(t.eval(ctx(7, Some(Path::new("/cache")))), "7-/cache/sub");
     }
 
     #[test]

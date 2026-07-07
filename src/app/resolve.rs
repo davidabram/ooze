@@ -46,10 +46,10 @@ pub(crate) struct ResolvedTestMutants {
 /// Merge CLI args, the resolved `ooze.toml`, and defaults into a runnable struct.
 pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTestMutants> {
     use super::{
-        build_report_options, parse_report_detail_str, parse_report_format_str,
-        parse_strategy_str, parse_workspace_backend_str, progress_enabled, resolve_bool_flag,
-        resolve_disabled_flag, resolve_exclude_list, resolve_exclude_operators, resolve_excludes,
-        resolve_operators, resolve_probe_env,
+        build_report_options, parse_report_detail_str, parse_report_format_str, parse_strategy_str,
+        parse_workspace_backend_str, progress_enabled, resolve_bool_flag, resolve_disabled_flag,
+        resolve_exclude_list, resolve_exclude_operators, resolve_excludes, resolve_operators,
+        resolve_probe_env,
     };
 
     let TestMutantsArgs {
@@ -125,12 +125,13 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
     // Only the rust preset turns on per-worker caches: Cargo target dirs fight
     // over locks when shared, while Go's build cache is designed to be shared.
     let preset_per_worker_cache = preset == Some(Preset::Rust);
-    let per_worker_cache = if !per_worker_cache && cfg.runner.per_worker_cache.is_none() && preset_per_worker_cache {
-        preset_fills.push("per_worker_cache=true".into());
-        true
-    } else {
-        resolve_bool_flag(per_worker_cache, cfg.runner.per_worker_cache)
-    };
+    let per_worker_cache =
+        if !per_worker_cache && cfg.runner.per_worker_cache.is_none() && preset_per_worker_cache {
+            preset_fills.push("per_worker_cache=true".into());
+            true
+        } else {
+            resolve_bool_flag(per_worker_cache, cfg.runner.per_worker_cache)
+        };
     let warmup = if !warmup && cfg.runner.warmup.is_none() && preset.is_some() {
         preset_fills.push("warmup=true".into());
         true
@@ -198,10 +199,11 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
     let exclude = resolve_exclude_list(exclude, &cfg.scope.exclude);
     let excludes = resolve_excludes(&path, &exclude);
 
-    let mut probe_env: Vec<runner::ProbeEnvTemplate> = resolve_probe_env(probe_env, &cfg.probe.env)?
-        .into_iter()
-        .map(|(k, v)| runner::ProbeEnvTemplate::parse(k, &v))
-        .collect();
+    let mut probe_env: Vec<runner::ProbeEnvTemplate> =
+        resolve_probe_env(probe_env, &cfg.probe.env)?
+            .into_iter()
+            .map(|(k, v)| runner::ProbeEnvTemplate::parse(k, &v))
+            .collect();
     match preset {
         Some(Preset::Rust) => preset_fills.extend(rust_preset_probe_env_fills(&mut probe_env)),
         Some(Preset::Go) => preset_fills.extend(go_preset_probe_env_fills(&mut probe_env)),
@@ -209,9 +211,7 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
             &mut probe_env,
             PackageManager::detect(&path),
         )),
-        Some(Preset::Python) => {
-            preset_fills.extend(python_preset_probe_env_fills(&mut probe_env))
-        }
+        Some(Preset::Python) => preset_fills.extend(python_preset_probe_env_fills(&mut probe_env)),
         None => {}
     }
 
@@ -345,7 +345,11 @@ fn rust_preset_probe_env_fills(probe_env: &mut Vec<runner::ProbeEnvTemplate>) ->
 /// probe temp writes out of the system /tmp without per-worker dirs.
 fn go_preset_probe_env_fills(probe_env: &mut Vec<runner::ProbeEnvTemplate>) -> Vec<String> {
     let mut fills = Vec::new();
-    fills.extend(fill_probe_env(probe_env, "GOCACHE", "{build_cache}/go-build"));
+    fills.extend(fill_probe_env(
+        probe_env,
+        "GOCACHE",
+        "{build_cache}/go-build",
+    ));
     fills.extend(fill_probe_env(probe_env, "GOTMPDIR", "{build_cache}"));
     fills
 }

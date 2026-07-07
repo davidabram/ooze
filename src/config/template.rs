@@ -21,7 +21,6 @@ pub fn template_for_language(lang: &str) -> Option<&'static str> {
     }
 }
 
-
 const RUST: &str = r#"# ooze config — defaults applied when CLI flags are absent.
 # CLI flags always override these values.
 

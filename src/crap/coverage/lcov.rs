@@ -27,8 +27,8 @@ pub fn parse_lcov(path: &Path) -> Result<HashMap<PathBuf, FileCoverage>> {
     let mut current_file: Option<PathBuf> = None;
 
     for record in reader {
-        let record = record
-            .with_context(|| format!("parsing LCOV record in {}", path.display()))?;
+        let record =
+            record.with_context(|| format!("parsing LCOV record in {}", path.display()))?;
 
         match record {
             lcov::Record::SourceFile { path: sf_path } => {

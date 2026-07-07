@@ -94,6 +94,5 @@ pub fn overlay_available() -> bool {
     if Path::new("/sys/module/overlay").exists() {
         return true;
     }
-    std::fs::read_to_string("/proc/filesystems")
-        .is_ok_and(|s| s.contains("overlay"))
+    std::fs::read_to_string("/proc/filesystems").is_ok_and(|s| s.contains("overlay"))
 }

@@ -1,4 +1,4 @@
-use super::{spec_for_language, scan_directory, LANGUAGES};
+use super::{LANGUAGES, scan_directory, spec_for_language};
 use crate::core::{FunctionSpan, Language};
 use std::collections::HashMap;
 use std::path::Path;
@@ -347,5 +347,3 @@ fn anonymous_functions_get_synthetic_names_and_correct_complexity() {
         );
     }
 }
-
-

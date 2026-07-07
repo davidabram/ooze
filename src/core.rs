@@ -113,7 +113,10 @@ pub enum SupportLevel {
 impl SupportLevel {
     /// Whether this language ships any mutation operators.
     pub fn mutates(self) -> bool {
-        matches!(self, SupportLevel::MutateExperimental | SupportLevel::MutateStable)
+        matches!(
+            self,
+            SupportLevel::MutateExperimental | SupportLevel::MutateStable
+        )
     }
 
     /// Stable string form, used in `ooze languages` output.
@@ -141,7 +144,8 @@ impl serde::Serialize for Language {
 impl<'de> serde::Deserialize<'de> for Language {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
-        Language::parse(&s).ok_or_else(|| serde::de::Error::custom(format!("unknown language {s:?}")))
+        Language::parse(&s)
+            .ok_or_else(|| serde::de::Error::custom(format!("unknown language {s:?}")))
     }
 }
 
@@ -519,7 +523,10 @@ impl OperatorName {
     }
 
     pub fn parse(s: &str) -> Option<OperatorName> {
-        OperatorName::ALL.iter().copied().find(|op| op.as_str() == s)
+        OperatorName::ALL
+            .iter()
+            .copied()
+            .find(|op| op.as_str() == s)
     }
 
     /// Relative specificity, used to break ties when two operators yield a
@@ -903,10 +910,7 @@ impl FileCoverage {
             return 100.0;
         }
 
-        let covered = executable
-            .iter()
-            .filter(|(_, hits)| **hits > 0)
-            .count();
+        let covered = executable.iter().filter(|(_, hits)| **hits > 0).count();
 
         covered as f64 / executable.len() as f64 * 100.0
     }

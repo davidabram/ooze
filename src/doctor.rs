@@ -175,10 +175,7 @@ fn probe_command_check(cmd: Option<&Vec<String>>) -> CheckResult {
         Some(cmd) if !cmd.is_empty() => {
             let bin = &cmd[0];
             match which(bin) {
-                Some(p) => ok(
-                    "probe_command",
-                    format!("{} found at {}", bin, p.display()),
-                ),
+                Some(p) => ok("probe_command", format!("{} found at {}", bin, p.display())),
                 None => warn(
                     "probe_command",
                     format!("{bin} not found on PATH (still ok if invoked via wrapper)"),
@@ -392,12 +389,18 @@ pub fn run(path: &Path) -> DoctorReport {
                 checks.push(ok("repo_root", format!("{} is a directory", p.display())));
                 p
             } else {
-                checks.push(fail("repo_root", format!("{} is not a directory", p.display())));
+                checks.push(fail(
+                    "repo_root",
+                    format!("{} is not a directory", p.display()),
+                ));
                 p
             }
         }
         Err(e) => {
-            checks.push(fail("repo_root", format!("cannot canonicalize {}: {e}", path.display())));
+            checks.push(fail(
+                "repo_root",
+                format!("cannot canonicalize {}: {e}", path.display()),
+            ));
             path.to_path_buf()
         }
     };
@@ -511,7 +514,11 @@ pub fn run(path: &Path) -> DoctorReport {
 
     match cfg.mutation.lcov.as_ref() {
         Some(p) => {
-            let resolved = if p.is_absolute() { p.clone() } else { canonical.join(p) };
+            let resolved = if p.is_absolute() {
+                p.clone()
+            } else {
+                canonical.join(p)
+            };
             if resolved.is_file() {
                 checks.push(ok("lcov", format!("{} exists", resolved.display())));
             } else {
@@ -533,7 +540,10 @@ pub fn run(path: &Path) -> DoctorReport {
         excludes_msg = format!("{excludes_msg}, gitignore={lines}");
         checks.push(ok("excludes", excludes_msg));
     } else {
-        checks.push(warn("excludes", format!("{excludes_msg}, no .gitignore at repo root")));
+        checks.push(warn(
+            "excludes",
+            format!("{excludes_msg}, no .gitignore at repo root"),
+        ));
     }
 
     let env_target = std::env::var("CARGO_TARGET_DIR").ok();
@@ -639,7 +649,11 @@ pub fn print_human(report: &DoctorReport) {
     println!("Cache");
     println!(
         "  sccache: {}",
-        if report.cache.sccache { "found" } else { "not found" }
+        if report.cache.sccache {
+            "found"
+        } else {
+            "not found"
+        }
     );
     if report.detected.contains(&ProjectType::Rust) {
         println!("  recommended Rust cache: per-worker CARGO_TARGET_DIR={{build_cache}}");
@@ -660,9 +674,7 @@ pub fn print_human(report: &DoctorReport) {
         println!("  recommended Node cache: shared {}", envs.join(", "));
     }
     if report.detected.contains(&ProjectType::Python) {
-        println!(
-            "  recommended Python cache: shared PYTHONPYCACHEPREFIX={{build_cache}}/pycache"
-        );
+        println!("  recommended Python cache: shared PYTHONPYCACHEPREFIX={{build_cache}}/pycache");
     }
     println!();
     println!("Recommendation");
@@ -893,9 +905,7 @@ mod tests {
     fn probe_command_check_reports_missing_binary() {
         // A non-empty command takes the resolve branch; a path that doesn't
         // exist resolves to "not found", distinct from the unset warning.
-        let c = probe_command_check(Some(&vec![
-            "/no/such/binary/xyzzy".to_string(),
-        ]));
+        let c = probe_command_check(Some(&vec!["/no/such/binary/xyzzy".to_string()]));
         assert!(matches!(c.status, CheckStatus::Warn));
         assert!(c.message.contains("not found on PATH"));
     }

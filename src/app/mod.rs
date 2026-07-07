@@ -3,7 +3,7 @@
 
 mod resolve;
 
-use crate::cli::{parse_key_val, Cli, Commands, WorkspaceBackendArg};
+use crate::cli::{Cli, Commands, WorkspaceBackendArg, parse_key_val};
 use crate::{
     config, core, crap, doctor, lang, mutate, report, runner, scheduler, skip, source_path,
 };
@@ -89,8 +89,14 @@ fn report_coverage_match(
     eprintln!("ooze: coverage reports parsed: {reports}");
     eprintln!("ooze: coverage source files:  {}", m.coverage_source_files);
     eprintln!("ooze: matched source files:   {}", m.matched_source_files);
-    eprintln!("ooze: unmatched coverage files: {}", m.unmatched_coverage_files);
-    eprintln!("ooze: unmatched scanned files:  {}", m.unmatched_source_files);
+    eprintln!(
+        "ooze: unmatched coverage files: {}",
+        m.unmatched_coverage_files
+    );
+    eprintln!(
+        "ooze: unmatched scanned files:  {}",
+        m.unmatched_source_files
+    );
     if m.coverage_source_files > 0 && m.matched_source_files == 0 {
         eprintln!(
             "ooze: warning: no scanned files matched any coverage entry — check path roots (Docker/CI/monorepo prefixes)"
@@ -138,7 +144,10 @@ fn prompt_language() -> anyhow::Result<String> {
 }
 
 fn resolve_excludes(root: &std::path::Path, user: &[String]) -> Vec<String> {
-    let mut out: Vec<String> = DEFAULT_EXCLUDES.iter().map(std::string::ToString::to_string).collect();
+    let mut out: Vec<String> = DEFAULT_EXCLUDES
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect();
     out.extend(read_gitignore_patterns(root));
     out.extend(user.iter().cloned());
     out
@@ -171,9 +180,17 @@ fn git_changed_files(
     let toplevel = PathBuf::from(String::from_utf8_lossy(&toplevel_out.stdout).trim());
 
     let mut names: std::collections::HashSet<String> = std::collections::HashSet::new();
-    collect_git_paths(root, &["diff", "--name-only", &format!("{base}...HEAD")], &mut names)?;
+    collect_git_paths(
+        root,
+        &["diff", "--name-only", &format!("{base}...HEAD")],
+        &mut names,
+    )?;
     collect_git_paths(root, &["diff", "--name-only", "HEAD"], &mut names)?;
-    collect_git_paths(root, &["ls-files", "--others", "--exclude-standard"], &mut names)?;
+    collect_git_paths(
+        root,
+        &["ls-files", "--others", "--exclude-standard"],
+        &mut names,
+    )?;
 
     // Resolve to source identities; drop entries that no longer exist (e.g.
     // deletions) since they carry no mutation candidates anyway.
@@ -246,7 +263,9 @@ fn resolve_disabled_flag(cli_flag: bool, config_enabled: Option<bool>) -> bool {
 // Returns per-worker build-cache paths when jobs > 1; empty otherwise.
 fn per_worker_cache_dirs(jobs: usize, cache_dir: &std::path::Path) -> Vec<PathBuf> {
     if jobs > 1 {
-        (0..jobs).map(|i| cache_dir.join(format!("build-cache-job-{i}"))).collect()
+        (0..jobs)
+            .map(|i| cache_dir.join(format!("build-cache-job-{i}")))
+            .collect()
     } else {
         Vec::new()
     }
@@ -408,11 +427,7 @@ fn worker_probe_env_dirs(
 
 // `Some` reference for `BatchConfig` when per-worker dirs exist, else `None`.
 fn worker_build_cache_arg(dirs: &[PathBuf]) -> Option<&[PathBuf]> {
-    if dirs.is_empty() {
-        None
-    } else {
-        Some(dirs)
-    }
+    if dirs.is_empty() { None } else { Some(dirs) }
 }
 
 // Warmup dispatch decision: warm per-worker caches, a single shared cache dir,
@@ -517,7 +532,11 @@ pub fn run() -> anyhow::Result<()> {
                 println!("{}", serde_json::to_string_pretty(&spans)?);
             }
         }
-        Commands::Mutants { path, format, exclude } => {
+        Commands::Mutants {
+            path,
+            format,
+            exclude,
+        } => {
             let excludes = resolve_excludes(&path, &exclude);
             let registry = lang::CompiledRegistry::compile(
                 lang::supported_languages(),
@@ -547,7 +566,10 @@ pub fn run() -> anyhow::Result<()> {
                         .collect();
                     languages.sort();
                     languages.dedup();
-                    OperatorEntry { info: op.info(), languages }
+                    OperatorEntry {
+                        info: op.info(),
+                        languages,
+                    }
                 })
                 .collect();
             if format.is_json() {
@@ -567,7 +589,12 @@ pub fn run() -> anyhow::Result<()> {
                     };
                     println!(
                         "{:<18} [{}] default_enabled={}\n  {}\n  langs: {}\n  hint: {}\n",
-                        info.name, info.category, info.default_enabled, info.description, langs, info.test_hint
+                        info.name,
+                        info.category,
+                        info.default_enabled,
+                        info.description,
+                        langs,
+                        info.test_hint
                     );
                 }
             }
@@ -650,7 +677,10 @@ pub fn run() -> anyhow::Result<()> {
                 .into_iter()
                 .map(|c| {
                     let selection = scheduler::explain(strategy, &c, &crap_entries);
-                    PlannedCandidate { candidate: c, selection }
+                    PlannedCandidate {
+                        candidate: c,
+                        selection,
+                    }
                 })
                 .collect();
 
@@ -773,12 +803,10 @@ pub fn run() -> anyhow::Result<()> {
             } else {
                 repo_root.join(&runs_dir)
             };
-            std::fs::create_dir_all(&cache_dir).with_context(|| {
-                format!("creating cache dir {}", cache_dir.display())
-            })?;
-            std::fs::create_dir_all(&runs_dir).with_context(|| {
-                format!("creating runs dir {}", runs_dir.display())
-            })?;
+            std::fs::create_dir_all(&cache_dir)
+                .with_context(|| format!("creating cache dir {}", cache_dir.display()))?;
+            std::fs::create_dir_all(&runs_dir)
+                .with_context(|| format!("creating runs dir {}", runs_dir.display()))?;
 
             let (target_dir, worker_build_cache_dirs): (Option<PathBuf>, Vec<PathBuf>) =
                 if per_worker_cache {
@@ -792,17 +820,15 @@ pub fn run() -> anyhow::Result<()> {
                 } else {
                     let dir = build_cache_dir
                         .unwrap_or_else(|| runner::default_build_cache_dir(&cache_dir));
-                    std::fs::create_dir_all(&dir).with_context(|| {
-                        format!("creating build cache dir {}", dir.display())
-                    })?;
+                    std::fs::create_dir_all(&dir)
+                        .with_context(|| format!("creating build cache dir {}", dir.display()))?;
                     (Some(dir), Vec::new())
                 };
 
             let num_workers = num_workers(jobs, &worker_build_cache_dirs);
             for p in worker_probe_env_dirs(&probe_env, num_workers) {
-                std::fs::create_dir_all(&p).with_context(|| {
-                    format!("creating probe-env directory {}", p.display())
-                })?;
+                std::fs::create_dir_all(&p)
+                    .with_context(|| format!("creating probe-env directory {}", p.display()))?;
             }
 
             let backend = workspace_backend.resolve(&repo_root);
@@ -830,9 +856,11 @@ pub fn run() -> anyhow::Result<()> {
                 .map_or_else(|| repo_root.clone(), |p| p.path_for(0));
 
             if preflight {
-                let preflight_build_cache = target_dir
-                    .as_deref()
-                    .or_else(|| worker_build_cache_dirs.first().map(std::path::PathBuf::as_path));
+                let preflight_build_cache = target_dir.as_deref().or_else(|| {
+                    worker_build_cache_dirs
+                        .first()
+                        .map(std::path::PathBuf::as_path)
+                });
                 let preflight_envs = runner::template::eval_all(
                     &probe_env,
                     runner::ProbeEnvCtx {
@@ -840,12 +868,7 @@ pub fn run() -> anyhow::Result<()> {
                         build_cache: preflight_build_cache,
                     },
                 );
-                let outcome = runner::preflight(
-                    &baseline_root,
-                    &probe,
-                    timeout,
-                    &preflight_envs,
-                )?;
+                let outcome = runner::preflight(&baseline_root, &probe, timeout, &preflight_envs)?;
                 if !outcome.success {
                     #[derive(serde::Serialize)]
                     struct PreflightFailure {
@@ -899,16 +922,14 @@ pub fn run() -> anyhow::Result<()> {
                 match warmup_target(&worker_build_cache_dirs, target_dir.as_deref()) {
                     WarmupTarget::Workers => {
                         eprintln!(
-                            "warming up {} worker build cache dirs in parallel...",
+                            "warming up {} worker build cache dirs...",
                             worker_build_cache_dirs.len()
                         );
-                        let warmup_workspaces: Vec<PathBuf> = (0..worker_build_cache_dirs
-                            .len())
+                        let warmup_workspaces: Vec<PathBuf> = (0..worker_build_cache_dirs.len())
                             .map(|i| {
-                                worktree_pool.as_ref().map_or_else(
-                                    || repo_root.clone(),
-                                    |p| p.path_for(i),
-                                )
+                                worktree_pool
+                                    .as_ref()
+                                    .map_or_else(|| repo_root.clone(), |p| p.path_for(i))
                             })
                             .collect();
                         runner::warmup_workers(
@@ -963,13 +984,8 @@ pub fn run() -> anyhow::Result<()> {
                 worktree_pool: worktree_pool.as_ref(),
             };
 
-            let raw_report = runner::run_mutants_parallel(
-                &repo_root,
-                candidates,
-                &probe,
-                jobs,
-                &cfg,
-            )?;
+            let raw_report =
+                runner::run_mutants_parallel(&repo_root, candidates, &probe, jobs, &cfg)?;
 
             if let Some(pool) = worktree_pool.as_mut()
                 && let Err(e) = pool.cleanup()
@@ -987,11 +1003,8 @@ pub fn run() -> anyhow::Result<()> {
                 None => print!("{text}"),
             }
 
-            let exit = report::exit_code_for_report(
-                &enriched,
-                no_fail_on_survivors,
-                allow_incomplete,
-            );
+            let exit =
+                report::exit_code_for_report(&enriched, no_fail_on_survivors, allow_incomplete);
             std::process::exit(exit.code());
         }
         Commands::Warmup {
@@ -1042,7 +1055,11 @@ pub fn run() -> anyhow::Result<()> {
                 std::process::exit(1);
             }
         }
-        Commands::InitConfig { path, force, language } => {
+        Commands::InitConfig {
+            path,
+            force,
+            language,
+        } => {
             if path.exists() && !force {
                 anyhow::bail!(
                     "{} already exists; pass --force to overwrite",
@@ -1253,12 +1270,7 @@ mod tests {
 
     #[test]
     fn resolve_operators_uses_config_when_cli_empty() {
-        let out = resolve_operators(
-            vec![],
-            Some(&vec!["swap_boolean".to_string()]),
-            None,
-        )
-        .unwrap();
+        let out = resolve_operators(vec![], Some(&vec!["swap_boolean".to_string()]), None).unwrap();
         assert_eq!(out, vec![core::OperatorName::SwapBoolean]);
     }
 
@@ -1292,12 +1304,7 @@ mod tests {
 
     #[test]
     fn resolve_exclude_operators_uses_config_when_cli_empty() {
-        let out = resolve_exclude_operators(
-            vec![],
-            &["swap_boolean".to_string()],
-            &[],
-        )
-        .unwrap();
+        let out = resolve_exclude_operators(vec![], &["swap_boolean".to_string()], &[]).unwrap();
         assert_eq!(out, vec![core::OperatorName::SwapBoolean]);
     }
 
@@ -1393,7 +1400,10 @@ mod tests {
     #[test]
     fn warmup_target_falls_back_to_shared() {
         let shared = std::path::Path::new("/shared");
-        assert_eq!(warmup_target(&[], Some(shared)), WarmupTarget::Shared(shared));
+        assert_eq!(
+            warmup_target(&[], Some(shared)),
+            WarmupTarget::Shared(shared)
+        );
     }
 
     #[test]

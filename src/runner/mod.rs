@@ -283,9 +283,7 @@ fn create_workspace(
     run_id: &str,
 ) -> Result<Workspace> {
     match backend {
-        WorkspaceBackend::Copy => {
-            CowWorkspace::create_from_repo(repo_root).map(Workspace::Copy)
-        }
+        WorkspaceBackend::Copy => CowWorkspace::create_from_repo(repo_root).map(Workspace::Copy),
         WorkspaceBackend::Overlay => {
             overlay::OverlayWorkspace::create(repo_root, runs_dir, run_id).map(Workspace::Overlay)
         }
@@ -347,7 +345,9 @@ fn try_run_one(
     let applied = apply_mutation(workspace_path, repo_root, candidate)
         .with_context(|| format!("applying mutation {}", candidate.id))?;
     let worker_build_cache: Option<PathBuf> = cfg.worker_build_cache_dirs.and_then(|dirs| {
-        dirs.get(worker_idx).cloned().or_else(|| dirs.first().cloned())
+        dirs.get(worker_idx)
+            .cloned()
+            .or_else(|| dirs.first().cloned())
     });
     let build_cache_dir = worker_build_cache.as_deref().or(cfg.build_cache_dir);
 
@@ -554,6 +554,33 @@ pub fn warmup_workers(
     if target_dirs.is_empty() || workspaces.is_empty() {
         return Ok(());
     }
+
+    let run_one = |idx: usize, dir: &PathBuf| -> Result<()> {
+        let extra_envs = template::eval_all(
+            probe_env_templates,
+            ProbeEnvCtx {
+                worker: idx,
+                build_cache: Some(dir),
+            },
+        );
+        let workspace = &workspaces[idx.min(workspaces.len() - 1)];
+        let status = warmup(workspace, probe, Some(dir), &extra_envs)?;
+        if !status.success() {
+            bail!("warmup failed in {} with status {status}", dir.display());
+        }
+        Ok(())
+    };
+
+    // Copy/overlay backends warm multiple cache dirs from the same checkout. Do
+    // not run ordinary test suites concurrently in one source tree: tests may
+    // share fixture paths or repo-local state even when build caches differ.
+    if workspaces_share_source(workspaces, target_dirs.len()) {
+        for (idx, dir) in target_dirs.iter().enumerate() {
+            run_one(idx, dir)?;
+        }
+        return Ok(());
+    }
+
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(jobs.max(1))
         .build()
@@ -562,25 +589,32 @@ pub fn warmup_workers(
         target_dirs
             .par_iter()
             .enumerate()
-            .try_for_each(|(idx, dir)| -> Result<()> {
-                let extra_envs = template::eval_all(
-                    probe_env_templates,
-                    ProbeEnvCtx {
-                        worker: idx,
-                        build_cache: Some(dir),
-                    },
-                );
-                let workspace = &workspaces[idx.min(workspaces.len() - 1)];
-                let status = warmup(workspace, probe, Some(dir), &extra_envs)?;
-                if !status.success() {
-                    bail!("warmup failed in {} with status {status}", dir.display());
-                }
-                Ok(())
-            })
+            .try_for_each(|(idx, dir)| run_one(idx, dir))
+    })
+}
+
+fn workspaces_share_source(workspaces: &[PathBuf], target_count: usize) -> bool {
+    (0..target_count).any(|idx| {
+        let workspace = &workspaces[idx.min(workspaces.len() - 1)];
+        (0..idx).any(|seen_idx| {
+            let seen = &workspaces[seen_idx.min(workspaces.len() - 1)];
+            seen == workspace
+        })
     })
 }
 
 fn copy_repo(src: &Path, dst: &Path) -> Result<()> {
+    copy_repo_with(src, dst, reflink_file)
+}
+
+fn copy_repo_with(
+    src: &Path,
+    dst: &Path,
+    reflink: impl Fn(&Path, &Path) -> std::io::Result<()>,
+) -> Result<()> {
+    let mut reflinked: u64 = 0;
+    let mut copied: u64 = 0;
+
     for entry in WalkDir::new(src) {
         let entry = entry?;
         let path = entry.path();
@@ -607,12 +641,76 @@ fn copy_repo(src: &Path, dst: &Path) -> Result<()> {
                     .with_context(|| format!("creating parent {}", parent.display()))?;
             }
 
-            std::fs::copy(path, &target)
-                .with_context(|| format!("copying {} -> {}", path.display(), target.display()))?;
+            if copy_file_with(&reflink, path, &target)? {
+                reflinked += 1;
+            } else {
+                copied += 1;
+            }
         }
     }
 
+    tracing::debug!(reflinked, copied, "copy backend: workspace populated");
+
     Ok(())
+}
+
+/// Copy one regular file, attempting a reflink / copy-on-write clone first.
+/// Returns `true` if the file was reflinked, `false` if it fell back to a normal
+/// copy. Any reflink error (unsupported filesystem, cross-device, ...) is a
+/// fallback, never a failure; only the normal copy's error is surfaced.
+fn copy_file_with(
+    reflink: impl Fn(&Path, &Path) -> std::io::Result<()>,
+    src: &Path,
+    dst: &Path,
+) -> Result<bool> {
+    if reflink(src, dst).is_ok() {
+        return Ok(true);
+    }
+
+    std::fs::copy(src, dst)
+        .with_context(|| format!("copying {} -> {}", src.display(), dst.display()))?;
+    Ok(false)
+}
+
+/// Clone `src` to `dst` with the Linux `FICLONE` ioctl. Fails with the raw OS
+/// error (EXDEV, EOPNOTSUPP, ENOTTY, EINVAL, ...) when the filesystem doesn't
+/// support reflinks; callers treat any error as "fall back to a normal copy".
+#[cfg(target_os = "linux")]
+fn reflink_file(src: &Path, dst: &Path) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+    use std::os::raw::{c_int, c_ulong};
+
+    unsafe extern "C" {
+        fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
+    }
+
+    // _IOW(0x94, 9, int) from linux/fs.h.
+    const FICLONE: c_ulong = 0x4004_9409;
+
+    let src_file = std::fs::File::open(src)?;
+    let dst_file = std::fs::File::create(dst)?;
+
+    let rc = unsafe { ioctl(dst_file.as_raw_fd(), FICLONE, src_file.as_raw_fd()) };
+    let result = if rc == 0 {
+        // FICLONE clones contents only; carry over the source permissions the
+        // same way std::fs::copy does.
+        src_file
+            .metadata()
+            .and_then(|m| std::fs::set_permissions(dst, m.permissions()))
+    } else {
+        Err(std::io::Error::last_os_error())
+    };
+
+    if result.is_err() {
+        drop(dst_file);
+        let _ = std::fs::remove_file(dst);
+    }
+    result
+}
+
+#[cfg(not(target_os = "linux"))]
+fn reflink_file(_src: &Path, _dst: &Path) -> std::io::Result<()> {
+    Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
 }
 
 fn should_skip(relative: &Path) -> bool {
@@ -679,16 +777,180 @@ mod tests {
             "-c".to_string(),
             "yes | head -c 200000".to_string(),
         ];
-        let outcome = preflight(
-            Path::new("."),
-            &probe,
-            Some(Duration::from_secs(30)),
-            &[],
-        )
-        .expect("preflight should run");
+        let outcome = preflight(Path::new("."), &probe, Some(Duration::from_secs(30)), &[])
+            .expect("preflight should run");
 
-        assert!(!outcome.timed_out, "200KB of output was misread as a timeout");
+        assert!(
+            !outcome.timed_out,
+            "200KB of output was misread as a timeout"
+        );
         assert!(outcome.success, "probe exited 0");
         assert_eq!(outcome.stdout.len(), 200_000, "full stdout captured");
+    }
+
+    #[test]
+    fn detects_shared_warmup_workspace() {
+        assert!(workspaces_share_source(
+            &[PathBuf::from("/repo"), PathBuf::from("/repo")],
+            2
+        ));
+        assert!(
+            workspaces_share_source(&[PathBuf::from("/repo")], 2),
+            "clamped workspace indexes share the same source"
+        );
+        assert!(!workspaces_share_source(
+            &[
+                PathBuf::from("/repo/worktree-0"),
+                PathBuf::from("/repo/worktree-1"),
+            ],
+            2
+        ));
+    }
+
+    fn unsupported_reflink(_src: &Path, _dst: &Path) -> std::io::Result<()> {
+        Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
+    }
+
+    /// Build a small fake repo with a nested source file, an ignored
+    /// directory, and (on unix) an executable script.
+    fn make_repo() -> TempDir {
+        let repo = tempfile::tempdir().expect("temp repo");
+        let root = repo.path();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/lib.rs"), "pub fn one() -> i32 { 1 }\n").unwrap();
+        std::fs::write(root.join("README.md"), "readme\n").unwrap();
+        std::fs::create_dir_all(root.join("target/debug")).unwrap();
+        std::fs::write(root.join("target/debug/junk"), "junk").unwrap();
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        std::fs::write(root.join(".git/HEAD"), "ref: refs/heads/main").unwrap();
+        std::fs::write(root.join("run.sh"), "#!/bin/sh\nexit 0\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(root.join("run.sh"), std::fs::Permissions::from_mode(0o755))
+                .unwrap();
+        }
+        repo
+    }
+
+    #[test]
+    fn copy_repo_works_without_reflink_support() {
+        let repo = make_repo();
+        let dst = tempfile::tempdir().unwrap();
+
+        copy_repo_with(repo.path(), dst.path(), unsupported_reflink).expect("copy succeeds");
+
+        assert_eq!(
+            std::fs::read_to_string(dst.path().join("src/lib.rs")).unwrap(),
+            "pub fn one() -> i32 { 1 }\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dst.path().join("README.md")).unwrap(),
+            "readme\n"
+        );
+    }
+
+    #[test]
+    fn copy_repo_skips_ignored_directories() {
+        let repo = make_repo();
+        let dst = tempfile::tempdir().unwrap();
+
+        copy_repo_with(repo.path(), dst.path(), unsupported_reflink).unwrap();
+
+        assert!(
+            !dst.path().join("target").exists(),
+            "target must be skipped"
+        );
+        assert!(!dst.path().join(".git").exists(), ".git must be skipped");
+    }
+
+    #[test]
+    fn copy_repo_leaves_original_untouched() {
+        let repo = make_repo();
+        let dst = tempfile::tempdir().unwrap();
+
+        copy_repo_with(repo.path(), dst.path(), unsupported_reflink).unwrap();
+        std::fs::write(dst.path().join("src/lib.rs"), "mutated").unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(repo.path().join("src/lib.rs")).unwrap(),
+            "pub fn one() -> i32 { 1 }\n",
+            "mutating the workspace must not touch the source checkout"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn copy_repo_preserves_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let repo = make_repo();
+        let dst = tempfile::tempdir().unwrap();
+
+        copy_repo_with(repo.path(), dst.path(), unsupported_reflink).unwrap();
+
+        let mode = std::fs::metadata(dst.path().join("run.sh"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o755, "executable bit must survive the copy");
+    }
+
+    #[test]
+    fn reflink_failure_falls_back_to_normal_copy() {
+        let repo = make_repo();
+        let dst = tempfile::tempdir().unwrap();
+        let src = repo.path().join("src/lib.rs");
+        let target = dst.path().join("lib.rs");
+
+        // Simulate a filesystem where reflink starts (creating the file) but
+        // then fails, like a failing FICLONE ioctl leaving a partial dest.
+        let flaky = |_s: &Path, d: &Path| -> std::io::Result<()> {
+            std::fs::write(d, "partial")?;
+            std::fs::remove_file(d)?;
+            Err(std::io::Error::from_raw_os_error(18)) // EXDEV
+        };
+
+        let reflinked = copy_file_with(flaky, &src, &target).expect("fallback copy succeeds");
+        assert!(!reflinked, "must report a normal copy, not a reflink");
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "pub fn one() -> i32 { 1 }\n"
+        );
+    }
+
+    #[test]
+    fn successful_reflink_skips_normal_copy() {
+        let repo = make_repo();
+        let dst = tempfile::tempdir().unwrap();
+        let src = repo.path().join("src/lib.rs");
+        let target = dst.path().join("lib.rs");
+
+        let fake_clone =
+            |s: &Path, d: &Path| -> std::io::Result<()> { std::fs::copy(s, d).map(|_| ()) };
+
+        let reflinked = copy_file_with(fake_clone, &src, &target).expect("clone succeeds");
+        assert!(reflinked, "must report the reflink path was taken");
+        assert_eq!(
+            std::fs::read_to_string(&target).unwrap(),
+            "pub fn one() -> i32 { 1 }\n"
+        );
+    }
+
+    /// The real reflink attempt must never break the copy backend: whether
+    /// the test filesystem supports FICLONE or not, the workspace comes out
+    /// identical.
+    #[test]
+    fn copy_repo_with_real_reflink_attempt() {
+        let repo = make_repo();
+        let dst = tempfile::tempdir().unwrap();
+
+        copy_repo(repo.path(), dst.path()).expect("copy succeeds");
+
+        assert_eq!(
+            std::fs::read_to_string(dst.path().join("src/lib.rs")).unwrap(),
+            "pub fn one() -> i32 { 1 }\n"
+        );
+        assert!(!dst.path().join("target").exists());
     }
 }

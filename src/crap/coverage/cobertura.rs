@@ -15,8 +15,7 @@ use super::CoverageMap;
 pub fn parse(path: &Path) -> Result<CoverageMap> {
     let contents = std::fs::read_to_string(path)
         .with_context(|| format!("opening Cobertura file {}", path.display()))?;
-    parse_str(&contents)
-        .with_context(|| format!("parsing Cobertura file {}", path.display()))
+    parse_str(&contents).with_context(|| format!("parsing Cobertura file {}", path.display()))
 }
 
 fn parse_str(xml: &str) -> Result<CoverageMap> {

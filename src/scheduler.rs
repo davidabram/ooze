@@ -69,9 +69,7 @@ fn index_crap(crap_entries: &[CrapEntry]) -> CrapIndex<'_> {
 }
 
 fn lookup<'a>(index: &'a CrapIndex<'a>, c: &MutationCandidate) -> Option<&'a CrapEntry> {
-    index
-        .get(&(c.file.clone(), c.function.clone()))
-        .copied()
+    index.get(&(c.file.clone(), c.function.clone())).copied()
 }
 
 fn actionable_score_with_reasons(
@@ -157,8 +155,7 @@ pub fn explain(
             actionable_score_with_reasons(entry, &DEFAULT_ACTIONABLE_POLICY)
         }
         MutationStrategy::HighestCrap => {
-            let s = entry
-                .map_or(i32::MIN, |e| e.crap.round() as i32);
+            let s = entry.map_or(i32::MIN, |e| e.crap.round() as i32);
             let r = match entry {
                 Some(e) => vec![format!("CRAP {:.1}", e.crap)],
                 None => vec!["no CRAP entry for function".to_string()],

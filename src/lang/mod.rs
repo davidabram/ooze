@@ -133,11 +133,7 @@ pub fn scan_directory_with_registry(
                 .add(&format!("!{pat}"))
                 .with_context(|| format!("compiling exclude pattern {pat:?}"))?;
         }
-        builder.overrides(
-            overrides
-                .build()
-                .context("building exclude overrides")?,
-        );
+        builder.overrides(overrides.build().context("building exclude overrides")?);
     }
 
     let mut spans = Vec::new();

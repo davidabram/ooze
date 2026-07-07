@@ -18,16 +18,14 @@ pub fn score_crap(cyclomatic: usize, coverage_pct: f64) -> f64 {
 pub fn score_without_coverage(functions: Vec<FunctionSpan>) -> Vec<CrapEntry> {
     let mut entries: Vec<CrapEntry> = functions
         .into_iter()
-        .map(|f| {
-            CrapEntry {
-                file: f.file,
-                language: f.language,
-                function: f.name,
-                line: f.start_line,
-                cyclomatic: f.cyclomatic,
-                coverage: 0.0,
-                crap: score_crap(f.cyclomatic, 0.0),
-            }
+        .map(|f| CrapEntry {
+            file: f.file,
+            language: f.language,
+            function: f.name,
+            line: f.start_line,
+            cyclomatic: f.cyclomatic,
+            coverage: 0.0,
+            crap: score_crap(f.cyclomatic, 0.0),
         })
         .collect();
 
@@ -47,8 +45,9 @@ pub fn score_with_coverage(
     let mut entries: Vec<CrapEntry> = functions
         .into_iter()
         .map(|f| {
-            let coverage_pct = lookup_coverage(&f.file, coverage)
-                .map_or(0.0, |file_cov| file_cov.coverage_in_span(f.start_line, f.end_line));
+            let coverage_pct = lookup_coverage(&f.file, coverage).map_or(0.0, |file_cov| {
+                file_cov.coverage_in_span(f.start_line, f.end_line)
+            });
 
             CrapEntry {
                 file: f.file,
@@ -96,8 +95,7 @@ fn match_coverage_key<'a>(
     }
 
     coverage.keys().find(|coverage_path| {
-        path_has_suffix(source_file, coverage_path)
-            || path_has_suffix(coverage_path, source_file)
+        path_has_suffix(source_file, coverage_path) || path_has_suffix(coverage_path, source_file)
     })
 }
 
@@ -166,7 +164,7 @@ fn path_has_suffix(path: &Path, suffix: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{score_crap, FileCoverage};
+    use super::{FileCoverage, score_crap};
 
     #[test]
     fn untested_complex_method_matches_known_example() {
