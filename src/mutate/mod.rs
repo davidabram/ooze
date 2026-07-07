@@ -777,6 +777,42 @@ mod operator_fixture_tests {
     }
 
     #[test]
+    fn go_operator_fixture_discovers_expected_mutants() {
+        use Language::Go;
+        use OperatorName::{
+            ComparisonBoundary, IntegerZeroOne, NegateEquality, SwapBoolean, SwapLogical,
+        };
+
+        let got = discovered("tests/fixtures/operators/go/sample.go");
+        let want: BTreeSet<ExpectedMutant> = [
+            // `enabled == true`, `return true`, `return false`: the two `true`
+            // flips collapse to one shape in this location-free view.
+            expect(Go, "IsReady", NegateEquality, "==", "!="),
+            expect(Go, "IsReady", SwapBoolean, "true", "false"),
+            expect(Go, "IsReady", SwapBoolean, "false", "true"),
+            // `x < 0` / `x > 1` drive the comparisons; the `0`/`1` literals in the
+            // conditions and returns collapse to one shape each.
+            expect(Go, "Clamp", ComparisonBoundary, "<", "<="),
+            expect(Go, "Clamp", ComparisonBoundary, ">", ">="),
+            expect(Go, "Clamp", IntegerZeroOne, "0", "1"),
+            expect(Go, "Clamp", IntegerZeroOne, "1", "0"),
+            expect(Go, "Both", SwapLogical, "&&", "||"),
+        ]
+        .into_iter()
+        .collect();
+
+        assert_eq!(got, want);
+    }
+
+    #[test]
+    fn go_comments_and_strings_produce_no_candidates() {
+        // The queries match syntax nodes only, so `true == false` in a comment and
+        // `"x == y && true"` in a string literal must never yield mutants.
+        let got = discovered("tests/fixtures/operators/go/ignore.go");
+        assert_eq!(got, BTreeSet::new(), "comment/string content must not mutate");
+    }
+
+    #[test]
     fn typescript_operator_fixture_discovers_expected_mutants() {
         use Language::TypeScript;
         use OperatorName::{

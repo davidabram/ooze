@@ -95,10 +95,13 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         eprintln!("ooze: loaded config from {}", p.display());
     }
 
-    let rust_preset = preset == Some(Preset::Rust);
-    if rust_preset && !path.join("Cargo.toml").exists() {
+    if let Some(p) = preset
+        && !path.join(p.marker_file()).exists()
+    {
         anyhow::bail!(
-            "rust preset requires a Cargo.toml at the project path ({})",
+            "{} preset requires a {} at the project path ({})",
+            p.name(),
+            p.marker_file(),
             path.display()
         );
     }
@@ -119,13 +122,16 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         .or(cfg.runner.timeout_seconds)
         .map(Duration::from_secs);
     let build_cache_dir = build_cache_dir.or(cfg.runner.build_cache_dir.clone());
-    let per_worker_cache = if !per_worker_cache && cfg.runner.per_worker_cache.is_none() && rust_preset {
+    // Only the rust preset turns on per-worker caches: Cargo target dirs fight
+    // over locks when shared, while Go's build cache is designed to be shared.
+    let preset_per_worker_cache = preset == Some(Preset::Rust);
+    let per_worker_cache = if !per_worker_cache && cfg.runner.per_worker_cache.is_none() && preset_per_worker_cache {
         preset_fills.push("per_worker_cache=true".into());
         true
     } else {
         resolve_bool_flag(per_worker_cache, cfg.runner.per_worker_cache)
     };
-    let warmup = if !warmup && cfg.runner.warmup.is_none() && rust_preset {
+    let warmup = if !warmup && cfg.runner.warmup.is_none() && preset.is_some() {
         preset_fills.push("warmup=true".into());
         true
     } else {
@@ -135,7 +141,7 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         Some(w) => w,
         None => match cfg.runner.workspace_backend.as_deref() {
             Some(s) => parse_workspace_backend_str(s)?,
-            None if rust_preset => {
+            None if preset.is_some() => {
                 preset_fills.push("workspace_backend=worktree".into());
                 WorkspaceBackendArg::Worktree
             }
@@ -196,8 +202,10 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         .into_iter()
         .map(|(k, v)| runner::ProbeEnvTemplate::parse(k, &v))
         .collect();
-    if rust_preset {
-        preset_fills.extend(rust_preset_probe_env_fills(&mut probe_env));
+    match preset {
+        Some(Preset::Rust) => preset_fills.extend(rust_preset_probe_env_fills(&mut probe_env)),
+        Some(Preset::Go) => preset_fills.extend(go_preset_probe_env_fills(&mut probe_env)),
+        None => {}
     }
 
     let operators = resolve_operators(
@@ -220,9 +228,10 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
     if probe.is_empty() {
         if let Some(cmd) = cfg.probe.command.as_ref() {
             probe.clone_from(cmd);
-        } else if rust_preset {
-            preset_fills.push("probe=`cargo test`".into());
-            probe = vec!["cargo".to_string(), "test".to_string()];
+        } else if let Some(p) = preset {
+            let cmd = default_probe(p);
+            preset_fills.push(format!("probe=`{}`", cmd.join(" ")));
+            probe = cmd;
         } else {
             anyhow::bail!(
                 "missing probe command; pass one after `--` or set [probe].command in ooze.toml"
@@ -230,8 +239,10 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         }
     }
 
-    if !preset_fills.is_empty() {
-        eprintln!("ooze: preset rust: {}", preset_fills.join(", "));
+    if let Some(p) = preset
+        && !preset_fills.is_empty()
+    {
+        eprintln!("ooze: preset {}: {}", p.name(), preset_fills.join(", "));
     }
 
     let pre_run = match cfg.runner.pre_run.clone() {
@@ -273,8 +284,32 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
     })
 }
 
+/// The probe each preset falls back to when neither `--` args nor
+/// `[probe].command` supply one.
+fn default_probe(preset: Preset) -> Vec<String> {
+    let cmd: &[&str] = match preset {
+        Preset::Rust => &["cargo", "test"],
+        Preset::Go => &["go", "test", "./..."],
+    };
+    cmd.iter().map(ToString::to_string).collect()
+}
+
 fn probe_env_has_key(probe_env: &[runner::ProbeEnvTemplate], key: &str) -> bool {
     probe_env.iter().any(|t| t.key() == key)
+}
+
+/// Append one probe-env default when the user hasn't set `key` themselves;
+/// returns the fill description for the preset debug line.
+fn fill_probe_env(
+    probe_env: &mut Vec<runner::ProbeEnvTemplate>,
+    key: &str,
+    value: &str,
+) -> Option<String> {
+    if probe_env_has_key(probe_env, key) {
+        return None;
+    }
+    probe_env.push(runner::ProbeEnvTemplate::parse(key.to_string(), value));
+    Some(format!("probe_env += {key}={value}"))
 }
 
 /// Append the rust preset's probe-env defaults to `probe_env` when the user
@@ -286,14 +321,23 @@ fn probe_env_has_key(probe_env: &[runner::ProbeEnvTemplate], key: &str) -> bool 
 /// sccache stays opt-in via `--probe-env RUSTC_WRAPPER=sccache` (doctor
 /// suggests this when it detects sccache).
 fn rust_preset_probe_env_fills(probe_env: &mut Vec<runner::ProbeEnvTemplate>) -> Vec<String> {
+    fill_probe_env(probe_env, "CARGO_TARGET_DIR", "{build_cache}")
+        .into_iter()
+        .collect()
+}
+
+/// Append the go preset's probe-env defaults to `probe_env` when the user
+/// hasn't set the same keys themselves. Returns a description of each fill
+/// for the preset debug line.
+///
+/// Both point into the shared build-cache dir (the runner creates it): the Go
+/// build cache is concurrency-safe so workers share GOCACHE, and GOTMPDIR only
+/// hosts per-invocation work dirs the `go` command creates itself — this keeps
+/// probe temp writes out of the system /tmp without per-worker dirs.
+fn go_preset_probe_env_fills(probe_env: &mut Vec<runner::ProbeEnvTemplate>) -> Vec<String> {
     let mut fills = Vec::new();
-    if !probe_env_has_key(probe_env, "CARGO_TARGET_DIR") {
-        probe_env.push(runner::ProbeEnvTemplate::parse(
-            "CARGO_TARGET_DIR".to_string(),
-            "{build_cache}",
-        ));
-        fills.push("probe_env += CARGO_TARGET_DIR={build_cache}".to_string());
-    }
+    fills.extend(fill_probe_env(probe_env, "GOCACHE", "{build_cache}/go-build"));
+    fills.extend(fill_probe_env(probe_env, "GOTMPDIR", "{build_cache}"));
     fills
 }
 

@@ -142,9 +142,17 @@ fn languages_json_reports_support_levels() {
         .iter()
         .find(|l| l["language"] == "go")
         .expect("go listed");
-    assert_eq!(go["support"], "scan_only");
-    assert_eq!(go["mutates"], false);
-    assert_eq!(go["operators"], 0);
+    assert_eq!(go["support"], "mutate_experimental");
+    assert_eq!(go["mutates"], true);
+    assert_eq!(go["operators"], 5);
+
+    let java = langs
+        .iter()
+        .find(|l| l["language"] == "java")
+        .expect("java listed");
+    assert_eq!(java["support"], "scan_only");
+    assert_eq!(java["mutates"], false);
+    assert_eq!(java["operators"], 0);
 }
 
 #[test]
@@ -606,6 +614,127 @@ fn typescript_operator_fixture_matches_snapshot() {
         17,
         "expected all 17 TypeScript operators to fire, got: {operators:?}"
     );
+}
+
+#[test]
+fn go_operator_fixture_matches_snapshot() {
+    let out = ooze()
+        .args(["mutants", "--path", "tests/fixtures/operators/go/all.go", "--format", "json"])
+        .output()
+        .expect("failed to run ooze");
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+
+    let discovered: Vec<serde_json::Value> =
+        serde_json::from_slice(&out.stdout).expect("mutants output should be JSON");
+    let got = snapshot_sorted(discovered.iter().map(stable_fields).collect());
+
+    let expected_raw = std::fs::read_to_string("tests/fixtures/operators/go/expected.json")
+        .expect("expected.json fixture should exist");
+    let expected: Vec<serde_json::Value> =
+        serde_json::from_str(&expected_raw).expect("expected.json should be valid JSON");
+    let want = snapshot_sorted(expected);
+
+    assert_eq!(
+        got, want,
+        "discovered Go mutants drifted from tests/fixtures/operators/go/expected.json"
+    );
+
+    // Guard the headline promise: every one of the 5 Go operators still fires.
+    let operators: std::collections::BTreeSet<&str> = discovered
+        .iter()
+        .map(|c| c["operator"].as_str().expect("operator should be a string"))
+        .collect();
+    assert_eq!(
+        operators.len(),
+        5,
+        "expected all 5 Go operators to fire, got: {operators:?}"
+    );
+}
+
+// ── go preset end to end ──────────────────────────────────────────────────────
+
+/// Full `test-mutants --preset go` run against a minimal Go module: discovers
+/// mutants, builds a worktree workspace, runs `go test ./...`, and classifies
+/// outcomes. Skips when the `go` toolchain is not on PATH so the suite stays
+/// runnable on machines without Go; the equivalent manual smoke command is
+/// documented in docs/running-mutants.md.
+#[test]
+fn go_preset_end_to_end_discovers_and_classifies_mutants() {
+    if Command::new("go").arg("version").output().is_err() {
+        eprintln!("skipping go_preset_end_to_end: `go` not found on PATH");
+        return;
+    }
+
+    let tmp = tempdir();
+    std::fs::write(
+        tmp.path().join("go.mod"),
+        "module example.com/ooze-go-test\n\ngo 1.22\n",
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("sample.go"),
+        "package sample\n\nfunc IsPositive(x int) bool {\n\treturn x > 0\n}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        tmp.path().join("sample_test.go"),
+        concat!(
+            "package sample\n\nimport \"testing\"\n\n",
+            "func TestIsPositive(t *testing.T) {\n",
+            "\tif !IsPositive(1) {\n\t\tt.Fatal(\"expected positive\")\n\t}\n",
+            "\tif IsPositive(0) {\n\t\tt.Fatal(\"expected zero to not be positive\")\n\t}\n",
+            "}\n"
+        ),
+    )
+    .unwrap();
+
+    // The go preset defaults to the worktree backend, which needs a committed repo.
+    for args in [
+        &["init", "-q"][..],
+        &["config", "user.email", "test@example.com"],
+        &["config", "user.name", "Test"],
+        &["add", "."],
+        &["commit", "-q", "-m", "init"],
+    ] {
+        let ok = Command::new("git")
+            .arg("-C")
+            .arg(tmp.path())
+            .args(args)
+            .status()
+            .expect("running git")
+            .success();
+        assert!(ok, "git {args:?} failed");
+    }
+
+    let out = ooze()
+        .args([
+            "test-mutants",
+            "--path", tmp.path().to_str().unwrap(),
+            "--preset", "go",
+            "--limit", "1",
+            "--jobs", "1",
+            "--format", "json",
+        ])
+        .output()
+        .expect("failed to run test-mutants");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let report: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("test-mutants should output JSON");
+    let outcomes = report["outcomes"].as_array().expect("report has outcomes");
+    assert_eq!(outcomes.len(), 1, "expected exactly one tested mutant");
+    let status = outcomes[0]["status"].as_str().expect("outcome has a status");
+    assert!(
+        ["killed", "survived", "timeout", "error"].contains(&status),
+        "unexpected outcome status {status:?}"
+    );
+    // `IsPositive`'s `x > 0` under this test suite: any of the discovered
+    // mutations (`>` -> `>=`, `0` -> `1`) is caught, so the first mutant dies.
+    assert_eq!(status, "killed", "report: {report}");
 }
 
 // ── crap ──────────────────────────────────────────────────────────────────────

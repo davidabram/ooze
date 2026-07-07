@@ -17,7 +17,7 @@ the verdict:
 | `--limit`              | Cap candidates for a quick smoke run.                                |
 | `--strategy`           | Ordering: `discovery`, `actionable`, etc.                            |
 | `--timeout-seconds`    | Per-mutant probe timeout.                                            |
-| `--preset`             | Language preset that fills unset options with ecosystem defaults (see below). Only `rust` for now. |
+| `--preset`             | Language preset that fills unset options with ecosystem defaults (see below). `rust` and `go` for now. |
 | `--workspace-backend`  | `worktree` (Git, rootless), `copy` (portable), `overlay` (Linux; needs root), `auto` (worktree in a Git repo, else copy). |
 | `--exclude`            | Extra glob excludes, comma-separated. Defaults + `.gitignore` apply. |
 | `--warmup`             | Pre-build the probe in each worker dir before running mutants.       |
@@ -47,9 +47,27 @@ suggests this when it finds sccache):
 ooze test-mutants --preset rust --probe-env RUSTC_WRAPPER=sccache
 ```
 
+`--preset go` does the same for Go modules:
+
+- `--workspace-backend worktree`
+- `--warmup`
+- `--probe-env GOCACHE={build_cache}/go-build` (skipped if you already set
+  `GOCACHE`)
+- `--probe-env GOTMPDIR={build_cache}` (skipped if you already set `GOTMPDIR`)
+- probe `go test ./...` (only when no probe is given after `--` and none is
+  set in `ooze.toml`)
+
+Unlike the Rust preset, Go keeps the default shared build cache instead of
+`--per-worker-cache`: Go's build cache is concurrency-safe by design, so all
+workers share one `GOCACHE`. `GOTMPDIR` points at the same shared dir — the
+`go` command creates a unique work dir per invocation inside it — keeping
+probe temp writes out of the system `/tmp`.
+
 Presets are default-fillers, not overrides: explicit CLI flags and `ooze.toml`
 values always win. The applied fills are printed on stderr as
-`ooze: preset rust: ...` so the expansion stays visible.
+`ooze: preset <name>: ...` so the expansion stays visible. `ooze doctor` shows
+the same fill list for the preset it recommends, marking fills your
+`ooze.toml` already overrides.
 
 ```bash
 # everything defaulted
@@ -62,9 +80,10 @@ ooze test-mutants --preset rust -- cargo test --lib
 ooze test-mutants --preset rust --workspace-backend overlay
 ```
 
-The preset requires a `Cargo.toml` at the project path, and its worktree
-default requires running inside a Git repository (you'll get a clear error
-otherwise; pass `--workspace-backend copy` to opt out).
+The `rust` preset requires a `Cargo.toml` at the project path and the `go`
+preset a `go.mod`; both default to the worktree backend, which requires
+running inside a Git repository (you'll get a clear error otherwise; pass
+`--workspace-backend copy` to opt out).
 
 ## Workspace backends
 
@@ -116,6 +135,28 @@ Drop `sudo` and switch to `--workspace-backend copy` if you don't want
 overlayfs.
 
 ## Go
+
+Go has initial mutation operator support (`mutate_experimental`). The first
+operator set sticks to swaps that always keep the code compiling:
+
+- boolean swaps (`true` ↔ `false`)
+- equality negation (`==` ↔ `!=`)
+- comparison boundary swaps (`<` ↔ `<=`, `>` ↔ `>=`)
+- 0/1 integer swaps (`0` ↔ `1`)
+- logical swaps (`&&` ↔ `||`)
+
+Candidates come from tree-sitter syntax nodes, so operator-like text inside
+comments and string literals is never mutated.
+
+Manual smoke run against any Go module (the CI equivalent lives in
+`tests/cli.rs` and skips when `go` is not installed):
+
+```bash
+ooze test-mutants --path <go-module> --preset go --limit 5 --jobs 2
+```
+
+This discovers mutants, uses the worktree backend, runs `go test ./...` per
+mutant, and reports killed/survived/timeout/error in the usual formats.
 
 Go's build/test cache lives in `GOCACHE`. Give each worker its own:
 

@@ -12,9 +12,9 @@ Support comes in two tiers — parsing a language is not the same as mutating it
 
 - **Mutation** (scan + mutation operators):
   - `mutate_stable` (golden-tested): **Rust**
-  - `mutate_experimental`: **JavaScript · TypeScript · Python**
+  - `mutate_experimental`: **JavaScript · TypeScript · Python · Go**
 - **Scan-only** (function/branch discovery and CRAP scoring, no mutators yet):
-  Bash · C · C++ · C# · Dart · Elixir · Erlang · Gleam · Go · Haskell · Java ·
+  Bash · C · C++ · C# · Dart · Elixir · Erlang · Gleam · Haskell · Java ·
   Julia · Lua · OCaml · PHP · Ruby · Scala · Swift · Zig.
 
 Run `ooze languages` for the live list with each language's support level and
@@ -80,6 +80,29 @@ The preset is shorthand for (approximately):
   isn't a cold compile. Doubles as a baseline check (warmup fails → batch
   aborts).
 
+## Quick start (Go)
+
+```bash
+./target/release/ooze test-mutants --preset go
+```
+
+Go ships an initial (experimental) mutation operator set: boolean swaps
+(`true`/`false`), equality negation (`==`/`!=`), comparison boundary swaps
+(`<`/`<=`, `>`/`>=`), 0/1 integer swaps, and logical `&&`/`||` swaps. Operators
+only match real syntax nodes, so `==` in a comment or string never mutates.
+
+The `go` preset fills any options you left unset with good Go defaults: the
+`worktree` backend, warmup, `go test ./...` as the probe, a shared
+`GOCACHE={build_cache}/go-build` (Go's build cache is safe to share across
+workers, so no per-worker split), and `GOTMPDIR={build_cache}` so probe temp
+writes stay out of the system `/tmp`. As with every preset, explicit CLI flags
+and `ooze.toml` values win over the preset's defaults, and `ooze doctor` shows
+which fills are active or overridden:
+
+```bash
+./target/release/ooze test-mutants --preset go -- go test ./pkg/foo
+```
+
 Git worktrees (recommended inside a Git repo):
 
 ```bash
@@ -143,7 +166,7 @@ Full per-language recipes in [docs/running-mutants.md](docs/running-mutants.md).
 | `--strategy`           | `discovery`, `actionable`, ...                                       |
 | `--changed-only BASE`  | Only mutate files changed vs `BASE` (e.g. `main`). For PR/CI runs.   |
 | `--timeout-seconds`    | Per-mutant probe timeout (→ `timeout` verdict).                      |
-| `--preset`             | Language preset filling unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, `CARGO_TARGET_DIR={build_cache}`, probe `cargo test`. |
+| `--preset`             | Language preset filling unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, `CARGO_TARGET_DIR={build_cache}`, probe `cargo test`. `go`: worktree backend, warmup, shared `GOCACHE={build_cache}/go-build`, `GOTMPDIR={build_cache}`, probe `go test ./...`. |
 | `--workspace-backend`  | `copy`, `overlay`, `worktree`, `auto` (worktree in a Git repo, else copy). |
 | `--exclude`            | Extra globs. Defaults + `.gitignore` always apply.                   |
 | `--coverage`           | Feed coverage into ordering. `format:path` or a bare path to auto-detect. Formats: `lcov`, `cobertura`, `jacoco`, `go-cover`. Repeatable; reports are merged. |

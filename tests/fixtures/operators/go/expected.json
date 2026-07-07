@@ -1,0 +1,56 @@
+[
+  {
+    "language": "go",
+    "operator": "swap_boolean",
+    "implementation": "go.swap_boolean",
+    "function": "swapBoolean",
+    "original": "true",
+    "replacement": "false",
+    "line": 5
+  },
+  {
+    "language": "go",
+    "operator": "negate_equality",
+    "implementation": "go.negate_equality",
+    "function": "negateEquality",
+    "original": "==",
+    "replacement": "!=",
+    "line": 11
+  },
+  {
+    "language": "go",
+    "operator": "comparison_boundary",
+    "implementation": "go.comparison_boundary",
+    "function": "compare",
+    "original": "<",
+    "replacement": "<=",
+    "line": 15
+  },
+  {
+    "language": "go",
+    "operator": "swap_logical",
+    "implementation": "go.swap_logical",
+    "function": "swapLogical",
+    "original": "&&",
+    "replacement": "||",
+    "line": 19
+  },
+  {
+    "language": "go",
+    "operator": "comparison_boundary",
+    "implementation": "go.comparison_boundary",
+    "function": "integerZeroOne",
+    "original": ">",
+    "replacement": ">=",
+    "line": 23
+  },
+  {
+    "language": "go",
+    "operator": "integer_zero_one",
+    "implementation": "go.integer_zero_one",
+    "function": "integerZeroOne",
+    "original": "0",
+    "replacement": "1",
+    "line": 24
+  }
+]

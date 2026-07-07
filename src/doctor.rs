@@ -25,6 +25,9 @@ pub struct CheckResult {
 #[serde(rename_all = "snake_case")]
 pub enum ProjectType {
     Rust,
+    Go,
+    /// More than one project type detected; `DoctorReport.detected` lists them.
+    Mixed,
     Unknown,
 }
 
@@ -32,7 +35,18 @@ impl ProjectType {
     pub fn human(self) -> &'static str {
         match self {
             ProjectType::Rust => "Rust/Cargo",
+            ProjectType::Go => "Go",
+            ProjectType::Mixed => "mixed",
             ProjectType::Unknown => "unknown",
+        }
+    }
+
+    /// The preset `recommend` suggests for this project type, if one exists.
+    fn preset(self) -> Option<Preset> {
+        match self {
+            ProjectType::Rust => Some(Preset::Rust),
+            ProjectType::Go => Some(Preset::Go),
+            ProjectType::Mixed | ProjectType::Unknown => None,
         }
     }
 }
@@ -79,12 +93,19 @@ pub struct Recommendation {
     /// by an explicit flag in `command` itself (e.g. `--workspace-backend
     /// copy`) are omitted entirely.
     pub preset_fills: Vec<PresetFill>,
+    /// For mixed projects only: one suggested command per detected type. No
+    /// single recommendation is selected automatically, so `command` stays
+    /// `None` and no fills are listed.
+    pub mixed_commands: Vec<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DoctorReport {
     pub path: PathBuf,
     pub project_type: ProjectType,
+    /// Every project type whose marker file was found; more than one entry
+    /// makes `project_type` `Mixed`, none makes it `Unknown`.
+    pub detected: Vec<ProjectType>,
     pub git: GitStatus,
     pub backends: BackendsStatus,
     pub cache: CacheStatus,
@@ -187,11 +208,24 @@ fn which(cmd: &str) -> Option<PathBuf> {
     None
 }
 
-fn detect_project_type(path: &Path) -> ProjectType {
+/// Every project type whose marker file exists at `path`, in a fixed order so
+/// mixed-project output is deterministic.
+fn detect_project_types(path: &Path) -> Vec<ProjectType> {
+    let mut types = Vec::new();
     if path.join("Cargo.toml").is_file() {
-        ProjectType::Rust
-    } else {
-        ProjectType::Unknown
+        types.push(ProjectType::Rust);
+    }
+    if path.join("go.mod").is_file() {
+        types.push(ProjectType::Go);
+    }
+    types
+}
+
+fn summarize_project_type(detected: &[ProjectType]) -> ProjectType {
+    match detected {
+        [] => ProjectType::Unknown,
+        [single] => *single,
+        _ => ProjectType::Mixed,
     }
 }
 
@@ -235,10 +269,10 @@ fn worktree_backend_status(path: &Path, git: &GitStatus) -> BackendStatus {
     }
 }
 
-/// The `ooze.toml` entry that stops the rust preset from applying `fill`, if
-/// any. Mirrors the suppression rules in `app::resolve::test_mutants`: a set
+/// The `ooze.toml` entry that stops a preset from applying `fill`, if any.
+/// Mirrors the suppression rules in `app::resolve::test_mutants`: a set
 /// config key wins over the preset regardless of its value.
-fn rust_fill_override(fill: &str, cfg: &OozeConfig) -> Option<String> {
+fn preset_fill_override(fill: &str, cfg: &OozeConfig) -> Option<String> {
     if fill.starts_with("probe=") {
         cfg.probe
             .command
@@ -255,40 +289,74 @@ fn rust_fill_override(fill: &str, cfg: &OozeConfig) -> Option<String> {
             .map(|v| format!("[runner].per_worker_cache = {v}"))
     } else if fill.starts_with("warmup=") {
         cfg.runner.warmup.map(|v| format!("[runner].warmup = {v}"))
-    } else if fill.starts_with("probe_env += CARGO_TARGET_DIR") {
+    } else if let Some(env_fill) = fill.strip_prefix("probe_env += ") {
+        let key = env_fill.split('=').next()?;
         cfg.probe
             .env
             .iter()
-            .find(|e| e.split('=').next() == Some("CARGO_TARGET_DIR"))
+            .find(|e| e.split('=').next() == Some(key))
             .map(|e| format!("[probe].env has `{e}`"))
     } else {
         None
     }
 }
 
-fn recommend(project_type: ProjectType, worktree: &BackendStatus, cfg: &OozeConfig) -> Recommendation {
-    let rust_fills = || {
-        Preset::Rust.fills().iter().map(|f| PresetFill {
+/// The recommended command and fill list for one preset, respecting the
+/// worktree backend's availability.
+fn preset_recommendation(
+    preset: Preset,
+    worktree: &BackendStatus,
+    cfg: &OozeConfig,
+) -> (String, Vec<PresetFill>) {
+    let fills = || {
+        preset.fills().iter().map(|f| PresetFill {
             fill: f.to_string(),
-            overridden_by: rust_fill_override(f, cfg),
+            overridden_by: preset_fill_override(f, cfg),
         })
     };
-    match project_type {
-        ProjectType::Rust if worktree.available => Recommendation {
-            command: Some("ooze test-mutants --preset rust".to_string()),
-            preset_fills: rust_fills().collect(),
-        },
-        ProjectType::Rust => Recommendation {
-            // The explicit --workspace-backend flag wins over the preset, so
-            // the worktree fill would never apply; drop it from the list.
-            command: Some("ooze test-mutants --preset rust --workspace-backend copy".to_string()),
-            preset_fills: rust_fills()
+    if worktree.available {
+        (
+            format!("ooze test-mutants --preset {}", preset.name()),
+            fills().collect(),
+        )
+    } else {
+        // The explicit --workspace-backend flag wins over the preset, so
+        // the worktree fill would never apply; drop it from the list.
+        (
+            format!(
+                "ooze test-mutants --preset {} --workspace-backend copy",
+                preset.name()
+            ),
+            fills()
                 .filter(|f| !f.fill.starts_with("workspace_backend="))
                 .collect(),
-        },
-        ProjectType::Unknown => Recommendation {
+        )
+    }
+}
+
+fn recommend(detected: &[ProjectType], worktree: &BackendStatus, cfg: &OozeConfig) -> Recommendation {
+    let presets: Vec<Preset> = detected.iter().filter_map(|t| t.preset()).collect();
+    match presets.as_slice() {
+        [] => Recommendation {
             command: None,
             preset_fills: Vec::new(),
+            mixed_commands: Vec::new(),
+        },
+        [single] => {
+            let (command, preset_fills) = preset_recommendation(*single, worktree, cfg);
+            Recommendation {
+                command: Some(command),
+                preset_fills,
+                mixed_commands: Vec::new(),
+            }
+        }
+        many => Recommendation {
+            command: None,
+            preset_fills: Vec::new(),
+            mixed_commands: many
+                .iter()
+                .map(|p| preset_recommendation(*p, worktree, cfg).0)
+                .collect(),
         },
     }
 }
@@ -312,7 +380,8 @@ pub fn run(path: &Path) -> DoctorReport {
         }
     };
 
-    let project_type = detect_project_type(&canonical);
+    let detected = detect_project_types(&canonical);
+    let project_type = summarize_project_type(&detected);
     let git = detect_git(&canonical);
     let worktree_status = worktree_backend_status(&canonical, &git);
     let cache = CacheStatus {
@@ -344,7 +413,7 @@ pub fn run(path: &Path) -> DoctorReport {
 
     // After config load so preset fills can be checked against ooze.toml
     // (a parse failure falls back to defaults, i.e. every fill shows active).
-    let recommendation = recommend(project_type, &worktree_status, &cfg);
+    let recommendation = recommend(&detected, &worktree_status, &cfg);
 
     checks.push(probe_command_check(cfg.probe.command.as_ref()));
 
@@ -502,6 +571,7 @@ pub fn run(path: &Path) -> DoctorReport {
     DoctorReport {
         path: canonical,
         project_type,
+        detected,
         git,
         backends: BackendsStatus {
             worktree: worktree_status,
@@ -521,6 +591,10 @@ pub fn print_human(report: &DoctorReport) {
     println!("Project");
     println!("  path: {}", report.path.display());
     println!("  type: {}", report.project_type.human());
+    if report.project_type == ProjectType::Mixed {
+        let names: Vec<&str> = report.detected.iter().map(|t| t.human()).collect();
+        println!("  detected: {}", names.join(", "));
+    }
     println!();
     println!("Git");
     if report.git.available {
@@ -545,11 +619,14 @@ pub fn print_human(report: &DoctorReport) {
         "  sccache: {}",
         if report.cache.sccache { "found" } else { "not found" }
     );
-    if report.project_type == ProjectType::Rust {
+    if report.detected.contains(&ProjectType::Rust) {
         println!("  recommended Rust cache: per-worker CARGO_TARGET_DIR={{build_cache}}");
         if report.cache.sccache {
             println!("  sccache is opt-in: add --probe-env RUSTC_WRAPPER=sccache");
         }
+    }
+    if report.detected.contains(&ProjectType::Go) {
+        println!("  recommended Go cache: shared GOCACHE={{build_cache}}/go-build");
     }
     println!();
     println!("Recommendation");
@@ -565,6 +642,12 @@ pub fn print_human(report: &DoctorReport) {
                     }
                 }
             }
+        }
+    } else if !report.recommendation.mixed_commands.is_empty() {
+        println!("  Multiple project types detected; no single preset is selected automatically.");
+        println!("  Pick the one matching the code you want to mutate:");
+        for cmd in &report.recommendation.mixed_commands {
+            println!("    {cmd}");
         }
     } else {
         println!("  No preset recommendation available yet.");

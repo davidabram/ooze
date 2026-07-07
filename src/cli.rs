@@ -72,14 +72,39 @@ impl OutputFormat {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(crate) enum Preset {
     Rust,
+    Go,
 }
 
 impl Preset {
+    /// The preset's CLI value, for `--preset <name>` suggestions and the
+    /// "ooze: preset <name>: ..." expansion line.
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Preset::Rust => "rust",
+            Preset::Go => "go",
+        }
+    }
+
+    /// The project marker file that must exist at the project path for this
+    /// preset to apply.
+    pub(crate) fn marker_file(self) -> &'static str {
+        match self {
+            Preset::Rust => "Cargo.toml",
+            Preset::Go => "go.mod",
+        }
+    }
+
     /// Every default this preset fills when neither a CLI flag nor `ooze.toml`
     /// sets the option, in the same `option=value` form `app::resolve` prints
-    /// on its "ooze: preset rust: ..." line. `doctor` shows this list so the
+    /// on its "ooze: preset <name>: ..." line. `doctor` shows this list so the
     /// recommended command is not a black box; keep the strings in sync with
     /// the fills in `app::resolve::test_mutants`.
+    ///
+    /// Go keeps the default shared build cache (`per_worker_cache=false`):
+    /// Go's build cache is concurrency-safe by design, so workers share one
+    /// GOCACHE. GOTMPDIR points at the same shared dir — the `go` command
+    /// creates a unique work dir per invocation inside it — which keeps temp
+    /// writes out of the system /tmp.
     pub(crate) fn fills(self) -> &'static [&'static str] {
         match self {
             Preset::Rust => &[
@@ -88,6 +113,13 @@ impl Preset {
                 "per_worker_cache=true",
                 "warmup=true",
                 "probe_env += CARGO_TARGET_DIR={build_cache}",
+            ],
+            Preset::Go => &[
+                "probe=`go test ./...`",
+                "workspace_backend=worktree",
+                "warmup=true",
+                "probe_env += GOCACHE={build_cache}/go-build",
+                "probe_env += GOTMPDIR={build_cache}",
             ],
         }
     }
@@ -299,7 +331,7 @@ pub(crate) struct TestMutantsArgs {
     #[arg(long, value_enum)]
     pub(crate) workspace_backend: Option<WorkspaceBackendArg>,
 
-    #[arg(long, value_enum, help = "Language preset that fills unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, CARGO_TARGET_DIR={build_cache}, probe `cargo test`. Explicit flags and ooze.toml win.")]
+    #[arg(long, value_enum, help = "Language preset that fills unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, CARGO_TARGET_DIR={build_cache}, probe `cargo test`. `go`: worktree backend, warmup, shared GOCACHE={build_cache}/go-build, GOTMPDIR={build_cache}, probe `go test ./...`. Explicit flags and ooze.toml win.")]
     pub(crate) preset: Option<Preset>,
 
     #[arg(long)]
