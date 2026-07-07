@@ -74,6 +74,7 @@ pub(crate) enum Preset {
     Rust,
     Go,
     Node,
+    Python,
 }
 
 impl Preset {
@@ -84,16 +85,37 @@ impl Preset {
             Preset::Rust => "rust",
             Preset::Go => "go",
             Preset::Node => "node",
+            Preset::Python => "python",
         }
     }
 
-    /// The project marker file that must exist at the project path for this
-    /// preset to apply.
-    pub(crate) fn marker_file(self) -> &'static str {
+    /// The project marker files, at least one of which must exist at the
+    /// project path for this preset to apply. Python is the only preset with
+    /// alternatives: any of the common packaging files marks a project.
+    pub(crate) fn marker_files(self) -> &'static [&'static str] {
         match self {
-            Preset::Rust => "Cargo.toml",
-            Preset::Go => "go.mod",
-            Preset::Node => "package.json",
+            Preset::Rust => &["Cargo.toml"],
+            Preset::Go => &["go.mod"],
+            Preset::Node => &["package.json"],
+            Preset::Python => &[
+                "pyproject.toml",
+                "setup.py",
+                "setup.cfg",
+                "requirements.txt",
+            ],
+        }
+    }
+
+    /// Human phrasing of the marker requirement for the "preset requires ..."
+    /// error, e.g. "a Cargo.toml" or "one of pyproject.toml, ..., or
+    /// requirements.txt".
+    pub(crate) fn marker_requirement(self) -> String {
+        match self.marker_files() {
+            [single] => format!("a {single}"),
+            many => {
+                let (last, rest) = many.split_last().expect("presets have markers");
+                format!("one of {}, or {last}", rest.join(", "))
+            }
         }
     }
 
@@ -112,8 +134,13 @@ impl Preset {
     /// Node also shares one cache: package-manager caches (npm/pnpm/yarn/bun)
     /// are safe to share across workers, while the workspace itself stays
     /// isolated by the worktree backend. Its probe and cache envs depend on
-    /// the lockfile found at `path`, hence the parameter (Rust and Go ignore
-    /// it).
+    /// the lockfile found at `path`, hence the parameter (the other presets
+    /// ignore it).
+    ///
+    /// Python shares one cache root too: PYTHONPYCACHEPREFIX keeps `.pyc`
+    /// writes out of the workspace, PYTEST_ADDOPTS=--cache-clear stops
+    /// pytest's own cache from carrying state across mutants, and TMPDIR
+    /// keeps probe temp files out of the system /tmp.
     pub(crate) fn fills(self, path: &Path) -> &'static [&'static str] {
         match self {
             Preset::Rust => &[
@@ -129,6 +156,14 @@ impl Preset {
                 "warmup=true",
                 "probe_env += GOCACHE={build_cache}/go-build",
                 "probe_env += GOTMPDIR={build_cache}",
+            ],
+            Preset::Python => &[
+                "probe=`pytest`",
+                "workspace_backend=worktree",
+                "warmup=true",
+                "probe_env += PYTHONPYCACHEPREFIX={build_cache}/pycache",
+                "probe_env += PYTEST_ADDOPTS=--cache-clear",
+                "probe_env += TMPDIR={build_cache}/tmp",
             ],
             Preset::Node => match PackageManager::detect(path) {
                 PackageManager::Bun => &[
@@ -420,7 +455,7 @@ pub(crate) struct TestMutantsArgs {
     #[arg(long, value_enum)]
     pub(crate) workspace_backend: Option<WorkspaceBackendArg>,
 
-    #[arg(long, value_enum, help = "Language preset that fills unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, CARGO_TARGET_DIR={build_cache}, probe `cargo test`. `go`: worktree backend, warmup, shared GOCACHE={build_cache}/go-build, GOTMPDIR={build_cache}, probe `go test ./...`. `node`: worktree backend, warmup, package-manager cache envs under {build_cache}, probe from lockfile detection (bun/pnpm/yarn/npm test). Explicit flags and ooze.toml win.")]
+    #[arg(long, value_enum, help = "Language preset that fills unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, CARGO_TARGET_DIR={build_cache}, probe `cargo test`. `go`: worktree backend, warmup, shared GOCACHE={build_cache}/go-build, GOTMPDIR={build_cache}, probe `go test ./...`. `node`: worktree backend, warmup, package-manager cache envs under {build_cache}, probe from lockfile detection (bun/pnpm/yarn/npm test). `python`: worktree backend, warmup, PYTHONPYCACHEPREFIX={build_cache}/pycache, PYTEST_ADDOPTS=--cache-clear, TMPDIR={build_cache}/tmp, probe `pytest`. Explicit flags and ooze.toml win.")]
     pub(crate) preset: Option<Preset>,
 
     #[arg(long)]

@@ -132,6 +132,32 @@ which fills are active or overridden:
 ./target/release/ooze test-mutants --preset node -- npm test -- --runInBand
 ```
 
+## Quick start (Python)
+
+```bash
+./target/release/ooze test-mutants --preset python
+```
+
+The `python` preset applies when at least one of `pyproject.toml`, `setup.py`,
+`setup.cfg`, or `requirements.txt` exists at the project path. It fills any
+options you left unset with: the `worktree` backend, warmup, `pytest` as the
+probe, and three env defaults that keep per-mutant state out of the workspace:
+
+- `PYTHONPYCACHEPREFIX={build_cache}/pycache` — `.pyc` bytecode is written to
+  the shared build-cache dir, never the checkout.
+- `PYTEST_ADDOPTS=--cache-clear` — pytest's own cache can't carry `--lf`-style
+  state from one mutant to the next.
+- `TMPDIR={build_cache}/tmp` — probe temp files stay out of the system `/tmp`.
+
+Like Go and Node, Python keeps a shared cache root (no `--per-worker-cache`).
+As with every preset, explicit CLI flags and `ooze.toml` values win over the
+preset's defaults, and `ooze doctor` shows which fills are active or
+overridden:
+
+```bash
+./target/release/ooze test-mutants --preset python -- pytest tests/unit
+```
+
 Git worktrees (recommended inside a Git repo):
 
 ```bash
@@ -195,7 +221,7 @@ Full per-language recipes in [docs/running-mutants.md](docs/running-mutants.md).
 | `--strategy`           | `discovery`, `actionable`, ...                                       |
 | `--changed-only BASE`  | Only mutate files changed vs `BASE` (e.g. `main`). For PR/CI runs.   |
 | `--timeout-seconds`    | Per-mutant probe timeout (→ `timeout` verdict).                      |
-| `--preset`             | Language preset filling unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, `CARGO_TARGET_DIR={build_cache}`, probe `cargo test`. `go`: worktree backend, warmup, shared `GOCACHE={build_cache}/go-build`, `GOTMPDIR={build_cache}`, probe `go test ./...`. `node`: worktree backend, warmup, shared package-manager cache envs under `{build_cache}`, probe from lockfile detection (`bun`/`pnpm`/`yarn`/`npm test`). |
+| `--preset`             | Language preset filling unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, `CARGO_TARGET_DIR={build_cache}`, probe `cargo test`. `go`: worktree backend, warmup, shared `GOCACHE={build_cache}/go-build`, `GOTMPDIR={build_cache}`, probe `go test ./...`. `node`: worktree backend, warmup, shared package-manager cache envs under `{build_cache}`, probe from lockfile detection (`bun`/`pnpm`/`yarn`/`npm test`). `python`: worktree backend, warmup, `PYTHONPYCACHEPREFIX={build_cache}/pycache`, `PYTEST_ADDOPTS=--cache-clear`, `TMPDIR={build_cache}/tmp`, probe `pytest`. |
 | `--workspace-backend`  | `copy`, `overlay`, `worktree`, `auto` (worktree in a Git repo, else copy). |
 | `--exclude`            | Extra globs. Defaults + `.gitignore` always apply.                   |
 | `--coverage`           | Feed coverage into ordering. `format:path` or a bare path to auto-detect. Formats: `lcov`, `cobertura`, `jacoco`, `go-cover`. Repeatable; reports are merged. |

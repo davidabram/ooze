@@ -17,7 +17,7 @@ the verdict:
 | `--limit`              | Cap candidates for a quick smoke run.                                |
 | `--strategy`           | Ordering: `discovery`, `actionable`, etc.                            |
 | `--timeout-seconds`    | Per-mutant probe timeout.                                            |
-| `--preset`             | Language preset that fills unset options with ecosystem defaults (see below). `rust`, `go`, and `node` for now. |
+| `--preset`             | Language preset that fills unset options with ecosystem defaults (see below). `rust`, `go`, `node`, and `python` for now. |
 | `--workspace-backend`  | `worktree` (Git, rootless), `copy` (portable), `overlay` (Linux; needs root), `auto` (worktree in a Git repo, else copy). |
 | `--exclude`            | Extra glob excludes, comma-separated. Defaults + `.gitignore` apply. |
 | `--warmup`             | Pre-build the probe in each worker dir before running mutants.       |
@@ -83,6 +83,25 @@ probe and the cache envs:
 Like Go, Node keeps a shared cache rather than `--per-worker-cache`:
 package-manager caches are safe to share across workers, while each worker's
 workspace stays isolated by the worktree backend.
+
+`--preset python` covers Python projects. It applies when at least one of
+`pyproject.toml`, `setup.py`, `setup.cfg`, or `requirements.txt` exists at
+the project path, and fills:
+
+- `--workspace-backend worktree`
+- `--warmup`
+- probe `pytest` (only when no probe is given after `--` and none is set in
+  `ooze.toml`)
+- env defaults, skipped per key if you already set them:
+  - `PYTHONPYCACHEPREFIX={build_cache}/pycache` — `.pyc` bytecode lands in
+    the shared build-cache dir instead of the workspace, so mutants never
+    run against stale bytecode from the checkout
+  - `PYTEST_ADDOPTS=--cache-clear` — pytest's cache can't carry state
+    between mutants
+  - `TMPDIR={build_cache}/tmp` — probe temp files stay out of the system
+    `/tmp`
+
+Python also keeps a shared cache root rather than `--per-worker-cache`.
 
 Presets are default-fillers, not overrides: explicit CLI flags and `ooze.toml`
 values always win. The applied fills are printed on stderr as

@@ -27,6 +27,7 @@ pub enum ProjectType {
     Rust,
     Go,
     Node,
+    Python,
     /// More than one project type detected; `DoctorReport.detected` lists them.
     Mixed,
     Unknown,
@@ -38,6 +39,7 @@ impl ProjectType {
             ProjectType::Rust => "Rust/Cargo",
             ProjectType::Go => "Go",
             ProjectType::Node => "Node",
+            ProjectType::Python => "Python",
             ProjectType::Mixed => "mixed",
             ProjectType::Unknown => "unknown",
         }
@@ -49,6 +51,7 @@ impl ProjectType {
             ProjectType::Rust => Some(Preset::Rust),
             ProjectType::Go => Some(Preset::Go),
             ProjectType::Node => Some(Preset::Node),
+            ProjectType::Python => Some(Preset::Python),
             ProjectType::Mixed | ProjectType::Unknown => None,
         }
     }
@@ -223,6 +226,13 @@ fn detect_project_types(path: &Path) -> Vec<ProjectType> {
     }
     if path.join("package.json").is_file() {
         types.push(ProjectType::Node);
+    }
+    if Preset::Python
+        .marker_files()
+        .iter()
+        .any(|m| path.join(m).is_file())
+    {
+        types.push(ProjectType::Python);
     }
     types
 }
@@ -648,6 +658,11 @@ pub fn print_human(report: &DoctorReport) {
             .map(|(k, v)| format!("{k}={v}"))
             .collect();
         println!("  recommended Node cache: shared {}", envs.join(", "));
+    }
+    if report.detected.contains(&ProjectType::Python) {
+        println!(
+            "  recommended Python cache: shared PYTHONPYCACHEPREFIX={{build_cache}}/pycache"
+        );
     }
     println!();
     println!("Recommendation");

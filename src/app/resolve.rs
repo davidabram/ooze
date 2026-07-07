@@ -96,12 +96,12 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
     }
 
     if let Some(p) = preset
-        && !path.join(p.marker_file()).exists()
+        && !p.marker_files().iter().any(|m| path.join(m).exists())
     {
         anyhow::bail!(
-            "{} preset requires a {} at the project path ({})",
+            "{} preset requires {} at the project path ({})",
             p.name(),
-            p.marker_file(),
+            p.marker_requirement(),
             path.display()
         );
     }
@@ -209,6 +209,9 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
             &mut probe_env,
             PackageManager::detect(&path),
         )),
+        Some(Preset::Python) => {
+            preset_fills.extend(python_preset_probe_env_fills(&mut probe_env))
+        }
         None => {}
     }
 
@@ -295,6 +298,7 @@ fn default_probe(preset: Preset, path: &std::path::Path) -> Vec<String> {
         Preset::Rust => &["cargo", "test"],
         Preset::Go => &["go", "test", "./..."],
         Preset::Node => PackageManager::detect(path).test_command(),
+        Preset::Python => &["pytest"],
     };
     cmd.iter().map(ToString::to_string).collect()
 }
@@ -359,6 +363,24 @@ fn node_preset_probe_env_fills(
         .iter()
         .filter_map(|(key, value)| fill_probe_env(probe_env, key, value))
         .collect()
+}
+
+/// Append the python preset's probe-env defaults when the user hasn't set the
+/// same keys themselves. All three point into the shared build-cache dir:
+/// PYTHONPYCACHEPREFIX redirects `.pyc` writes out of the workspace so
+/// mutants never see stale bytecode from the checkout, PYTEST_ADDOPTS clears
+/// pytest's own cache per run so `--lf`-style state can't leak between
+/// mutants, and TMPDIR keeps probe temp files out of the system /tmp.
+fn python_preset_probe_env_fills(probe_env: &mut Vec<runner::ProbeEnvTemplate>) -> Vec<String> {
+    let mut fills = Vec::new();
+    fills.extend(fill_probe_env(
+        probe_env,
+        "PYTHONPYCACHEPREFIX",
+        "{build_cache}/pycache",
+    ));
+    fills.extend(fill_probe_env(probe_env, "PYTEST_ADDOPTS", "--cache-clear"));
+    fills.extend(fill_probe_env(probe_env, "TMPDIR", "{build_cache}/tmp"));
+    fills
 }
 
 #[cfg(test)]
