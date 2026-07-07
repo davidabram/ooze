@@ -26,6 +26,7 @@ pub struct CheckResult {
 pub enum ProjectType {
     Rust,
     Go,
+    Node,
     /// More than one project type detected; `DoctorReport.detected` lists them.
     Mixed,
     Unknown,
@@ -36,6 +37,7 @@ impl ProjectType {
         match self {
             ProjectType::Rust => "Rust/Cargo",
             ProjectType::Go => "Go",
+            ProjectType::Node => "Node",
             ProjectType::Mixed => "mixed",
             ProjectType::Unknown => "unknown",
         }
@@ -46,6 +48,7 @@ impl ProjectType {
         match self {
             ProjectType::Rust => Some(Preset::Rust),
             ProjectType::Go => Some(Preset::Go),
+            ProjectType::Node => Some(Preset::Node),
             ProjectType::Mixed | ProjectType::Unknown => None,
         }
     }
@@ -218,6 +221,9 @@ fn detect_project_types(path: &Path) -> Vec<ProjectType> {
     if path.join("go.mod").is_file() {
         types.push(ProjectType::Go);
     }
+    if path.join("package.json").is_file() {
+        types.push(ProjectType::Node);
+    }
     types
 }
 
@@ -305,11 +311,12 @@ fn preset_fill_override(fill: &str, cfg: &OozeConfig) -> Option<String> {
 /// worktree backend's availability.
 fn preset_recommendation(
     preset: Preset,
+    path: &Path,
     worktree: &BackendStatus,
     cfg: &OozeConfig,
 ) -> (String, Vec<PresetFill>) {
     let fills = || {
-        preset.fills().iter().map(|f| PresetFill {
+        preset.fills(path).iter().map(|f| PresetFill {
             fill: f.to_string(),
             overridden_by: preset_fill_override(f, cfg),
         })
@@ -334,7 +341,12 @@ fn preset_recommendation(
     }
 }
 
-fn recommend(detected: &[ProjectType], worktree: &BackendStatus, cfg: &OozeConfig) -> Recommendation {
+fn recommend(
+    detected: &[ProjectType],
+    path: &Path,
+    worktree: &BackendStatus,
+    cfg: &OozeConfig,
+) -> Recommendation {
     let presets: Vec<Preset> = detected.iter().filter_map(|t| t.preset()).collect();
     match presets.as_slice() {
         [] => Recommendation {
@@ -343,7 +355,7 @@ fn recommend(detected: &[ProjectType], worktree: &BackendStatus, cfg: &OozeConfi
             mixed_commands: Vec::new(),
         },
         [single] => {
-            let (command, preset_fills) = preset_recommendation(*single, worktree, cfg);
+            let (command, preset_fills) = preset_recommendation(*single, path, worktree, cfg);
             Recommendation {
                 command: Some(command),
                 preset_fills,
@@ -355,7 +367,7 @@ fn recommend(detected: &[ProjectType], worktree: &BackendStatus, cfg: &OozeConfi
             preset_fills: Vec::new(),
             mixed_commands: many
                 .iter()
-                .map(|p| preset_recommendation(*p, worktree, cfg).0)
+                .map(|p| preset_recommendation(*p, path, worktree, cfg).0)
                 .collect(),
         },
     }
@@ -413,7 +425,7 @@ pub fn run(path: &Path) -> DoctorReport {
 
     // After config load so preset fills can be checked against ooze.toml
     // (a parse failure falls back to defaults, i.e. every fill shows active).
-    let recommendation = recommend(&detected, &worktree_status, &cfg);
+    let recommendation = recommend(&detected, &canonical, &worktree_status, &cfg);
 
     checks.push(probe_command_check(cfg.probe.command.as_ref()));
 
@@ -628,6 +640,15 @@ pub fn print_human(report: &DoctorReport) {
     if report.detected.contains(&ProjectType::Go) {
         println!("  recommended Go cache: shared GOCACHE={{build_cache}}/go-build");
     }
+    if report.detected.contains(&ProjectType::Node) {
+        let pm = crate::cli::PackageManager::detect(&report.path);
+        let envs: Vec<String> = pm
+            .cache_env_fills()
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect();
+        println!("  recommended Node cache: shared {}", envs.join(", "));
+    }
     println!();
     println!("Recommendation");
     if let Some(cmd) = &report.recommendation.command {
@@ -733,7 +754,7 @@ mod tests {
             .iter()
             .map(|f| f.fill.as_str())
             .collect();
-        assert_eq!(fills, Preset::Rust.fills());
+        assert_eq!(fills, Preset::Rust.fills(dir.path()));
         assert!(
             report
                 .recommendation

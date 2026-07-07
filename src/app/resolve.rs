@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::cli::{Preset, TestMutantsArgs, WorkspaceBackendArg};
+use crate::cli::{PackageManager, Preset, TestMutantsArgs, WorkspaceBackendArg};
 use crate::{config, mutate, report, runner, scheduler};
 
 /// Everything `test-mutants` needs to run, with every CLI/config/default decision
@@ -205,6 +205,10 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
     match preset {
         Some(Preset::Rust) => preset_fills.extend(rust_preset_probe_env_fills(&mut probe_env)),
         Some(Preset::Go) => preset_fills.extend(go_preset_probe_env_fills(&mut probe_env)),
+        Some(Preset::Node) => preset_fills.extend(node_preset_probe_env_fills(
+            &mut probe_env,
+            PackageManager::detect(&path),
+        )),
         None => {}
     }
 
@@ -229,7 +233,7 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         if let Some(cmd) = cfg.probe.command.as_ref() {
             probe.clone_from(cmd);
         } else if let Some(p) = preset {
-            let cmd = default_probe(p);
+            let cmd = default_probe(p, &path);
             preset_fills.push(format!("probe=`{}`", cmd.join(" ")));
             probe = cmd;
         } else {
@@ -285,11 +289,12 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
 }
 
 /// The probe each preset falls back to when neither `--` args nor
-/// `[probe].command` supply one.
-fn default_probe(preset: Preset) -> Vec<String> {
+/// `[probe].command` supply one. Node's depends on the lockfile at `path`.
+fn default_probe(preset: Preset, path: &std::path::Path) -> Vec<String> {
     let cmd: &[&str] = match preset {
         Preset::Rust => &["cargo", "test"],
         Preset::Go => &["go", "test", "./..."],
+        Preset::Node => PackageManager::detect(path).test_command(),
     };
     cmd.iter().map(ToString::to_string).collect()
 }
@@ -339,6 +344,21 @@ fn go_preset_probe_env_fills(probe_env: &mut Vec<runner::ProbeEnvTemplate>) -> V
     fills.extend(fill_probe_env(probe_env, "GOCACHE", "{build_cache}/go-build"));
     fills.extend(fill_probe_env(probe_env, "GOTMPDIR", "{build_cache}"));
     fills
+}
+
+/// Append the node preset's probe-env defaults — the detected package
+/// manager's cache dirs pointed into the shared build-cache dir — when the
+/// user hasn't set the same keys themselves. Package-manager caches are safe
+/// to share across workers (the workspace itself is isolated by the backend),
+/// so no per-worker split.
+fn node_preset_probe_env_fills(
+    probe_env: &mut Vec<runner::ProbeEnvTemplate>,
+    pm: PackageManager,
+) -> Vec<String> {
+    pm.cache_env_fills()
+        .iter()
+        .filter_map(|(key, value)| fill_probe_env(probe_env, key, value))
+        .collect()
 }
 
 #[cfg(test)]
@@ -524,7 +544,7 @@ mod tests {
         // cargo project so the list can't drift from this module.
         let dir = cargo_project();
         let r = resolve_in(dir.path(), &["--preset", "rust"]).unwrap();
-        for fill in Preset::Rust.fills() {
+        for fill in Preset::Rust.fills(dir.path()) {
             match *fill {
                 "probe=`cargo test`" => assert_eq!(r.probe, ["cargo", "test"]),
                 "workspace_backend=worktree" => {

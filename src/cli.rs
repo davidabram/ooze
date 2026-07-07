@@ -2,7 +2,7 @@
 //! small CLI-only enums. Resolution of these into runnable settings lives in
 //! `crate::app`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use clap::{Parser, Subcommand, ValueEnum};
 
@@ -73,6 +73,7 @@ impl OutputFormat {
 pub(crate) enum Preset {
     Rust,
     Go,
+    Node,
 }
 
 impl Preset {
@@ -82,6 +83,7 @@ impl Preset {
         match self {
             Preset::Rust => "rust",
             Preset::Go => "go",
+            Preset::Node => "node",
         }
     }
 
@@ -91,6 +93,7 @@ impl Preset {
         match self {
             Preset::Rust => "Cargo.toml",
             Preset::Go => "go.mod",
+            Preset::Node => "package.json",
         }
     }
 
@@ -105,7 +108,13 @@ impl Preset {
     /// GOCACHE. GOTMPDIR points at the same shared dir — the `go` command
     /// creates a unique work dir per invocation inside it — which keeps temp
     /// writes out of the system /tmp.
-    pub(crate) fn fills(self) -> &'static [&'static str] {
+    ///
+    /// Node also shares one cache: package-manager caches (npm/pnpm/yarn/bun)
+    /// are safe to share across workers, while the workspace itself stays
+    /// isolated by the worktree backend. Its probe and cache envs depend on
+    /// the lockfile found at `path`, hence the parameter (Rust and Go ignore
+    /// it).
+    pub(crate) fn fills(self, path: &Path) -> &'static [&'static str] {
         match self {
             Preset::Rust => &[
                 "probe=`cargo test`",
@@ -121,6 +130,86 @@ impl Preset {
                 "probe_env += GOCACHE={build_cache}/go-build",
                 "probe_env += GOTMPDIR={build_cache}",
             ],
+            Preset::Node => match PackageManager::detect(path) {
+                PackageManager::Bun => &[
+                    "probe=`bun test`",
+                    "workspace_backend=worktree",
+                    "warmup=true",
+                    "probe_env += BUN_INSTALL_CACHE_DIR={build_cache}/bun",
+                ],
+                PackageManager::Pnpm => &[
+                    "probe=`pnpm test`",
+                    "workspace_backend=worktree",
+                    "warmup=true",
+                    "probe_env += npm_config_cache={build_cache}/npm",
+                    "probe_env += PNPM_HOME={build_cache}/pnpm-home",
+                ],
+                PackageManager::Yarn => &[
+                    "probe=`yarn test`",
+                    "workspace_backend=worktree",
+                    "warmup=true",
+                    "probe_env += YARN_CACHE_FOLDER={build_cache}/yarn",
+                ],
+                PackageManager::Npm => &[
+                    "probe=`npm test`",
+                    "workspace_backend=worktree",
+                    "warmup=true",
+                    "probe_env += npm_config_cache={build_cache}/npm",
+                ],
+            },
+        }
+    }
+}
+
+/// The Node package manager the `node` preset targets, picked by lockfile.
+/// Everything the preset fills for Node — probe and cache envs — hangs off
+/// this choice, so detection lives in one place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PackageManager {
+    Bun,
+    Pnpm,
+    Yarn,
+    Npm,
+}
+
+impl PackageManager {
+    /// Deterministic lockfile detection at the project path. When several
+    /// lockfiles coexist the priority is bun > pnpm > yarn > npm; a bare
+    /// `package.json` with no lockfile falls back to npm.
+    pub(crate) fn detect(path: &Path) -> PackageManager {
+        if path.join("bun.lockb").is_file() || path.join("bun.lock").is_file() {
+            PackageManager::Bun
+        } else if path.join("pnpm-lock.yaml").is_file() {
+            PackageManager::Pnpm
+        } else if path.join("yarn.lock").is_file() {
+            PackageManager::Yarn
+        } else {
+            PackageManager::Npm
+        }
+    }
+
+    /// The default probe when the node preset has to supply one.
+    pub(crate) fn test_command(self) -> &'static [&'static str] {
+        match self {
+            PackageManager::Bun => &["bun", "test"],
+            PackageManager::Pnpm => &["pnpm", "test"],
+            PackageManager::Yarn => &["yarn", "test"],
+            PackageManager::Npm => &["npm", "test"],
+        }
+    }
+
+    /// Probe-env defaults pointing this package manager's cache into the
+    /// shared build-cache dir. pnpm also gets `npm_config_cache` because it
+    /// shells out to npm for some operations.
+    pub(crate) fn cache_env_fills(self) -> &'static [(&'static str, &'static str)] {
+        match self {
+            PackageManager::Bun => &[("BUN_INSTALL_CACHE_DIR", "{build_cache}/bun")],
+            PackageManager::Pnpm => &[
+                ("npm_config_cache", "{build_cache}/npm"),
+                ("PNPM_HOME", "{build_cache}/pnpm-home"),
+            ],
+            PackageManager::Yarn => &[("YARN_CACHE_FOLDER", "{build_cache}/yarn")],
+            PackageManager::Npm => &[("npm_config_cache", "{build_cache}/npm")],
         }
     }
 }
@@ -331,7 +420,7 @@ pub(crate) struct TestMutantsArgs {
     #[arg(long, value_enum)]
     pub(crate) workspace_backend: Option<WorkspaceBackendArg>,
 
-    #[arg(long, value_enum, help = "Language preset that fills unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, CARGO_TARGET_DIR={build_cache}, probe `cargo test`. `go`: worktree backend, warmup, shared GOCACHE={build_cache}/go-build, GOTMPDIR={build_cache}, probe `go test ./...`. Explicit flags and ooze.toml win.")]
+    #[arg(long, value_enum, help = "Language preset that fills unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, CARGO_TARGET_DIR={build_cache}, probe `cargo test`. `go`: worktree backend, warmup, shared GOCACHE={build_cache}/go-build, GOTMPDIR={build_cache}, probe `go test ./...`. `node`: worktree backend, warmup, package-manager cache envs under {build_cache}, probe from lockfile detection (bun/pnpm/yarn/npm test). Explicit flags and ooze.toml win.")]
     pub(crate) preset: Option<Preset>,
 
     #[arg(long)]

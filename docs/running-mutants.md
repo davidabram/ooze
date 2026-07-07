@@ -17,7 +17,7 @@ the verdict:
 | `--limit`              | Cap candidates for a quick smoke run.                                |
 | `--strategy`           | Ordering: `discovery`, `actionable`, etc.                            |
 | `--timeout-seconds`    | Per-mutant probe timeout.                                            |
-| `--preset`             | Language preset that fills unset options with ecosystem defaults (see below). `rust` and `go` for now. |
+| `--preset`             | Language preset that fills unset options with ecosystem defaults (see below). `rust`, `go`, and `node` for now. |
 | `--workspace-backend`  | `worktree` (Git, rootless), `copy` (portable), `overlay` (Linux; needs root), `auto` (worktree in a Git repo, else copy). |
 | `--exclude`            | Extra glob excludes, comma-separated. Defaults + `.gitignore` apply. |
 | `--warmup`             | Pre-build the probe in each worker dir before running mutants.       |
@@ -62,6 +62,27 @@ Unlike the Rust preset, Go keeps the default shared build cache instead of
 workers share one `GOCACHE`. `GOTMPDIR` points at the same shared dir — the
 `go` command creates a unique work dir per invocation inside it — keeping
 probe temp writes out of the system `/tmp`.
+
+`--preset node` does the same for JavaScript/TypeScript projects. It requires
+a `package.json` at the project path and detects the package manager from the
+lockfile, with priority `bun` > `pnpm` > `yarn` > `npm` when several coexist
+(a bare `package.json` means npm). The detected package manager drives the
+probe and the cache envs:
+
+- `--workspace-backend worktree`
+- `--warmup`
+- probe `bun test` / `pnpm test` / `yarn test` / `npm test` (only when no
+  probe is given after `--` and none is set in `ooze.toml`)
+- cache envs, skipped per key if you already set them:
+  - bun: `BUN_INSTALL_CACHE_DIR={build_cache}/bun`
+  - pnpm: `npm_config_cache={build_cache}/npm` and
+    `PNPM_HOME={build_cache}/pnpm-home`
+  - yarn: `YARN_CACHE_FOLDER={build_cache}/yarn`
+  - npm: `npm_config_cache={build_cache}/npm`
+
+Like Go, Node keeps a shared cache rather than `--per-worker-cache`:
+package-manager caches are safe to share across workers, while each worker's
+workspace stays isolated by the worktree backend.
 
 Presets are default-fillers, not overrides: explicit CLI flags and `ooze.toml`
 values always win. The applied fills are printed on stderr as

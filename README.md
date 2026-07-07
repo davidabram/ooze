@@ -103,6 +103,35 @@ which fills are active or overridden:
 ./target/release/ooze test-mutants --preset go -- go test ./pkg/foo
 ```
 
+## Quick start (Node / JavaScript / TypeScript)
+
+```bash
+./target/release/ooze test-mutants --preset node
+```
+
+The `node` preset requires a `package.json` at the project path and picks the
+package manager from the lockfile it finds (priority `bun` > `pnpm` > `yarn` >
+`npm`; a bare `package.json` means npm). That choice drives both the default
+probe (`bun test`, `pnpm test`, `yarn test`, or `npm test`) and the cache
+envs, which point the package-manager cache into the shared build-cache dir:
+
+| Lockfile                 | Probe       | Cache envs                                                             |
+| ------------------------ | ----------- | ---------------------------------------------------------------------- |
+| `bun.lockb` / `bun.lock` | `bun test`  | `BUN_INSTALL_CACHE_DIR={build_cache}/bun`                               |
+| `pnpm-lock.yaml`         | `pnpm test` | `npm_config_cache={build_cache}/npm`, `PNPM_HOME={build_cache}/pnpm-home` |
+| `yarn.lock`              | `yarn test` | `YARN_CACHE_FOLDER={build_cache}/yarn`                                  |
+| `package-lock.json`      | `npm test`  | `npm_config_cache={build_cache}/npm`                                    |
+
+Like Go, Node keeps a shared cache (no `--per-worker-cache`): package-manager
+caches are safe to share across workers, while each workspace stays isolated
+by the `worktree` backend. As with every preset, explicit CLI flags and
+`ooze.toml` values win over the preset's defaults, and `ooze doctor` shows
+which fills are active or overridden:
+
+```bash
+./target/release/ooze test-mutants --preset node -- npm test -- --runInBand
+```
+
 Git worktrees (recommended inside a Git repo):
 
 ```bash
@@ -166,7 +195,7 @@ Full per-language recipes in [docs/running-mutants.md](docs/running-mutants.md).
 | `--strategy`           | `discovery`, `actionable`, ...                                       |
 | `--changed-only BASE`  | Only mutate files changed vs `BASE` (e.g. `main`). For PR/CI runs.   |
 | `--timeout-seconds`    | Per-mutant probe timeout (→ `timeout` verdict).                      |
-| `--preset`             | Language preset filling unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, `CARGO_TARGET_DIR={build_cache}`, probe `cargo test`. `go`: worktree backend, warmup, shared `GOCACHE={build_cache}/go-build`, `GOTMPDIR={build_cache}`, probe `go test ./...`. |
+| `--preset`             | Language preset filling unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, `CARGO_TARGET_DIR={build_cache}`, probe `cargo test`. `go`: worktree backend, warmup, shared `GOCACHE={build_cache}/go-build`, `GOTMPDIR={build_cache}`, probe `go test ./...`. `node`: worktree backend, warmup, shared package-manager cache envs under `{build_cache}`, probe from lockfile detection (`bun`/`pnpm`/`yarn`/`npm test`). |
 | `--workspace-backend`  | `copy`, `overlay`, `worktree`, `auto` (worktree in a Git repo, else copy). |
 | `--exclude`            | Extra globs. Defaults + `.gitignore` always apply.                   |
 | `--coverage`           | Feed coverage into ordering. `format:path` or a bare path to auto-detect. Formats: `lcov`, `cobertura`, `jacoco`, `go-cover`. Repeatable; reports are merged. |
