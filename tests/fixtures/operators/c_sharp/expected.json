@@ -253,11 +253,119 @@
   },
   {
     "language": "c_sharp",
+    "operator": "negate_equality",
+    "implementation": "c_sharp.negate_equality",
+    "function": "IsMissing",
+    "original": "==",
+    "replacement": "!=",
+    "line": 69
+  },
+  {
+    "language": "c_sharp",
+    "operator": "negate_equality",
+    "implementation": "c_sharp.negate_equality",
+    "function": "IsPresent",
+    "original": "!=",
+    "replacement": "==",
+    "line": 74
+  },
+  {
+    "language": "c_sharp",
+    "operator": "nullish_coalescing_removal",
+    "implementation": "c_sharp.nullish_coalescing_removal",
+    "function": "WithFallback",
+    "original": "value ?? \"fallback\"",
+    "replacement": "value",
+    "line": 79
+  },
+  {
+    "language": "c_sharp",
+    "operator": "string_empty_literal",
+    "implementation": "c_sharp.string_empty_literal",
+    "function": "WithFallback",
+    "original": "\"fallback\"",
+    "replacement": "\"\"",
+    "line": 79
+  },
+  {
+    "language": "c_sharp",
+    "operator": "ternary_arm_swap",
+    "implementation": "c_sharp.ternary_arm_swap",
+    "function": "Ternary",
+    "original": "enabled ? 1 : 0",
+    "replacement": "enabled ? 0 : 1",
+    "line": 84
+  },
+  {
+    "language": "c_sharp",
+    "operator": "ternary_condition_negation",
+    "implementation": "c_sharp.ternary_condition_negation",
+    "function": "Ternary",
+    "original": "enabled",
+    "replacement": "!(enabled)",
+    "line": 84
+  },
+  {
+    "language": "c_sharp",
+    "operator": "integer_zero_one",
+    "implementation": "c_sharp.integer_zero_one",
+    "function": "Ternary",
+    "original": "1",
+    "replacement": "0",
+    "line": 84
+  },
+  {
+    "language": "c_sharp",
+    "operator": "integer_zero_one",
+    "implementation": "c_sharp.integer_zero_one",
+    "function": "Ternary",
+    "original": "0",
+    "replacement": "1",
+    "line": 84
+  },
+  {
+    "language": "c_sharp",
+    "operator": "remove_not",
+    "implementation": "c_sharp.remove_not",
+    "function": "TernaryNegated",
+    "original": "!enabled",
+    "replacement": "enabled",
+    "line": 89
+  },
+  {
+    "language": "c_sharp",
+    "operator": "ternary_arm_swap",
+    "implementation": "c_sharp.ternary_arm_swap",
+    "function": "TernaryNegated",
+    "original": "!enabled ? 1 : 0",
+    "replacement": "!enabled ? 0 : 1",
+    "line": 89
+  },
+  {
+    "language": "c_sharp",
+    "operator": "integer_zero_one",
+    "implementation": "c_sharp.integer_zero_one",
+    "function": "TernaryNegated",
+    "original": "1",
+    "replacement": "0",
+    "line": 89
+  },
+  {
+    "language": "c_sharp",
+    "operator": "integer_zero_one",
+    "implementation": "c_sharp.integer_zero_one",
+    "function": "TernaryNegated",
+    "original": "0",
+    "replacement": "1",
+    "line": 89
+  },
+  {
+    "language": "c_sharp",
     "operator": "string_empty_literal",
     "implementation": "c_sharp.string_empty_literal",
     "function": "Ignore",
     "original": "\"x == y && true\"",
     "replacement": "\"\"",
-    "line": 70
+    "line": 95
   }
 ]

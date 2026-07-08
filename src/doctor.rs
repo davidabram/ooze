@@ -1245,6 +1245,19 @@ mod tests {
             "integer_zero_one should be disabled by default for C#: {:?}",
             ops.disabled_by_default
         );
+        // The null-check/conditional operators are registry-derived, so their
+        // presence here proves doctor --operators picked them up automatically.
+        for op in [
+            "nullish_coalescing_removal",
+            "ternary_arm_swap",
+            "ternary_condition_negation",
+        ] {
+            assert!(
+                ops.disabled_by_default.contains(&op),
+                "{op} should be listed (disabled by default) for C#: {:?}",
+                ops.disabled_by_default
+            );
+        }
     }
 
     #[test]

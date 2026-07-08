@@ -945,6 +945,9 @@ pub fn suggest(candidate: &MutationCandidate) -> TestSuggestion {
         OperatorName::TernaryArmSwap => format!(
             "Add a test for `{func}` in `{file}` that drives both branches of the ternary at line {line} and asserts the returned value. The test should fail if `{original}` is changed to `{replacement}`."
         ),
+        OperatorName::TernaryConditionNegation => format!(
+            "Add a test for `{func}` in `{file}` that drives the ternary at line {line} with a condition value on each side and asserts the returned value. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
         OperatorName::ArrayEmptyLiteral => format!(
             "Add a test for `{func}` in `{file}` that asserts the exact contents of the array at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
         ),

@@ -129,12 +129,19 @@ binary arithmetic swaps (`swap_arithmetic`: `+`/`-`, `*`/`/`, `%` → `*`;
 unary `+x`/`-x` are not matched), compound assignment swaps
 (`swap_assignment`: `+=`/`-=`, `*=`/`/=`; plain `=` and `%=` are excluded),
 and unary mutations (`remove_not`: `!x` → `x`, `remove_unary_minus`: `-x` →
-`x`, `plus_to_minus`: `+x` → `-x`). 0/1 integer swaps (`integer_zero_one`)
-and string-emptying (`string_empty_literal`: `"hello"` → `""`, regular string
-literals only — verbatim, raw, and interpolated strings are never matched)
-are registered but disabled by default, like every other language; enable
-them with `--operators` or `[mutation].operators`. Operators only match
-syntax nodes, so `==` in a comment or string literal never mutates.
+`x`, `plus_to_minus`: `+x` → `-x`). Null checks are covered by
+`negate_equality` (`x == null` → `x != null`); there is no separate
+null-check operator, since it would only duplicate those mutants. 0/1
+integer swaps (`integer_zero_one`), string-emptying (`string_empty_literal`:
+`"hello"` → `""`, regular string literals only — verbatim, raw, and
+interpolated strings are never matched), null-coalescing fallback removal
+(`nullish_coalescing_removal`: `a ?? b` → `a`), ternary arm swaps
+(`ternary_arm_swap`: `c ? a : b` → `c ? b : a`), and ternary condition
+negation (`ternary_condition_negation`: `c ? a : b` → `!(c) ? a : b`;
+`if` statements are never matched) are registered but disabled by default,
+matching the other languages; enable them with `--operators` or
+`[mutation].operators`. Operators only match syntax nodes, so `==` in a
+comment or string literal never mutates.
 
 ## Preset and operator coverage
 
@@ -148,7 +155,7 @@ levels):
 | Go                    | yes    | yes     | 5 (baseline)  | yes          |
 | JavaScript/TypeScript | yes    | yes     | 18            | yes          |
 | Python                | yes    | yes     | 20            | yes          |
-| C#                    | yes    | yes     | 13            | no           |
+| C#                    | yes    | yes     | 16            | no           |
 
 The baseline operator set every mutating language covers: boolean literal swap,
 equality negation, comparison boundary, logical and/or swap, and integer 0/1

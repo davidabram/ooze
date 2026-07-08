@@ -182,11 +182,14 @@ The C# operator set covers boolean literal swaps, returned-boolean flips,
 equality negation (`==`/`!=`), comparison boundary and comparison negation
 swaps (`<`, `<=`, `>`, `>=`), logical `&&`/`||` swaps, binary arithmetic
 swaps (`+`/`-`, `*`/`/`, `%` → `*`), compound assignment swaps (`+=`/`-=`,
-`*=`/`/=`), and unary mutations (`!x` → `x`, `-x` → `x`, `+x` → `-x`); 0/1
-integer swaps and string-emptying (`"hello"` → `""`) are available but
-disabled by default (enable with `--operators integer_zero_one` or
-`--operators string_empty_literal`). Operators only match real syntax nodes,
-so `==` in a comment or string never mutates.
+`*=`/`/=`), and unary mutations (`!x` → `x`, `-x` → `x`, `+x` → `-x`).
+Null checks mutate via equality negation (`x == null` → `x != null`); 0/1
+integer swaps, string-emptying (`"hello"` → `""`), null-coalescing fallback
+removal (`a ?? b` → `a`), ternary arm swaps (`c ? a : b` → `c ? b : a`), and
+ternary condition negation (`c ? a : b` → `!(c) ? a : b`) are available but
+disabled by default (enable with `--operators`, e.g. `--operators
+ternary_arm_swap`). Operators only match real syntax nodes, so `==` in a
+comment or string never mutates.
 As with every preset, explicit CLI flags and `ooze.toml` values win over the
 preset's defaults, and `ooze doctor` shows which fills are active or
 overridden:

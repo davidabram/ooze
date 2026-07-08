@@ -64,6 +64,31 @@ public static class Sample
         return "hello";
     }
 
+    public static bool IsMissing(string? value)
+    {
+        return value == null;
+    }
+
+    public static bool IsPresent(string? value)
+    {
+        return value != null;
+    }
+
+    public static string WithFallback(string? value)
+    {
+        return value ?? "fallback";
+    }
+
+    public static int Ternary(bool enabled)
+    {
+        return enabled ? 1 : 0;
+    }
+
+    public static int TernaryNegated(bool enabled)
+    {
+        return !enabled ? 1 : 0;
+    }
+
     public static string Ignore()
     {
         // true == false

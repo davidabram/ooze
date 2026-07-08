@@ -1,5 +1,7 @@
 use super::LanguageSpec;
-use crate::lang::javascript::empty_string_literal;
+use crate::lang::javascript::{
+    empty_string_literal, negate_js_expression, remove_nullish_fallback, swap_ternary_arms,
+};
 use crate::lang::mutators;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/c_sharp/functions.scm");
@@ -11,9 +13,16 @@ const BRANCHES_QUERY: &str = include_str!("../../queries/c_sharp/branches.scm");
 // `assignment_expression`), so `true` in a comment or `==` inside a string
 // literal can never produce a candidate — except `string_empty_literal`, which
 // intentionally targets regular `string_literal` nodes and is disabled by
-// default. Deliberately excluded for now: plain `=` and `%=` assignment, null
-// insertion, default(T) replacement, LINQ/async rewrites, pattern matching —
-// anything likely to produce non-compiling or noisy mutants.
+// default. Null checks and conditional expressions are covered too:
+// `nullish_coalescing_removal` drops the `??` fallback, `ternary_arm_swap` and
+// `ternary_condition_negation` mutate `conditional_expression` nodes (never
+// `if` statements). There is no separate null-check operator: `x == null` is a
+// plain `binary_expression`, so `negate_equality` already produces the
+// `x != null` mutant, and a null-specific operator would only create
+// byte-identical duplicates. Deliberately excluded for now: plain `=` and `%=`
+// assignment, null insertion, default(T) replacement, LINQ/async rewrites,
+// pattern matching — anything likely to produce non-compiling or noisy
+// mutants.
 mutators! {
     language: CSharp,
     id_prefix: "c_sharp",
@@ -151,6 +160,24 @@ mutators! {
         replace: empty_string_literal,
         describe: |original, replacement| {
             format!("Empty string literal `{original}` -> `{replacement}`")
+        },
+    },
+    NullishCoalescingRemoval {
+        replace: remove_nullish_fallback,
+        describe: |original, replacement| {
+            format!("Remove null-coalescing fallback `{original}` -> `{replacement}`")
+        },
+    },
+    TernaryArmSwap {
+        replace: swap_ternary_arms,
+        describe: |original, replacement| {
+            format!("Swap ternary arms `{original}` -> `{replacement}`")
+        },
+    },
+    TernaryConditionNegation {
+        replace: negate_js_expression,
+        describe: |original, replacement| {
+            format!("Negate ternary condition `{original}` -> `{replacement}`")
         },
     },
 }
