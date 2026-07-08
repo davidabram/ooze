@@ -312,6 +312,11 @@ pub enum OperatorName {
     ObjectEmptyLiteral,
     StringEmptyLiteral,
     AwaitRemoval,
+    // Arithmetic/assignment operators (currently C#-only).
+    SwapArithmetic,
+    SwapAssignment,
+    RemoveUnaryMinus,
+    PlusToMinus,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -473,6 +478,10 @@ impl OperatorName {
         OperatorName::ObjectEmptyLiteral,
         OperatorName::StringEmptyLiteral,
         OperatorName::AwaitRemoval,
+        OperatorName::SwapArithmetic,
+        OperatorName::SwapAssignment,
+        OperatorName::RemoveUnaryMinus,
+        OperatorName::PlusToMinus,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -519,6 +528,10 @@ impl OperatorName {
             OperatorName::ObjectEmptyLiteral => "object_empty_literal",
             OperatorName::StringEmptyLiteral => "string_empty_literal",
             OperatorName::AwaitRemoval => "await_removal",
+            OperatorName::SwapArithmetic => "swap_arithmetic",
+            OperatorName::SwapAssignment => "swap_assignment",
+            OperatorName::RemoveUnaryMinus => "remove_unary_minus",
+            OperatorName::PlusToMinus => "plus_to_minus",
         }
     }
 
@@ -838,6 +851,34 @@ impl OperatorName {
                 default_enabled: false,
                 description: "Remove await from an awaited expression (await x -> x).",
                 test_hint: "Add async tests that assert resolved values and ordering.",
+            },
+            OperatorName::SwapArithmetic => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Arithmetic,
+                default_enabled: true,
+                description: "Swap a binary arithmetic operator (+ <-> -, * <-> /, % -> *).",
+                test_hint: "Assert exact computed values, not just signs or magnitudes.",
+            },
+            OperatorName::SwapAssignment => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Assignment,
+                default_enabled: true,
+                description: "Swap a compound assignment operator (+= <-> -=, *= <-> /=).",
+                test_hint: "Assert the accumulated value after the mutation site runs.",
+            },
+            OperatorName::RemoveUnaryMinus => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Arithmetic,
+                default_enabled: true,
+                description: "Remove unary minus (-x -> x).",
+                test_hint: "Add a test with a strictly positive input so the sign matters.",
+            },
+            OperatorName::PlusToMinus => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Arithmetic,
+                default_enabled: true,
+                description: "Replace unary plus with unary minus (+x -> -x).",
+                test_hint: "Add a test with a nonzero input so the sign flip is visible.",
             },
         }
     }

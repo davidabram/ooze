@@ -947,6 +947,18 @@ pub fn suggest(candidate: &MutationCandidate) -> TestSuggestion {
         OperatorName::AwaitRemoval => format!(
             "Add an async test for `{func}` in `{file}` that asserts the resolved value and ordering around line {line}. The test should fail if `{original}` is changed to `{replacement}`."
         ),
+        OperatorName::SwapArithmetic => format!(
+            "Add a test for `{func}` in `{file}` that asserts the exact computed value at line {line}, with operands chosen so `{original}` and `{replacement}` differ. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::SwapAssignment => format!(
+            "Add a test for `{func}` in `{file}` that asserts the accumulated value after line {line} runs. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::RemoveUnaryMinus => format!(
+            "Add a test for `{func}` in `{file}` with a strictly positive input so the sign at line {line} matters. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::PlusToMinus => format!(
+            "Add a test for `{func}` in `{file}` with a nonzero input so the sign flip at line {line} is visible. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
     };
 
     TestSuggestion {

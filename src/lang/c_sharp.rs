@@ -1,16 +1,19 @@
 use super::LanguageSpec;
+use crate::lang::javascript::empty_string_literal;
 use crate::lang::mutators;
 
 const FUNCTIONS_QUERY: &str = include_str!("../../queries/c_sharp/functions.scm");
 const BRANCHES_QUERY: &str = include_str!("../../queries/c_sharp/branches.scm");
 
-// C#'s initial mutation operator set: literal/operator swaps only, mirroring
-// Go's baseline plus comparison negation. The queries match syntax nodes
-// (`boolean_literal`, `integer_literal`, `binary_expression` operators), so
-// `true` in a comment or `==` inside a string literal can never produce a
-// candidate. Deliberately excluded for now: null insertion, default(T)
-// replacement, LINQ/async rewrites, pattern matching — anything likely to
-// produce non-compiling or noisy mutants.
+// C#'s mutation operator set: literal/operator swaps plus arithmetic,
+// compound assignment, and unary mutations. The queries match syntax nodes
+// (`boolean_literal`, `binary_expression` operators, `prefix_unary_expression`,
+// `assignment_expression`), so `true` in a comment or `==` inside a string
+// literal can never produce a candidate — except `string_empty_literal`, which
+// intentionally targets regular `string_literal` nodes and is disabled by
+// default. Deliberately excluded for now: plain `=` and `%=` assignment, null
+// insertion, default(T) replacement, LINQ/async rewrites, pattern matching —
+// anything likely to produce non-compiling or noisy mutants.
 mutators! {
     language: CSharp,
     id_prefix: "c_sharp",
@@ -74,6 +77,81 @@ mutators! {
             _ => None,
         },
         describe: |original, replacement| format!("Replace integer {original} -> {replacement}"),
+    },
+    SwapArithmetic {
+        replace: |original| match original {
+            "+" => Some("-".to_string()),
+            "-" => Some("+".to_string()),
+            "*" => Some("/".to_string()),
+            "/" | "%" => Some("*".to_string()),
+            _ => None,
+        },
+        describe: |original, replacement| {
+            format!("Swap arithmetic operator {original} -> {replacement}")
+        },
+    },
+    SwapAssignment {
+        replace: |original| match original {
+            "+=" => Some("-=".to_string()),
+            "-=" => Some("+=".to_string()),
+            "*=" => Some("/=".to_string()),
+            "/=" => Some("*=".to_string()),
+            _ => None,
+        },
+        describe: |original, replacement| {
+            format!("Swap assignment operator {original} -> {replacement}")
+        },
+    },
+    RemoveNot {
+        replace: |original| {
+            let rest = original.strip_prefix('!')?.trim_start();
+            if rest.is_empty() {
+                None
+            } else {
+                Some(rest.to_string())
+            }
+        },
+        describe: |original, replacement| {
+            format!("Remove negation `{original}` -> `{replacement}`")
+        },
+    },
+    RemoveUnaryMinus {
+        replace: |original| {
+            let rest = original.strip_prefix('-')?.trim_start();
+            if rest.is_empty() {
+                None
+            } else {
+                Some(rest.to_string())
+            }
+        },
+        describe: |original, replacement| {
+            format!("Remove unary minus `{original}` -> `{replacement}`")
+        },
+    },
+    PlusToMinus {
+        replace: |original| match original {
+            "+" => Some("-".to_string()),
+            _ => None,
+        },
+        describe: |original, replacement| {
+            format!("Replace unary plus {original} -> {replacement}")
+        },
+    },
+    ReturnBoolean {
+        replace: |original| match original {
+            "true" => Some("false".to_string()),
+            "false" => Some("true".to_string()),
+            _ => None,
+        },
+        describe: |original, replacement| {
+            format!("Flip returned boolean {original} -> {replacement}")
+        },
+    },
+    StringEmptyLiteral {
+        replace: empty_string_literal,
+        describe: |original, replacement| {
+            format!("Empty string literal `{original}` -> `{replacement}`")
+        },
     },
 }
 

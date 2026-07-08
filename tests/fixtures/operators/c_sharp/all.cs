@@ -30,6 +30,40 @@ public static class Sample
         return a && b;
     }
 
+    public static int Arithmetic(int a, int b)
+    {
+        return a + b - a * b / 2 % 3;
+    }
+
+    public static int Assignments(int x)
+    {
+        x += 1;
+        x -= 1;
+        x *= 2;
+        x /= 2;
+        return x;
+    }
+
+    public static int Negate(int x)
+    {
+        return -x;
+    }
+
+    public static int Reaffirm(int x)
+    {
+        return +x;
+    }
+
+    public static bool Not(bool enabled)
+    {
+        return !enabled;
+    }
+
+    public static string EmptyString()
+    {
+        return "hello";
+    }
+
     public static string Ignore()
     {
         // true == false

@@ -919,19 +919,22 @@ fn csharp_operator_fixture_matches_snapshot() {
         "discovered C# mutants drifted from tests/fixtures/operators/c_sharp/expected.json"
     );
 
-    // Guard the headline promise: every one of the 6 C# operators still fires,
-    // and nothing matched inside the fixture's comment or string literal.
+    // Guard the headline promise: every one of the 13 C# operators still fires,
+    // and nothing matched inside the fixture's comment or string literal —
+    // except string_empty_literal, which intentionally targets string literals.
     let operators: std::collections::BTreeSet<&str> = discovered
         .iter()
         .map(|c| c["operator"].as_str().expect("operator should be a string"))
         .collect();
     assert_eq!(
         operators.len(),
-        6,
-        "expected all 6 C# operators to fire, got: {operators:?}"
+        13,
+        "expected all 13 C# operators to fire, got: {operators:?}"
     );
     assert!(
-        discovered.iter().all(|c| c["function"] != "Ignore"),
+        discovered
+            .iter()
+            .all(|c| c["function"] != "Ignore" || c["operator"] == "string_empty_literal"),
         "comment/string contents must not produce mutants: {discovered:?}"
     );
 }

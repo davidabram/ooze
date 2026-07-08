@@ -122,13 +122,19 @@ C# also keeps a shared cache rather than `--per-worker-cache`. As with every
 preset, explicit CLI flags and `ooze.toml` values win over the preset's
 defaults, and `ooze doctor` shows which fills are active or overridden.
 
-C#'s initial operator set covers boolean literal swaps, equality negation
-(`==`/`!=`), comparison boundary and comparison negation swaps (`<`, `<=`,
-`>`, `>=`), and logical `&&`/`||` swaps. 0/1 integer swaps
-(`integer_zero_one`) are registered but disabled by default, like every other
-language; enable them with `--operators integer_zero_one` or
-`[mutation].operators`. Operators only match syntax nodes, so `==` in a
-comment or string literal never mutates.
+C#'s operator set covers boolean literal swaps, returned-boolean flips
+(`return_boolean`), equality negation (`==`/`!=`), comparison boundary and
+comparison negation swaps (`<`, `<=`, `>`, `>=`), logical `&&`/`||` swaps,
+binary arithmetic swaps (`swap_arithmetic`: `+`/`-`, `*`/`/`, `%` → `*`;
+unary `+x`/`-x` are not matched), compound assignment swaps
+(`swap_assignment`: `+=`/`-=`, `*=`/`/=`; plain `=` and `%=` are excluded),
+and unary mutations (`remove_not`: `!x` → `x`, `remove_unary_minus`: `-x` →
+`x`, `plus_to_minus`: `+x` → `-x`). 0/1 integer swaps (`integer_zero_one`)
+and string-emptying (`string_empty_literal`: `"hello"` → `""`, regular string
+literals only — verbatim, raw, and interpolated strings are never matched)
+are registered but disabled by default, like every other language; enable
+them with `--operators` or `[mutation].operators`. Operators only match
+syntax nodes, so `==` in a comment or string literal never mutates.
 
 ## Preset and operator coverage
 
@@ -142,7 +148,7 @@ levels):
 | Go                    | yes    | yes     | 5 (baseline)  | yes          |
 | JavaScript/TypeScript | yes    | yes     | 18            | yes          |
 | Python                | yes    | yes     | 20            | yes          |
-| C#                    | yes    | yes     | 6 (baseline)  | no           |
+| C#                    | yes    | yes     | 13            | no           |
 
 The baseline operator set every mutating language covers: boolean literal swap,
 equality negation, comparison boundary, logical and/or swap, and integer 0/1

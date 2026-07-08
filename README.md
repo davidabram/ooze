@@ -178,11 +178,15 @@ probe, `DOTNET_CLI_TELEMETRY_OPTOUT=1` (quiet, network-free probe runs), and
 concurrency-safe, so workers share it while build outputs stay inside each
 isolated workspace — no `--per-worker-cache`).
 
-The initial C# operator set covers boolean literal swaps, equality negation
-(`==`/`!=`), comparison boundary and comparison negation swaps (`<`, `<=`,
-`>`, `>=`), and logical `&&`/`||` swaps; 0/1 integer swaps are available but
-disabled by default (enable with `--operators integer_zero_one`). Operators
-only match real syntax nodes, so `==` in a comment or string never mutates.
+The C# operator set covers boolean literal swaps, returned-boolean flips,
+equality negation (`==`/`!=`), comparison boundary and comparison negation
+swaps (`<`, `<=`, `>`, `>=`), logical `&&`/`||` swaps, binary arithmetic
+swaps (`+`/`-`, `*`/`/`, `%` → `*`), compound assignment swaps (`+=`/`-=`,
+`*=`/`/=`), and unary mutations (`!x` → `x`, `-x` → `x`, `+x` → `-x`); 0/1
+integer swaps and string-emptying (`"hello"` → `""`) are available but
+disabled by default (enable with `--operators integer_zero_one` or
+`--operators string_empty_literal`). Operators only match real syntax nodes,
+so `==` in a comment or string never mutates.
 As with every preset, explicit CLI flags and `ooze.toml` values win over the
 preset's defaults, and `ooze doctor` shows which fills are active or
 overridden:

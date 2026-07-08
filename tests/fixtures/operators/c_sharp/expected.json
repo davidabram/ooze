@@ -19,8 +19,8 @@
   },
   {
     "language": "c_sharp",
-    "operator": "swap_boolean",
-    "implementation": "c_sharp.swap_boolean",
+    "operator": "return_boolean",
+    "implementation": "c_sharp.return_boolean",
     "function": "IsReady",
     "original": "true",
     "replacement": "false",
@@ -28,8 +28,8 @@
   },
   {
     "language": "c_sharp",
-    "operator": "swap_boolean",
-    "implementation": "c_sharp.swap_boolean",
+    "operator": "return_boolean",
+    "implementation": "c_sharp.return_boolean",
     "function": "IsReady",
     "original": "false",
     "replacement": "true",
@@ -115,5 +115,149 @@
     "original": "&&",
     "replacement": "||",
     "line": 30
+  },
+  {
+    "language": "c_sharp",
+    "operator": "swap_arithmetic",
+    "implementation": "c_sharp.swap_arithmetic",
+    "function": "Arithmetic",
+    "original": "+",
+    "replacement": "-",
+    "line": 35
+  },
+  {
+    "language": "c_sharp",
+    "operator": "swap_arithmetic",
+    "implementation": "c_sharp.swap_arithmetic",
+    "function": "Arithmetic",
+    "original": "-",
+    "replacement": "+",
+    "line": 35
+  },
+  {
+    "language": "c_sharp",
+    "operator": "swap_arithmetic",
+    "implementation": "c_sharp.swap_arithmetic",
+    "function": "Arithmetic",
+    "original": "*",
+    "replacement": "/",
+    "line": 35
+  },
+  {
+    "language": "c_sharp",
+    "operator": "swap_arithmetic",
+    "implementation": "c_sharp.swap_arithmetic",
+    "function": "Arithmetic",
+    "original": "/",
+    "replacement": "*",
+    "line": 35
+  },
+  {
+    "language": "c_sharp",
+    "operator": "swap_arithmetic",
+    "implementation": "c_sharp.swap_arithmetic",
+    "function": "Arithmetic",
+    "original": "%",
+    "replacement": "*",
+    "line": 35
+  },
+  {
+    "language": "c_sharp",
+    "operator": "swap_assignment",
+    "implementation": "c_sharp.swap_assignment",
+    "function": "Assignments",
+    "original": "+=",
+    "replacement": "-=",
+    "line": 40
+  },
+  {
+    "language": "c_sharp",
+    "operator": "integer_zero_one",
+    "implementation": "c_sharp.integer_zero_one",
+    "function": "Assignments",
+    "original": "1",
+    "replacement": "0",
+    "line": 40
+  },
+  {
+    "language": "c_sharp",
+    "operator": "swap_assignment",
+    "implementation": "c_sharp.swap_assignment",
+    "function": "Assignments",
+    "original": "-=",
+    "replacement": "+=",
+    "line": 41
+  },
+  {
+    "language": "c_sharp",
+    "operator": "integer_zero_one",
+    "implementation": "c_sharp.integer_zero_one",
+    "function": "Assignments",
+    "original": "1",
+    "replacement": "0",
+    "line": 41
+  },
+  {
+    "language": "c_sharp",
+    "operator": "swap_assignment",
+    "implementation": "c_sharp.swap_assignment",
+    "function": "Assignments",
+    "original": "*=",
+    "replacement": "/=",
+    "line": 42
+  },
+  {
+    "language": "c_sharp",
+    "operator": "swap_assignment",
+    "implementation": "c_sharp.swap_assignment",
+    "function": "Assignments",
+    "original": "/=",
+    "replacement": "*=",
+    "line": 43
+  },
+  {
+    "language": "c_sharp",
+    "operator": "remove_unary_minus",
+    "implementation": "c_sharp.remove_unary_minus",
+    "function": "Negate",
+    "original": "-x",
+    "replacement": "x",
+    "line": 49
+  },
+  {
+    "language": "c_sharp",
+    "operator": "plus_to_minus",
+    "implementation": "c_sharp.plus_to_minus",
+    "function": "Reaffirm",
+    "original": "+",
+    "replacement": "-",
+    "line": 54
+  },
+  {
+    "language": "c_sharp",
+    "operator": "remove_not",
+    "implementation": "c_sharp.remove_not",
+    "function": "Not",
+    "original": "!enabled",
+    "replacement": "enabled",
+    "line": 59
+  },
+  {
+    "language": "c_sharp",
+    "operator": "string_empty_literal",
+    "implementation": "c_sharp.string_empty_literal",
+    "function": "EmptyString",
+    "original": "\"hello\"",
+    "replacement": "\"\"",
+    "line": 64
+  },
+  {
+    "language": "c_sharp",
+    "operator": "string_empty_literal",
+    "implementation": "c_sharp.string_empty_literal",
+    "function": "Ignore",
+    "original": "\"x == y && true\"",
+    "replacement": "\"\"",
+    "line": 70
   }
 ]
