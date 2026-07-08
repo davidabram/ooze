@@ -434,6 +434,12 @@ pub(crate) enum Commands {
             help = "Output format: human or json"
         )]
         format: OutputFormat,
+
+        #[arg(
+            long,
+            help = "Show operator support for the detected project languages"
+        )]
+        operators: bool,
     },
     #[command(about = "Apply a mutation in a workspace, run a probe, and classify the result")]
     TestMutant {

@@ -41,8 +41,14 @@ cargo build --release
 | `test-mutant`   | Apply one mutation, run a probe, classify the outcome.      |
 | `test-mutants`  | Run a batch in parallel and emit a summary report.          |
 | `warmup`        | Pre-build the probe in the shared build cache dir.          |
+| `doctor`        | Diagnose repo, config, and runtime preconditions.           |
 
 Everything after `--` on `test-mutant(s)` is the probe command.
+
+`ooze doctor --operators` additionally shows operator support for the detected
+language(s): which operators exist, which are enabled by default, which are
+available but disabled by default (e.g. the noisy `integer_zero_one`), and the
+`--operators` flag to include the disabled ones.
 
 ## Quick start (Rust)
 

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::cli::Preset;
 use crate::config::{self, OozeConfig};
-use crate::core::OperatorName;
+use crate::core::{Language, OperatorName};
 use crate::runner::{overlay, worktree};
 
 #[derive(Debug, Clone, Copy, serde::Serialize)]
@@ -55,6 +55,18 @@ impl ProjectType {
             ProjectType::Mixed | ProjectType::Unknown => None,
         }
     }
+
+    /// Languages whose mutation operators apply to this project type. Node
+    /// projects can hold both JavaScript and TypeScript sources.
+    fn languages(self) -> &'static [Language] {
+        match self {
+            ProjectType::Rust => &[Language::Rust],
+            ProjectType::Go => &[Language::Go],
+            ProjectType::Node => &[Language::JavaScript, Language::TypeScript],
+            ProjectType::Python => &[Language::Python],
+            ProjectType::Mixed | ProjectType::Unknown => &[],
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -105,6 +117,33 @@ pub struct Recommendation {
     pub mixed_commands: Vec<String>,
 }
 
+/// Operator support for one language, split by default enablement. Derived
+/// from the same mutator registry mutation discovery reads, so this listing
+/// cannot drift from the implementations.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LanguageOperators {
+    pub language: Language,
+    pub enabled_by_default: Vec<&'static str>,
+    pub disabled_by_default: Vec<&'static str>,
+}
+
+fn language_operators(language: Language) -> LanguageOperators {
+    let mut enabled_by_default = Vec::new();
+    let mut disabled_by_default = Vec::new();
+    for m in crate::mutate::registry::implementations_for_language(language) {
+        if m.default_enabled() {
+            enabled_by_default.push(m.operator.as_str());
+        } else {
+            disabled_by_default.push(m.operator.as_str());
+        }
+    }
+    LanguageOperators {
+        language,
+        enabled_by_default,
+        disabled_by_default,
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DoctorReport {
     pub path: PathBuf,
@@ -116,6 +155,10 @@ pub struct DoctorReport {
     pub backends: BackendsStatus,
     pub cache: CacheStatus,
     pub recommendation: Recommendation,
+    /// `Some` only when `doctor --operators` is passed: one entry per language
+    /// of each detected project type (empty when nothing was detected).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operators: Option<Vec<LanguageOperators>>,
     pub config_path: Option<PathBuf>,
     pub checks: Vec<CheckResult>,
     pub failed: usize,
@@ -380,7 +423,7 @@ fn recommend(
     }
 }
 
-pub fn run(path: &Path) -> DoctorReport {
+pub fn run(path: &Path, include_operators: bool) -> DoctorReport {
     let mut checks: Vec<CheckResult> = Vec::new();
 
     let canonical = match std::fs::canonicalize(path) {
@@ -407,6 +450,13 @@ pub fn run(path: &Path) -> DoctorReport {
 
     let detected = detect_project_types(&canonical);
     let project_type = summarize_project_type(&detected);
+    let operators = include_operators.then(|| {
+        detected
+            .iter()
+            .flat_map(|t| t.languages())
+            .map(|l| language_operators(*l))
+            .collect()
+    });
     let git = detect_git(&canonical);
     let worktree_status = worktree_backend_status(&canonical, &git);
     let cache = CacheStatus {
@@ -610,10 +660,108 @@ pub fn run(path: &Path) -> DoctorReport {
         },
         cache,
         recommendation,
+        operators,
         config_path: cfg_loaded_from,
         checks,
         failed,
         warned,
+    }
+}
+
+fn language_human(lang: Language) -> &'static str {
+    match lang {
+        Language::Rust => "Rust",
+        Language::Go => "Go",
+        Language::Python => "Python",
+        Language::JavaScript => "JavaScript",
+        Language::TypeScript => "TypeScript",
+        other => other.as_str(),
+    }
+}
+
+fn find_ops(ops: &[LanguageOperators], lang: Language) -> Option<&LanguageOperators> {
+    ops.iter().find(|o| o.language == lang)
+}
+
+/// The operator sections to render for one project type: normally one per
+/// language, but JavaScript and TypeScript collapse into a single combined
+/// section when their operator support is identical (which it is today; the
+/// comparison keeps the label honest if they ever diverge).
+fn operator_sections(
+    project_type: ProjectType,
+    ops: &[LanguageOperators],
+) -> Vec<(&'static str, &LanguageOperators)> {
+    if project_type == ProjectType::Node
+        && let (Some(js), Some(ts)) = (
+            find_ops(ops, Language::JavaScript),
+            find_ops(ops, Language::TypeScript),
+        )
+        && js.enabled_by_default == ts.enabled_by_default
+        && js.disabled_by_default == ts.disabled_by_default
+    {
+        return vec![("JavaScript/TypeScript", js)];
+    }
+    project_type
+        .languages()
+        .iter()
+        .filter_map(|l| find_ops(ops, *l).map(|o| (language_human(*l), o)))
+        .collect()
+}
+
+fn print_operator_groups(o: &LanguageOperators, indent: usize) {
+    let pad = " ".repeat(indent);
+    println!("{pad}enabled by default:");
+    for op in &o.enabled_by_default {
+        println!("{pad}  {op}");
+    }
+    if !o.disabled_by_default.is_empty() {
+        println!("{pad}available but disabled by default:");
+        for op in &o.disabled_by_default {
+            println!("{pad}  {op}");
+        }
+    }
+}
+
+fn print_operators(report: &DoctorReport, ops: &[LanguageOperators]) {
+    println!("Operators");
+    if report.detected.is_empty() {
+        println!("  No language detected.");
+        println!(
+            "  Try running from a supported project or specify a preset/test command manually."
+        );
+        return;
+    }
+    if report.project_type == ProjectType::Mixed {
+        for (i, ty) in report.detected.iter().enumerate() {
+            if i > 0 {
+                println!();
+            }
+            println!("  {}", ty.human());
+            let nested = ty.languages().len() > 1;
+            for (label, o) in operator_sections(*ty, ops) {
+                if nested {
+                    println!("    {label}");
+                    print_operator_groups(o, 6);
+                } else {
+                    print_operator_groups(o, 4);
+                }
+            }
+        }
+    } else {
+        for (label, o) in operator_sections(report.project_type, ops) {
+            println!("  language: {label}");
+            print_operator_groups(o, 2);
+        }
+    }
+    let disabled: std::collections::BTreeSet<&str> = ops
+        .iter()
+        .flat_map(|o| o.disabled_by_default.iter().copied())
+        .collect();
+    if !disabled.is_empty() {
+        let list: Vec<&str> = disabled.into_iter().collect();
+        println!();
+        println!("  To include disabled operators:");
+        println!("    ooze test-mutants --operators {} ...", list.join(","));
     }
 }
 
@@ -626,6 +774,10 @@ pub fn print_human(report: &DoctorReport) {
     if report.project_type == ProjectType::Mixed {
         let names: Vec<&str> = report.detected.iter().map(|t| t.human()).collect();
         println!("  detected: {}", names.join(", "));
+    }
+    if let Some(ops) = &report.operators {
+        println!();
+        print_operators(report, ops);
     }
     println!();
     println!("Git");
@@ -761,7 +913,7 @@ mod tests {
         write_cargo_toml(dir.path());
         init_git_repo(dir.path());
 
-        let report = run(dir.path());
+        let report = run(dir.path(), false);
         assert_eq!(report.project_type, ProjectType::Rust);
         assert!(report.git.available, "git repo should be found");
         assert_eq!(
@@ -797,7 +949,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         write_cargo_toml(dir.path());
 
-        let report = run(dir.path());
+        let report = run(dir.path(), false);
         assert_eq!(report.project_type, ProjectType::Rust);
         assert!(!report.git.available, "no git repo should be found");
         assert!(!report.backends.worktree.available);
@@ -847,7 +999,7 @@ mod tests {
         )
         .expect("write config");
 
-        let report = run(dir.path());
+        let report = run(dir.path(), false);
         let override_of = |prefix: &str| {
             report
                 .recommendation
@@ -879,7 +1031,7 @@ mod tests {
     #[test]
     fn unknown_dir_reports_unknown_type_and_no_recommendation() {
         let dir = tempfile::tempdir().expect("tempdir");
-        let report = run(dir.path());
+        let report = run(dir.path(), false);
         assert_eq!(report.project_type, ProjectType::Unknown);
         assert_eq!(report.recommendation.command, None);
         assert!(report.recommendation.preset_fills.is_empty());
@@ -890,7 +1042,7 @@ mod tests {
         // sccache is optional: whatever the machine has, the report must come
         // out whole with the flag simply reflecting PATH lookup.
         let dir = tempfile::tempdir().expect("tempdir");
-        let report = run(dir.path());
+        let report = run(dir.path(), false);
         assert_eq!(report.cache.sccache, which("sccache").is_some());
     }
 
@@ -944,7 +1096,7 @@ mod tests {
         )
         .expect("write config");
 
-        let report = run(dir.path());
+        let report = run(dir.path(), false);
         let op = report
             .checks
             .iter()
@@ -960,6 +1112,76 @@ mod tests {
     }
 
     #[test]
+    fn language_operators_mirror_the_registry() {
+        // The helper must agree with the registry (the data mutation discovery
+        // reads) for every language a project type can map to, so the doctor
+        // listing cannot drift from the implementations.
+        for lang in [
+            Language::Rust,
+            Language::Go,
+            Language::JavaScript,
+            Language::TypeScript,
+            Language::Python,
+        ] {
+            let ops = language_operators(lang);
+            for m in crate::mutate::registry::implementations_for_language(lang) {
+                let group = if m.default_enabled() {
+                    &ops.enabled_by_default
+                } else {
+                    &ops.disabled_by_default
+                };
+                assert!(
+                    group.contains(&m.operator.as_str()),
+                    "{lang}: {} missing from its default-enablement group",
+                    m.operator.as_str()
+                );
+            }
+            let total = crate::mutate::registry::implementations_for_language(lang).count();
+            assert_eq!(
+                ops.enabled_by_default.len() + ops.disabled_by_default.len(),
+                total,
+                "{lang}: listing must cover every registered implementation"
+            );
+        }
+    }
+
+    #[test]
+    fn rust_operators_list_integer_zero_one_as_disabled() {
+        let ops = language_operators(Language::Rust);
+        assert!(
+            ops.disabled_by_default.contains(&"integer_zero_one"),
+            "integer_zero_one should be disabled by default for Rust: {:?}",
+            ops.disabled_by_default
+        );
+        assert!(
+            ops.enabled_by_default.contains(&"swap_boolean"),
+            "swap_boolean should be enabled by default for Rust: {:?}",
+            ops.enabled_by_default
+        );
+    }
+
+    #[test]
+    fn node_sections_combine_js_and_ts_while_identical() {
+        // JS and TS currently register identical operator support, so the
+        // human output shows one combined section. If they diverge,
+        // operator_sections must fall back to separate sections instead of
+        // printing a wrong combined label.
+        let ops = vec![
+            language_operators(Language::JavaScript),
+            language_operators(Language::TypeScript),
+        ];
+        let sections = operator_sections(ProjectType::Node, &ops);
+        let labels: Vec<&str> = sections.iter().map(|(l, _)| *l).collect();
+        if ops[0].enabled_by_default == ops[1].enabled_by_default
+            && ops[0].disabled_by_default == ops[1].disabled_by_default
+        {
+            assert_eq!(labels, vec!["JavaScript/TypeScript"]);
+        } else {
+            assert_eq!(labels, vec!["JavaScript", "TypeScript"]);
+        }
+    }
+
+    #[test]
     fn run_operators_check_fails_on_unknown() {
         // An unconfigured operator name makes `unknown` non-empty, so the check
         // is Fail. Kills the `is_empty -> !is_empty` mutation (line 280) in the
@@ -971,7 +1193,7 @@ mod tests {
         )
         .expect("write config");
 
-        let report = run(dir.path());
+        let report = run(dir.path(), false);
         let op = report
             .checks
             .iter()

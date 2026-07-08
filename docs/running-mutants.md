@@ -122,6 +122,18 @@ swap. Note `integer_zero_one` is `default_enabled: false` in every language
 (it tends to be noisy); enable it explicitly with
 `--operators integer_zero_one` or `[mutation].operators`.
 
+To see the same information scoped to your project, run:
+
+```bash
+ooze doctor --operators
+```
+
+It reads the mutator registry for the detected language(s) and shows which
+operators are available, which are enabled by default, which are available
+but disabled by default, and the `--operators` flag to include the disabled
+ones. Mixed projects get one section per detected language; `--format json`
+includes the same data under an `operators` key.
+
 Presets are default-fillers, not overrides: explicit CLI flags and `ooze.toml`
 values always win. The applied fills are printed on stderr as
 `ooze: preset <name>: ...` so the expansion stays visible. `ooze doctor` shows

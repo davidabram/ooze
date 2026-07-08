@@ -1044,8 +1044,12 @@ pub fn run() -> anyhow::Result<()> {
 
             println!("{}", serde_json::to_string_pretty(&outcome)?);
         }
-        Commands::Doctor { path, format } => {
-            let report = doctor::run(&path);
+        Commands::Doctor {
+            path,
+            format,
+            operators,
+        } => {
+            let report = doctor::run(&path, operators);
             if format.is_json() {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
