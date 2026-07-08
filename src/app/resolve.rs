@@ -48,9 +48,9 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
     use super::{
         build_report_options, parse_report_detail_str, parse_report_format_str, parse_strategy_str,
         parse_workspace_backend_str, progress_enabled, resolve_bool_flag, resolve_disabled_flag,
-        resolve_exclude_list, resolve_exclude_operators, resolve_excludes, resolve_operators,
-        resolve_probe_env,
+        resolve_exclude_list, resolve_exclude_operators, resolve_operators, resolve_probe_env,
     };
+    use crate::planning::resolve_excludes;
 
     let TestMutantsArgs {
         config: config_path,

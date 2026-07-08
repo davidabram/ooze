@@ -4,89 +4,17 @@
 mod resolve;
 
 use crate::cli::{Cli, Commands, WorkspaceBackendArg, parse_key_val};
-use crate::{
-    config, core, crap, doctor, lang, mutate, report, runner, scheduler, skip, source_path,
-};
+use crate::{config, core, doctor, lang, mutate, planning, report, runner, scheduler, skip};
 
 use std::path::PathBuf;
 
 use anyhow::Context;
 use clap::{Parser, ValueEnum};
 
-pub(crate) const DEFAULT_EXCLUDES: &[&str] = &[
-    "target/**",
-    ".ooze/**",
-    ".git/**",
-    "node_modules/**",
-    "vendor/**",
-    "__pycache__/**",
-    ".gradle/**",
-];
-
-/// Coverage resolved from the CLI, ready for scoring plus a count of how many
-/// reports were merged (for diagnostics).
-struct ResolvedCoverage {
-    map: std::collections::HashMap<PathBuf, core::FileCoverage>,
-    reports: usize,
-}
-
-/// Resolve coverage from the (repeatable) `--coverage` specs, falling back to
-/// the deprecated `--lcov` flag. Returns `None` when neither was supplied.
-fn resolve_coverage(
-    coverage: &[String],
-    lcov: Option<&std::path::Path>,
-) -> anyhow::Result<Option<ResolvedCoverage>> {
-    use crap::coverage::{CoverageFormat, CoverageInput};
-
-    // `--coverage` specs take precedence; the deprecated `--lcov` flag is just an
-    // implicit lcov-format input. Each spec is parsed to a typed input once here.
-    let inputs: Vec<CoverageInput> = if !coverage.is_empty() {
-        coverage
-            .iter()
-            .map(|spec| CoverageInput::parse(spec))
-            .collect::<anyhow::Result<_>>()?
-    } else if let Some(path) = lcov {
-        vec![CoverageInput {
-            format: CoverageFormat::Lcov,
-            path: path.to_path_buf(),
-        }]
-    } else {
-        return Ok(None);
-    };
-
-    Ok(Some(ResolvedCoverage {
-        reports: inputs.len(),
-        map: crap::coverage::load_inputs(&inputs)?,
-    }))
-}
-
-/// Score `functions` against resolved coverage when present (printing match
-/// diagnostics to stderr), or without coverage otherwise.
-fn score_with_optional_coverage(
-    functions: Vec<core::FunctionSpan>,
-    coverage: Option<ResolvedCoverage>,
-) -> Vec<core::CrapEntry> {
-    match coverage {
-        Some(ResolvedCoverage { map, reports }) => {
-            report_coverage_match(reports, &functions, &map);
-            crap::score_with_coverage(functions, &map)
-        }
-        None => crap::score_without_coverage(functions),
-    }
-}
-
 /// Print how well the coverage reports line up with the scanned source tree.
-fn report_coverage_match(
-    reports: usize,
-    functions: &[core::FunctionSpan],
-    map: &std::collections::HashMap<PathBuf, core::FileCoverage>,
-) {
-    let mut scanned: Vec<PathBuf> = functions.iter().map(|f| f.file.clone()).collect();
-    scanned.sort();
-    scanned.dedup();
-
-    let m = crap::match_report(&scanned, map);
-    eprintln!("ooze: coverage reports parsed: {reports}");
+fn print_coverage_diagnostics(diagnostics: &planning::CoverageDiagnostics) {
+    let m = &diagnostics.matches;
+    eprintln!("ooze: coverage reports parsed: {}", diagnostics.reports);
     eprintln!("ooze: coverage source files:  {}", m.coverage_source_files);
     eprintln!("ooze: matched source files:   {}", m.matched_source_files);
     eprintln!(
@@ -102,18 +30,6 @@ fn report_coverage_match(
             "ooze: warning: no scanned files matched any coverage entry — check path roots (Docker/CI/monorepo prefixes)"
         );
     }
-}
-
-fn read_gitignore_patterns(root: &std::path::Path) -> Vec<String> {
-    let path = root.join(".gitignore");
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        return Vec::new();
-    };
-    text.lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .map(|l| l.trim_start_matches('/').to_string())
-        .collect()
 }
 
 fn prompt_language() -> anyhow::Result<String> {
@@ -141,113 +57,6 @@ fn prompt_language() -> anyhow::Result<String> {
     }
     let known: Vec<&str> = config::LANGUAGES.iter().map(|(k, _)| *k).collect();
     anyhow::bail!("unknown language {trimmed:?}; known: {}", known.join(", "))
-}
-
-fn resolve_excludes(root: &std::path::Path, user: &[String]) -> Vec<String> {
-    let mut out: Vec<String> = DEFAULT_EXCLUDES
-        .iter()
-        .map(std::string::ToString::to_string)
-        .collect();
-    out.extend(read_gitignore_patterns(root));
-    out.extend(user.iter().cloned());
-    out
-}
-
-// Collects the set of files that differ from `base`, used by `--changed-only`.
-// Returns canonical absolute paths so they can be matched against candidate
-// file paths regardless of how `--path` was spelled. The union covers three
-// sources: commits on this branch since the merge-base with `base`, working-tree
-// modifications (staged and unstaged), and untracked-but-not-ignored files.
-fn git_changed_files(
-    base: &str,
-    root: &std::path::Path,
-) -> anyhow::Result<std::collections::HashSet<source_path::SourcePath>> {
-    use anyhow::Context;
-
-    let toplevel_out = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-        .context("running `git rev-parse --show-toplevel`")?;
-    if !toplevel_out.status.success() {
-        anyhow::bail!(
-            "--changed-only: `git rev-parse` failed (is {} inside a git repo?): {}",
-            root.display(),
-            String::from_utf8_lossy(&toplevel_out.stderr).trim()
-        );
-    }
-    let toplevel = PathBuf::from(String::from_utf8_lossy(&toplevel_out.stdout).trim());
-
-    let mut names: std::collections::HashSet<String> = std::collections::HashSet::new();
-    collect_git_paths(
-        root,
-        &["diff", "--name-only", &format!("{base}...HEAD")],
-        &mut names,
-    )?;
-    collect_git_paths(root, &["diff", "--name-only", "HEAD"], &mut names)?;
-    collect_git_paths(
-        root,
-        &["ls-files", "--others", "--exclude-standard"],
-        &mut names,
-    )?;
-
-    // Resolve to source identities; drop entries that no longer exist (e.g.
-    // deletions) since they carry no mutation candidates anyway.
-    let mut out = std::collections::HashSet::new();
-    for name in names {
-        if let Some(id) = source_path::SourcePath::under(&toplevel, std::path::Path::new(&name)) {
-            out.insert(id);
-        }
-    }
-    Ok(out)
-}
-
-fn parse_output_lines(stdout: &[u8], out: &mut std::collections::HashSet<String>) {
-    for line in String::from_utf8_lossy(stdout).lines() {
-        let line = line.trim();
-        if !line.is_empty() {
-            out.insert(line.to_string());
-        }
-    }
-}
-
-fn collect_git_paths(
-    root: &std::path::Path,
-    args: &[&str],
-    out: &mut std::collections::HashSet<String>,
-) -> anyhow::Result<()> {
-    use anyhow::Context;
-
-    let output = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(args)
-        .output()
-        .with_context(|| format!("running `git {}`", args.join(" ")))?;
-    if !output.status.success() {
-        anyhow::bail!(
-            "--changed-only: `git {}` failed: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&output.stderr).trim()
-        );
-    }
-    parse_output_lines(&output.stdout, out);
-    Ok(())
-}
-
-// Keeps only candidates whose source file is among `changed`. Candidate files
-// that fail to canonicalize (already gone) are dropped.
-fn filter_candidates_to_changed(
-    candidates: Vec<core::MutationCandidate>,
-    changed: &std::collections::HashSet<source_path::SourcePath>,
-) -> Vec<core::MutationCandidate> {
-    candidates
-        .into_iter()
-        .filter(|c| {
-            source_path::SourcePath::canonical(&c.file).is_some_and(|id| changed.contains(&id))
-        })
-        .collect()
 }
 
 fn resolve_bool_flag(cli_flag: bool, config_value: Option<bool>) -> bool {
@@ -537,7 +346,7 @@ pub fn run() -> anyhow::Result<()> {
             format,
             exclude,
         } => {
-            let excludes = resolve_excludes(&path, &exclude);
+            let excludes = planning::resolve_excludes(&path, &exclude);
             let registry = lang::CompiledRegistry::compile(
                 lang::supported_languages(),
                 &mutate::OperatorFilter::allow_all(),
@@ -646,37 +455,28 @@ pub fn run() -> anyhow::Result<()> {
             no_static_skips,
             show_skipped,
         } => {
-            let excludes = resolve_excludes(&path, &exclude);
+            let excludes = planning::resolve_excludes(&path, &exclude);
             let filter = mutate::OperatorFilter::from_cli(&operators, &exclude_operators);
-            let registry = lang::CompiledRegistry::compile(lang::supported_languages(), &filter)?;
-            let functions = lang::scan_directory_with_registry(&registry, &path, &excludes)?;
-            let candidates = mutate::discover_mutants(&functions, &registry)?;
-            let candidates = if let Some(base) = changed_only.as_deref() {
-                let changed = git_changed_files(base, &path)?;
-                filter_candidates_to_changed(candidates, &changed)
-            } else {
-                candidates
-            };
-            let total_candidates = candidates.len();
-            let (candidates, skipped_candidates) = if no_static_skips {
-                (candidates, Vec::new())
-            } else {
-                skip::partition(candidates)
-            };
-            let skipped_count = skipped_candidates.len();
-
-            let coverage = resolve_coverage(&coverage, lcov.as_deref())?;
-            let crap_entries = score_with_optional_coverage(functions, coverage);
-
-            let mut ordered = scheduler::order(strategy, candidates, &crap_entries);
-            if let Some(limit) = limit {
-                ordered.truncate(limit);
+            let built = planning::build_plan(planning::PlanOptions {
+                path,
+                excludes,
+                filter,
+                strategy,
+                limit,
+                changed_only,
+                no_static_skips,
+                coverage,
+                lcov,
+            })?;
+            if let Some(diagnostics) = &built.coverage_diagnostics {
+                print_coverage_diagnostics(diagnostics);
             }
 
-            let planned: Vec<PlannedCandidate> = ordered
+            let planned: Vec<PlannedCandidate> = built
+                .candidates
                 .into_iter()
                 .map(|c| {
-                    let selection = scheduler::explain(strategy, &c, &crap_entries);
+                    let selection = scheduler::explain(built.strategy, &c, &built.crap_entries);
                     PlannedCandidate {
                         candidate: c,
                         selection,
@@ -685,15 +485,15 @@ pub fn run() -> anyhow::Result<()> {
                 .collect();
 
             let plan = Plan {
-                total_candidates,
-                skipped: skipped_count,
+                total_candidates: built.total_candidates_before_static_skips,
+                skipped: built.skipped_candidates.len(),
                 selected: planned.len(),
-                strategy: format!("{strategy:?}").to_lowercase(),
-                excluded_patterns: excludes,
-                operator_filter: (&filter).into(),
+                strategy: format!("{:?}", built.strategy).to_lowercase(),
+                excluded_patterns: built.excludes,
+                operator_filter: built.operator_filter,
                 candidates: planned,
                 skipped_candidates: if show_skipped {
-                    Some(skipped_candidates)
+                    Some(built.skipped_candidates)
                 } else {
                     None
                 },
@@ -758,37 +558,28 @@ pub fn run() -> anyhow::Result<()> {
                 run_pre_run_command(cmd, &path)?;
             }
 
-            let registry = lang::CompiledRegistry::compile(lang::supported_languages(), &filter)?;
-            let functions = lang::scan_directory_with_registry(&registry, &path, &excludes)?;
-            let candidates = mutate::discover_mutants(&functions, &registry)?;
-            let candidates = if no_static_skips {
-                candidates
-            } else {
-                let (kept, _) = skip::partition(candidates);
-                kept
-            };
-
-            let candidates = if let Some(base) = changed_only.as_deref() {
-                let changed = git_changed_files(base, &path)?;
-                let before = candidates.len();
-                let kept = filter_candidates_to_changed(candidates, &changed);
+            let built = planning::build_plan(planning::PlanOptions {
+                path: path.clone(),
+                excludes,
+                filter,
+                strategy,
+                limit,
+                changed_only,
+                no_static_skips,
+                coverage,
+                lcov,
+            })?;
+            if let Some(stats) = &built.changed_only {
                 eprintln!(
-                    "ooze: --changed-only {base}: {} of {before} candidates in changed files",
-                    kept.len()
+                    "ooze: --changed-only {}: {} of {} candidates in changed files",
+                    stats.base, stats.kept, stats.before
                 );
-                kept
-            } else {
-                candidates
-            };
-
-            let coverage = resolve_coverage(&coverage, lcov.as_deref())?;
-            let crap_entries = score_with_optional_coverage(functions, coverage);
-
-            let mut candidates = scheduler::order(strategy, candidates, &crap_entries);
-
-            if let Some(limit) = limit {
-                candidates.truncate(limit);
             }
+            if let Some(diagnostics) = &built.coverage_diagnostics {
+                print_coverage_diagnostics(diagnostics);
+            }
+            let crap_entries = built.crap_entries;
+            let candidates = built.candidates;
 
             let repo_root = std::fs::canonicalize(&path)
                 .with_context(|| format!("canonicalizing {}", path.display()))?;
@@ -1089,8 +880,12 @@ pub fn run() -> anyhow::Result<()> {
             format,
         } => {
             let functions = lang::scan_directory(std::path::Path::new(&path))?;
-            let coverage = resolve_coverage(&coverage, lcov.as_deref())?;
-            let entries = score_with_optional_coverage(functions, coverage);
+            let coverage = planning::resolve_coverage(&coverage, lcov.as_deref())?;
+            let (entries, diagnostics) =
+                planning::score_with_optional_coverage(functions, coverage);
+            if let Some(diagnostics) = &diagnostics {
+                print_coverage_diagnostics(diagnostics);
+            }
             if format.is_json() {
                 println!("{}", serde_json::to_string_pretty(&entries)?);
             }
@@ -1441,34 +1236,5 @@ mod tests {
         assert!(!progress_enabled(true, true)); // quiet suppresses
         assert!(!progress_enabled(false, false)); // mode disallows
         assert!(!progress_enabled(true, false));
-    }
-
-    // --- collect_git_paths / parse_output_lines ---------------------------
-
-    #[test]
-    fn parse_output_lines_includes_non_empty_lines() {
-        let mut out = std::collections::HashSet::new();
-        parse_output_lines(b"src/foo.rs\nsrc/bar.rs\n", &mut out);
-        assert!(out.contains("src/foo.rs"));
-        assert!(out.contains("src/bar.rs"));
-        assert_eq!(out.len(), 2);
-    }
-
-    #[test]
-    fn parse_output_lines_skips_empty_and_whitespace_only_lines() {
-        let mut out = std::collections::HashSet::new();
-        parse_output_lines(b"src/foo.rs\n\n   \nsrc/bar.rs", &mut out);
-        assert_eq!(out.len(), 2, "empty/whitespace lines must not be inserted");
-        assert!(out.contains("src/foo.rs"));
-        assert!(out.contains("src/bar.rs"));
-    }
-
-    #[test]
-    fn collect_git_paths_returns_error_when_git_fails() {
-        let tmp = tempfile::tempdir().unwrap();
-        let mut out = std::collections::HashSet::new();
-        // A plain tempdir is not a git repo, so any git command will fail.
-        let result = collect_git_paths(tmp.path(), &["diff", "--name-only"], &mut out);
-        assert!(result.is_err(), "expected error from failed git command");
     }
 }

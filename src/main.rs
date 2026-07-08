@@ -6,6 +6,7 @@ mod crap;
 mod doctor;
 mod lang;
 mod mutate;
+mod planning;
 mod report;
 mod runner;
 mod scheduler;
