@@ -4,7 +4,10 @@
 mod resolve;
 
 use crate::cli::{Cli, Commands, WorkspaceBackendArg, parse_key_val};
-use crate::{config, core, doctor, lang, mutate, planning, probe, report, runner, scheduler, skip};
+use crate::{
+    config, core, doctor, execution, lang, mutate, planning, probe, report, scheduler, skip,
+    workspace,
+};
 
 use std::path::PathBuf;
 
@@ -213,7 +216,7 @@ fn num_workers(jobs: usize, worker_build_cache_dirs: &[PathBuf]) -> usize {
 // one per worker index, skipping env values that are not `{worker}`-templated or
 // not path-like.
 fn worker_probe_env_dirs(
-    probe_env: &[runner::ProbeEnvTemplate],
+    probe_env: &[execution::ProbeEnvTemplate],
     num_workers: usize,
 ) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
@@ -222,7 +225,7 @@ fn worker_probe_env_dirs(
             continue;
         }
         for i in 0..num_workers {
-            let resolved = t.eval(runner::ProbeEnvCtx {
+            let resolved = t.eval(execution::ProbeEnvCtx {
                 worker: i,
                 build_cache: None,
             });
@@ -517,7 +520,7 @@ pub fn run() -> anyhow::Result<()> {
                 anyhow::bail!("no mutation candidate found with id {id:?}");
             };
 
-            let workspace = runner::CowWorkspace::create_from_repo(&repo_root)?;
+            let workspace = workspace::CowWorkspace::create_from_repo(&repo_root)?;
             let applied = workspace.apply_mutation(&repo_root, &candidate)?;
 
             println!("{}", applied.diff);
@@ -610,7 +613,7 @@ pub fn run() -> anyhow::Result<()> {
                     (None, dirs)
                 } else {
                     let dir = build_cache_dir
-                        .unwrap_or_else(|| runner::default_build_cache_dir(&cache_dir));
+                        .unwrap_or_else(|| workspace::default_build_cache_dir(&cache_dir));
                     std::fs::create_dir_all(&dir)
                         .with_context(|| format!("creating build cache dir {}", dir.display()))?;
                     (Some(dir), Vec::new())
@@ -629,13 +632,13 @@ pub fn run() -> anyhow::Result<()> {
             // Created before preflight/warmup so those run inside the same
             // workspaces the probes will use — running them in the repo root
             // could reuse cache entries left by a previous run's last mutant.
-            let mut worktree_pool = if backend == runner::WorkspaceBackend::Worktree {
+            let mut worktree_pool = if backend == workspace::WorkspaceBackend::Worktree {
                 let workers = jobs.max(1);
                 eprintln!(
                     "creating {workers} git worktree(s) under {}",
                     runs_dir.join("worktrees").display()
                 );
-                Some(runner::worktree::WorktreePool::create(
+                Some(workspace::worktree::WorktreePool::create(
                     &repo_root, &runs_dir, workers,
                 )?)
             } else {
@@ -652,14 +655,14 @@ pub fn run() -> anyhow::Result<()> {
                         .first()
                         .map(std::path::PathBuf::as_path)
                 });
-                let preflight_envs = runner::template::eval_all(
+                let preflight_envs = execution::template::eval_all(
                     &probe_env,
-                    runner::ProbeEnvCtx {
+                    execution::ProbeEnvCtx {
                         worker: 0,
                         build_cache: preflight_build_cache,
                     },
                 );
-                let outcome = runner::preflight(&baseline_root, &probe, timeout, &preflight_envs)?;
+                let outcome = execution::preflight(&baseline_root, &probe, timeout, &preflight_envs)?;
                 if !outcome.success {
                     #[derive(serde::Serialize)]
                     struct PreflightFailure {
@@ -723,7 +726,7 @@ pub fn run() -> anyhow::Result<()> {
                                     .map_or_else(|| repo_root.clone(), |p| p.path_for(i))
                             })
                             .collect();
-                        runner::warmup_workers(
+                        execution::warmup_workers(
                             &warmup_workspaces,
                             &probe,
                             &worker_build_cache_dirs,
@@ -733,22 +736,22 @@ pub fn run() -> anyhow::Result<()> {
                     }
                     WarmupTarget::Shared(dir) => {
                         eprintln!("warming up shared build cache dir...");
-                        let extra = runner::template::eval_all(
+                        let extra = execution::template::eval_all(
                             &probe_env,
-                            runner::ProbeEnvCtx {
+                            execution::ProbeEnvCtx {
                                 worker: 0,
                                 build_cache: Some(dir),
                             },
                         );
-                        let status = runner::warmup(&baseline_root, &probe, Some(dir), &extra)?;
+                        let status = execution::warmup(&baseline_root, &probe, Some(dir), &extra)?;
                         warmup_status_to_result(status)?;
                     }
                     WarmupTarget::Nothing => {}
                 }
             }
 
-            let progress_cb: Option<fn(runner::ProgressEvent<'_>)> = if progress_enabled {
-                Some(|ev: runner::ProgressEvent<'_>| {
+            let progress_cb: Option<fn(execution::ProgressEvent<'_>)> = if progress_enabled {
+                Some(|ev: execution::ProgressEvent<'_>| {
                     let status = match ev.outcome.status {
                         core::MutantStatus::Killed => "killed",
                         core::MutantStatus::Survived => "SURVIVED",
@@ -764,7 +767,7 @@ pub fn run() -> anyhow::Result<()> {
                 None
             };
 
-            let cfg = runner::BatchConfig {
+            let cfg = execution::BatchConfig {
                 backend,
                 timeout,
                 build_cache_dir: target_dir.as_deref(),
@@ -776,7 +779,7 @@ pub fn run() -> anyhow::Result<()> {
             };
 
             let raw_report =
-                runner::run_mutants_parallel(&repo_root, candidates, &probe, jobs, &cfg)?;
+                execution::run_mutants_parallel(&repo_root, candidates, &probe, jobs, &cfg)?;
 
             if let Some(pool) = worktree_pool.as_mut()
                 && let Err(e) = pool.cleanup()
@@ -811,8 +814,8 @@ pub fn run() -> anyhow::Result<()> {
             } else {
                 repo_root.join(&cache_dir)
             };
-            let target_dir = runner::default_build_cache_dir(&cache_dir);
-            let status = runner::warmup(&repo_root, &probe, Some(&target_dir), &[])?;
+            let target_dir = workspace::default_build_cache_dir(&cache_dir);
+            let status = execution::warmup(&repo_root, &probe, Some(&target_dir), &[])?;
             warmup_status_to_result(status)?;
         }
         Commands::TestMutant { path, id, probe } => {
@@ -831,9 +834,9 @@ pub fn run() -> anyhow::Result<()> {
             let repo_root = std::fs::canonicalize(&path)
                 .with_context(|| format!("canonicalizing {}", path.display()))?;
 
-            let workspace = runner::CowWorkspace::create_from_repo(&repo_root)?;
+            let workspace = workspace::CowWorkspace::create_from_repo(&repo_root)?;
             let applied = workspace.apply_mutation(&repo_root, &candidate)?;
-            let outcome = workspace.run_probe(applied, &probe, None)?;
+            let outcome = execution::run_probe(workspace.path(), applied, &probe, None, &[])?;
 
             println!("{}", serde_json::to_string_pretty(&outcome)?);
         }
@@ -1149,10 +1152,10 @@ mod tests {
 
     // --- worker_probe_env_dirs --------------------------------------------
 
-    fn templates(pairs: &[(&str, &str)]) -> Vec<runner::ProbeEnvTemplate> {
+    fn templates(pairs: &[(&str, &str)]) -> Vec<execution::ProbeEnvTemplate> {
         pairs
             .iter()
-            .map(|(k, v)| runner::ProbeEnvTemplate::parse((*k).to_string(), v))
+            .map(|(k, v)| execution::ProbeEnvTemplate::parse((*k).to_string(), v))
             .collect()
     }
 

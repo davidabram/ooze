@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
-use crate::{core, report, runner, scheduler};
+use crate::{core, report, scheduler, workspace};
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub(crate) enum ProgressMode {
@@ -119,16 +119,16 @@ impl WorkspaceBackendArg {
     /// `auto` prefers the rootless worktree backend when `repo_root` is inside
     /// a Git repository and falls back to copy otherwise. Overlay stays
     /// explicit: its mount needs root, so it should never win by default.
-    pub(crate) fn resolve(self, repo_root: &std::path::Path) -> runner::WorkspaceBackend {
+    pub(crate) fn resolve(self, repo_root: &std::path::Path) -> workspace::WorkspaceBackend {
         match self {
-            WorkspaceBackendArg::Copy => runner::WorkspaceBackend::Copy,
-            WorkspaceBackendArg::Overlay => runner::WorkspaceBackend::Overlay,
-            WorkspaceBackendArg::Worktree => runner::WorkspaceBackend::Worktree,
+            WorkspaceBackendArg::Copy => workspace::WorkspaceBackend::Copy,
+            WorkspaceBackendArg::Overlay => workspace::WorkspaceBackend::Overlay,
+            WorkspaceBackendArg::Worktree => workspace::WorkspaceBackend::Worktree,
             WorkspaceBackendArg::Auto => {
-                if runner::worktree::is_git_repo(repo_root) {
-                    runner::WorkspaceBackend::Worktree
+                if workspace::worktree::is_git_repo(repo_root) {
+                    workspace::WorkspaceBackend::Worktree
                 } else {
-                    runner::WorkspaceBackend::Copy
+                    workspace::WorkspaceBackend::Copy
                 }
             }
         }
@@ -491,11 +491,11 @@ mod tests {
         let dir = std::path::Path::new(".");
         assert_eq!(
             WorkspaceBackendArg::Worktree.resolve(dir),
-            runner::WorkspaceBackend::Worktree
+            workspace::WorkspaceBackend::Worktree
         );
         assert_eq!(
             WorkspaceBackendArg::Copy.resolve(dir),
-            runner::WorkspaceBackend::Copy
+            workspace::WorkspaceBackend::Copy
         );
     }
 
@@ -512,7 +512,7 @@ mod tests {
         assert!(ok);
         assert_eq!(
             WorkspaceBackendArg::Auto.resolve(tmp.path()),
-            runner::WorkspaceBackend::Worktree
+            workspace::WorkspaceBackend::Worktree
         );
     }
 
@@ -521,7 +521,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         assert_eq!(
             WorkspaceBackendArg::Auto.resolve(tmp.path()),
-            runner::WorkspaceBackend::Copy
+            workspace::WorkspaceBackend::Copy
         );
     }
 }

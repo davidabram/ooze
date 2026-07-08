@@ -9,7 +9,7 @@ use std::time::Duration;
 use crate::cli::{TestMutantsArgs, WorkspaceBackendArg};
 use crate::preset::{CachePolicy, Preset, ProbeEnvFill};
 use crate::probe::ProbeCommand;
-use crate::{config, mutate, report, runner, scheduler};
+use crate::{config, execution, mutate, report, scheduler};
 
 /// Everything `test-mutants` needs to run, with every CLI/config/default decision
 /// already made. Notably `probe` is non-empty by construction, so the command
@@ -38,7 +38,7 @@ pub(crate) struct ResolvedTestMutants {
     pub(crate) lcov: Option<PathBuf>,
     pub(crate) excludes: Vec<String>,
     pub(crate) filter: mutate::OperatorFilter,
-    pub(crate) probe_env: Vec<runner::ProbeEnvTemplate>,
+    pub(crate) probe_env: Vec<execution::ProbeEnvTemplate>,
     pub(crate) probe: ProbeCommand,
     pub(crate) changed_only: Option<String>,
     pub(crate) progress_enabled: bool,
@@ -210,10 +210,10 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
     let exclude = resolve_exclude_list(exclude, &cfg.scope.exclude);
     let excludes = resolve_excludes(&path, &exclude);
 
-    let mut probe_env: Vec<runner::ProbeEnvTemplate> =
+    let mut probe_env: Vec<execution::ProbeEnvTemplate> =
         resolve_probe_env(probe_env, &cfg.probe.env)?
             .into_iter()
-            .map(|(k, v)| runner::ProbeEnvTemplate::parse(k, &v))
+            .map(|(k, v)| execution::ProbeEnvTemplate::parse(k, &v))
             .collect();
     if let Some(policy) = &preset_policy {
         preset_fills.extend(preset_probe_env_fills(&mut probe_env, &policy.probe_env));
@@ -294,21 +294,21 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
     })
 }
 
-fn probe_env_has_key(probe_env: &[runner::ProbeEnvTemplate], key: &str) -> bool {
+fn probe_env_has_key(probe_env: &[execution::ProbeEnvTemplate], key: &str) -> bool {
     probe_env.iter().any(|t| t.key() == key)
 }
 
 /// Append one probe-env default when the user hasn't set `key` themselves;
 /// returns the fill description for the preset debug line.
 fn fill_probe_env(
-    probe_env: &mut Vec<runner::ProbeEnvTemplate>,
+    probe_env: &mut Vec<execution::ProbeEnvTemplate>,
     key: &str,
     value: &str,
 ) -> Option<String> {
     if probe_env_has_key(probe_env, key) {
         return None;
     }
-    probe_env.push(runner::ProbeEnvTemplate::parse(key.to_string(), value));
+    probe_env.push(execution::ProbeEnvTemplate::parse(key.to_string(), value));
     Some(format!("probe_env += {key}={value}"))
 }
 
@@ -316,7 +316,7 @@ fn fill_probe_env(
 /// keys themselves. Returns a description of each fill for the preset debug
 /// line.
 fn preset_probe_env_fills(
-    probe_env: &mut Vec<runner::ProbeEnvTemplate>,
+    probe_env: &mut Vec<execution::ProbeEnvTemplate>,
     fills: &[ProbeEnvFill],
 ) -> Vec<String> {
     fills
@@ -363,8 +363,8 @@ mod tests {
         test_mutants(parse_args(&argv))
     }
 
-    fn env_values(probe_env: &[runner::ProbeEnvTemplate], key: &str) -> Vec<String> {
-        let ctx = runner::ProbeEnvCtx {
+    fn env_values(probe_env: &[execution::ProbeEnvTemplate], key: &str) -> Vec<String> {
+        let ctx = execution::ProbeEnvCtx {
             worker: 0,
             build_cache: Some(Path::new("/bc")),
         };
@@ -649,7 +649,7 @@ mod tests {
 
     #[test]
     fn probe_env_fills_keep_existing_entries() {
-        let mut env = vec![runner::ProbeEnvTemplate::parse(
+        let mut env = vec![execution::ProbeEnvTemplate::parse(
             "RUSTC_WRAPPER".to_string(),
             "mine",
         )];

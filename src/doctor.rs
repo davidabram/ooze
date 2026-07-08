@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::config::{self, OozeConfig};
 use crate::core::{Language, OperatorName};
 use crate::preset::{PackageManager, Preset};
-use crate::runner::{overlay, worktree};
+use crate::workspace::{overlay, worktree};
 
 #[derive(Debug, Clone, Copy, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
