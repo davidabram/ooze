@@ -12,9 +12,9 @@ Support comes in two tiers — parsing a language is not the same as mutating it
 
 - **Mutation** (scan + mutation operators):
   - `mutate_stable` (golden-tested): **Rust**
-  - `mutate_experimental`: **JavaScript · TypeScript · Python · Go**
+  - `mutate_experimental`: **JavaScript · TypeScript · Python · Go · C#**
 - **Scan-only** (function/branch discovery and CRAP scoring, no mutators yet):
-  Bash · C · C++ · C# · Dart · Elixir · Erlang · Gleam · Haskell · Java ·
+  Bash · C · C++ · Dart · Elixir · Erlang · Gleam · Haskell · Java ·
   Julia · Lua · OCaml · PHP · Ruby · Scala · Swift · Zig.
 
 Run `ooze languages` for the live list with each language's support level and
@@ -162,6 +162,33 @@ overridden:
 
 ```bash
 ./target/release/ooze test-mutants --preset python -- pytest tests/unit
+```
+
+## Quick start (C# / .NET)
+
+```bash
+./target/release/ooze test-mutants --preset csharp
+```
+
+The `csharp` preset applies when at least one `*.sln` or `*.csproj` file
+exists at the project path (checked non-recursively). It fills any options
+you left unset with: the `worktree` backend, warmup, `dotnet test` as the
+probe, `DOTNET_CLI_TELEMETRY_OPTOUT=1` (quiet, network-free probe runs), and
+`NUGET_PACKAGES={build_cache}/nuget` (the NuGet global packages folder is
+concurrency-safe, so workers share it while build outputs stay inside each
+isolated workspace — no `--per-worker-cache`).
+
+The initial C# operator set covers boolean literal swaps, equality negation
+(`==`/`!=`), comparison boundary and comparison negation swaps (`<`, `<=`,
+`>`, `>=`), and logical `&&`/`||` swaps; 0/1 integer swaps are available but
+disabled by default (enable with `--operators integer_zero_one`). Operators
+only match real syntax nodes, so `==` in a comment or string never mutates.
+As with every preset, explicit CLI flags and `ooze.toml` values win over the
+preset's defaults, and `ooze doctor` shows which fills are active or
+overridden:
+
+```bash
+./target/release/ooze test-mutants --preset csharp -- dotnet test Some.Tests.csproj
 ```
 
 Git worktrees (recommended inside a Git repo):

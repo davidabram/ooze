@@ -79,6 +79,9 @@ pub(crate) enum Preset {
     Go,
     Node,
     Python,
+    /// Spelled `csharp` on the CLI (`c#` is awkward in shells).
+    #[value(name = "csharp")]
+    CSharp,
 }
 
 impl Preset {
@@ -90,12 +93,14 @@ impl Preset {
             Preset::Go => "go",
             Preset::Node => "node",
             Preset::Python => "python",
+            Preset::CSharp => "csharp",
         }
     }
 
-    /// The project marker files, at least one of which must exist at the
-    /// project path for this preset to apply. Python is the only preset with
-    /// alternatives: any of the common packaging files marks a project.
+    /// The fixed-name project marker files, at least one of which must exist
+    /// at the project path for this preset to apply. Python is the only preset
+    /// with alternatives: any of the common packaging files marks a project.
+    /// C# has no fixed-name marker; see `marker_extensions`.
     pub(crate) fn marker_files(self) -> &'static [&'static str] {
         match self {
             Preset::Rust => &["Cargo.toml"],
@@ -107,19 +112,55 @@ impl Preset {
                 "setup.cfg",
                 "requirements.txt",
             ],
+            Preset::CSharp => &[],
         }
+    }
+
+    /// Marker file extensions for presets whose project files have no fixed
+    /// name (C#: any `*.sln` or `*.csproj`). Checked non-recursively at the
+    /// project path.
+    pub(crate) fn marker_extensions(self) -> &'static [&'static str] {
+        match self {
+            Preset::CSharp => &["sln", "csproj"],
+            _ => &[],
+        }
+    }
+
+    /// Whether the project path holds at least one of this preset's markers:
+    /// a fixed-name file from `marker_files`, or (non-recursively) a file with
+    /// one of `marker_extensions`.
+    pub(crate) fn markers_present(self, path: &Path) -> bool {
+        if self.marker_files().iter().any(|m| path.join(m).is_file()) {
+            return true;
+        }
+        let extensions = self.marker_extensions();
+        if extensions.is_empty() {
+            return false;
+        }
+        std::fs::read_dir(path).is_ok_and(|entries| {
+            entries.flatten().any(|e| {
+                let p = e.path();
+                p.is_file()
+                    && p.extension()
+                        .and_then(|x| x.to_str())
+                        .is_some_and(|x| extensions.contains(&x))
+            })
+        })
     }
 
     /// Human phrasing of the marker requirement for the "preset requires ..."
     /// error, e.g. "a Cargo.toml" or "one of pyproject.toml, ..., or
     /// requirements.txt".
     pub(crate) fn marker_requirement(self) -> String {
-        match self.marker_files() {
-            [single] => format!("a {single}"),
-            many => {
-                let (last, rest) = many.split_last().expect("presets have markers");
-                format!("one of {}, or {last}", rest.join(", "))
-            }
+        match self {
+            Preset::CSharp => "a .sln or .csproj".to_string(),
+            _ => match self.marker_files() {
+                [single] => format!("a {single}"),
+                many => {
+                    let (last, rest) = many.split_last().expect("presets have markers");
+                    format!("one of {}, or {last}", rest.join(", "))
+                }
+            },
         }
     }
 
@@ -145,6 +186,12 @@ impl Preset {
     /// writes out of the workspace, PYTEST_ADDOPTS=--cache-clear stops
     /// pytest's own cache from carrying state across mutants, and TMPDIR
     /// keeps probe temp files out of the system /tmp.
+    ///
+    /// C# shares one cache as well: the `NuGet` global packages folder is
+    /// concurrency-safe, so `NUGET_PACKAGES` points every worker at
+    /// `{build_cache}/nuget` while build outputs stay inside each isolated
+    /// workspace. `DOTNET_CLI_TELEMETRY_OPTOUT` keeps probe runs quiet and
+    /// network-free.
     pub(crate) fn fills(self, path: &Path) -> &'static [&'static str] {
         match self {
             Preset::Rust => &[
@@ -168,6 +215,13 @@ impl Preset {
                 "probe_env += PYTHONPYCACHEPREFIX={build_cache}/pycache",
                 "probe_env += PYTEST_ADDOPTS=--cache-clear",
                 "probe_env += TMPDIR={build_cache}/tmp",
+            ],
+            Preset::CSharp => &[
+                "probe=`dotnet test`",
+                "workspace_backend=worktree",
+                "warmup=true",
+                "probe_env += DOTNET_CLI_TELEMETRY_OPTOUT=1",
+                "probe_env += NUGET_PACKAGES={build_cache}/nuget",
             ],
             Preset::Node => match PackageManager::detect(path) {
                 PackageManager::Bun => &[
@@ -510,7 +564,7 @@ pub(crate) struct TestMutantsArgs {
     #[arg(
         long,
         value_enum,
-        help = "Language preset that fills unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, CARGO_TARGET_DIR={build_cache}, probe `cargo test`. `go`: worktree backend, warmup, shared GOCACHE={build_cache}/go-build, GOTMPDIR={build_cache}, probe `go test ./...`. `node`: worktree backend, warmup, package-manager cache envs under {build_cache}, probe from lockfile detection (bun/pnpm/yarn/npm test). `python`: worktree backend, warmup, PYTHONPYCACHEPREFIX={build_cache}/pycache, PYTEST_ADDOPTS=--cache-clear, TMPDIR={build_cache}/tmp, probe `pytest`. Explicit flags and ooze.toml win."
+        help = "Language preset that fills unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, CARGO_TARGET_DIR={build_cache}, probe `cargo test`. `go`: worktree backend, warmup, shared GOCACHE={build_cache}/go-build, GOTMPDIR={build_cache}, probe `go test ./...`. `node`: worktree backend, warmup, package-manager cache envs under {build_cache}, probe from lockfile detection (bun/pnpm/yarn/npm test). `python`: worktree backend, warmup, PYTHONPYCACHEPREFIX={build_cache}/pycache, PYTEST_ADDOPTS=--cache-clear, TMPDIR={build_cache}/tmp, probe `pytest`. `csharp`: worktree backend, warmup, DOTNET_CLI_TELEMETRY_OPTOUT=1, NUGET_PACKAGES={build_cache}/nuget, probe `dotnet test`. Explicit flags and ooze.toml win."
     )]
     pub(crate) preset: Option<Preset>,
 

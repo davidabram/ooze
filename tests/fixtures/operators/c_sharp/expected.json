@@ -1,0 +1,119 @@
+[
+  {
+    "language": "c_sharp",
+    "operator": "negate_equality",
+    "implementation": "c_sharp.negate_equality",
+    "function": "IsReady",
+    "original": "==",
+    "replacement": "!=",
+    "line": 5
+  },
+  {
+    "language": "c_sharp",
+    "operator": "swap_boolean",
+    "implementation": "c_sharp.swap_boolean",
+    "function": "IsReady",
+    "original": "true",
+    "replacement": "false",
+    "line": 5
+  },
+  {
+    "language": "c_sharp",
+    "operator": "swap_boolean",
+    "implementation": "c_sharp.swap_boolean",
+    "function": "IsReady",
+    "original": "true",
+    "replacement": "false",
+    "line": 7
+  },
+  {
+    "language": "c_sharp",
+    "operator": "swap_boolean",
+    "implementation": "c_sharp.swap_boolean",
+    "function": "IsReady",
+    "original": "false",
+    "replacement": "true",
+    "line": 10
+  },
+  {
+    "language": "c_sharp",
+    "operator": "comparison_boundary",
+    "implementation": "c_sharp.comparison_boundary",
+    "function": "Clamp",
+    "original": "<",
+    "replacement": "<=",
+    "line": 15
+  },
+  {
+    "language": "c_sharp",
+    "operator": "comparison_negation",
+    "implementation": "c_sharp.comparison_negation",
+    "function": "Clamp",
+    "original": "<",
+    "replacement": ">=",
+    "line": 15
+  },
+  {
+    "language": "c_sharp",
+    "operator": "integer_zero_one",
+    "implementation": "c_sharp.integer_zero_one",
+    "function": "Clamp",
+    "original": "0",
+    "replacement": "1",
+    "line": 15
+  },
+  {
+    "language": "c_sharp",
+    "operator": "integer_zero_one",
+    "implementation": "c_sharp.integer_zero_one",
+    "function": "Clamp",
+    "original": "0",
+    "replacement": "1",
+    "line": 17
+  },
+  {
+    "language": "c_sharp",
+    "operator": "comparison_boundary",
+    "implementation": "c_sharp.comparison_boundary",
+    "function": "Clamp",
+    "original": ">",
+    "replacement": ">=",
+    "line": 20
+  },
+  {
+    "language": "c_sharp",
+    "operator": "comparison_negation",
+    "implementation": "c_sharp.comparison_negation",
+    "function": "Clamp",
+    "original": ">",
+    "replacement": "<=",
+    "line": 20
+  },
+  {
+    "language": "c_sharp",
+    "operator": "integer_zero_one",
+    "implementation": "c_sharp.integer_zero_one",
+    "function": "Clamp",
+    "original": "1",
+    "replacement": "0",
+    "line": 20
+  },
+  {
+    "language": "c_sharp",
+    "operator": "integer_zero_one",
+    "implementation": "c_sharp.integer_zero_one",
+    "function": "Clamp",
+    "original": "1",
+    "replacement": "0",
+    "line": 22
+  },
+  {
+    "language": "c_sharp",
+    "operator": "swap_logical",
+    "implementation": "c_sharp.swap_logical",
+    "function": "Both",
+    "original": "&&",
+    "replacement": "||",
+    "line": 30
+  }
+]

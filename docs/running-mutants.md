@@ -103,6 +103,33 @@ the project path, and fills:
 
 Python also keeps a shared cache root rather than `--per-worker-cache`.
 
+`--preset csharp` covers C#/.NET projects. It applies when at least one
+`*.sln` or `*.csproj` file exists at the project path (checked
+non-recursively), and fills:
+
+- `--workspace-backend worktree`
+- `--warmup`
+- probe `dotnet test` (only when no probe is given after `--` and none is
+  set in `ooze.toml`)
+- env defaults, skipped per key if you already set them:
+  - `DOTNET_CLI_TELEMETRY_OPTOUT=1` — keeps probe runs quiet and
+    network-free
+  - `NUGET_PACKAGES={build_cache}/nuget` — the NuGet global packages folder
+    is concurrency-safe, so all workers share it while build outputs stay
+    inside each isolated workspace
+
+C# also keeps a shared cache rather than `--per-worker-cache`. As with every
+preset, explicit CLI flags and `ooze.toml` values win over the preset's
+defaults, and `ooze doctor` shows which fills are active or overridden.
+
+C#'s initial operator set covers boolean literal swaps, equality negation
+(`==`/`!=`), comparison boundary and comparison negation swaps (`<`, `<=`,
+`>`, `>=`), and logical `&&`/`||` swaps. 0/1 integer swaps
+(`integer_zero_one`) are registered but disabled by default, like every other
+language; enable them with `--operators integer_zero_one` or
+`[mutation].operators`. Operators only match syntax nodes, so `==` in a
+comment or string literal never mutates.
+
 ## Preset and operator coverage
 
 Where each preset language stands (operator counts are registered mutation
@@ -115,8 +142,9 @@ levels):
 | Go                    | yes    | yes     | 5 (baseline)  | yes          |
 | JavaScript/TypeScript | yes    | yes     | 18            | yes          |
 | Python                | yes    | yes     | 20            | yes          |
+| C#                    | yes    | yes     | 6 (baseline)  | no           |
 
-The baseline operator set every language covers: boolean literal swap,
+The baseline operator set every mutating language covers: boolean literal swap,
 equality negation, comparison boundary, logical and/or swap, and integer 0/1
 swap. Note `integer_zero_one` is `default_enabled: false` in every language
 (it tends to be noisy); enable it explicitly with

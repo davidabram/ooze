@@ -886,6 +886,56 @@ fn go_operator_fixture_matches_snapshot() {
     );
 }
 
+#[test]
+fn csharp_operator_fixture_matches_snapshot() {
+    let out = ooze()
+        .args([
+            "mutants",
+            "--path",
+            "tests/fixtures/operators/c_sharp/all.cs",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("failed to run ooze");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let discovered: Vec<serde_json::Value> =
+        serde_json::from_slice(&out.stdout).expect("mutants output should be JSON");
+    let got = snapshot_sorted(discovered.iter().map(stable_fields).collect());
+
+    let expected_raw = std::fs::read_to_string("tests/fixtures/operators/c_sharp/expected.json")
+        .expect("expected.json fixture should exist");
+    let expected: Vec<serde_json::Value> =
+        serde_json::from_str(&expected_raw).expect("expected.json should be valid JSON");
+    let want = snapshot_sorted(expected);
+
+    assert_eq!(
+        got, want,
+        "discovered C# mutants drifted from tests/fixtures/operators/c_sharp/expected.json"
+    );
+
+    // Guard the headline promise: every one of the 6 C# operators still fires,
+    // and nothing matched inside the fixture's comment or string literal.
+    let operators: std::collections::BTreeSet<&str> = discovered
+        .iter()
+        .map(|c| c["operator"].as_str().expect("operator should be a string"))
+        .collect();
+    assert_eq!(
+        operators.len(),
+        6,
+        "expected all 6 C# operators to fire, got: {operators:?}"
+    );
+    assert!(
+        discovered.iter().all(|c| c["function"] != "Ignore"),
+        "comment/string contents must not produce mutants: {discovered:?}"
+    );
+}
+
 // ── go preset end to end ──────────────────────────────────────────────────────
 
 /// Full `test-mutants --preset go` run against a minimal Go module: discovers

@@ -96,7 +96,7 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
     }
 
     if let Some(p) = preset
-        && !p.marker_files().iter().any(|m| path.join(m).exists())
+        && !p.markers_present(&path)
     {
         anyhow::bail!(
             "{} preset requires {} at the project path ({})",
@@ -212,6 +212,7 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
             PackageManager::detect(&path),
         )),
         Some(Preset::Python) => preset_fills.extend(python_preset_probe_env_fills(&mut probe_env)),
+        Some(Preset::CSharp) => preset_fills.extend(csharp_preset_probe_env_fills(&mut probe_env)),
         None => {}
     }
 
@@ -299,6 +300,7 @@ fn default_probe(preset: Preset, path: &std::path::Path) -> Vec<String> {
         Preset::Go => &["go", "test", "./..."],
         Preset::Node => PackageManager::detect(path).test_command(),
         Preset::Python => &["pytest"],
+        Preset::CSharp => &["dotnet", "test"],
     };
     cmd.iter().map(ToString::to_string).collect()
 }
@@ -384,6 +386,26 @@ fn python_preset_probe_env_fills(probe_env: &mut Vec<runner::ProbeEnvTemplate>) 
     ));
     fills.extend(fill_probe_env(probe_env, "PYTEST_ADDOPTS", "--cache-clear"));
     fills.extend(fill_probe_env(probe_env, "TMPDIR", "{build_cache}/tmp"));
+    fills
+}
+
+/// Append the csharp preset's probe-env defaults when the user hasn't set the
+/// same keys themselves. `NUGET_PACKAGES` points the `NuGet` global packages
+/// folder (concurrency-safe, so shared across workers) into the build-cache
+/// dir; build outputs stay inside each isolated workspace.
+/// `DOTNET_CLI_TELEMETRY_OPTOUT` keeps probe runs quiet and network-free.
+fn csharp_preset_probe_env_fills(probe_env: &mut Vec<runner::ProbeEnvTemplate>) -> Vec<String> {
+    let mut fills = Vec::new();
+    fills.extend(fill_probe_env(
+        probe_env,
+        "DOTNET_CLI_TELEMETRY_OPTOUT",
+        "1",
+    ));
+    fills.extend(fill_probe_env(
+        probe_env,
+        "NUGET_PACKAGES",
+        "{build_cache}/nuget",
+    ));
     fills
 }
 
@@ -583,6 +605,72 @@ mod tests {
                 }
                 other => panic!(
                     "Preset::Rust.fills() advertises {other:?} but this test knows no \
+                     matching fill in resolve; update fills() or extend this test"
+                ),
+            }
+        }
+    }
+
+    /// Temp dir with a .csproj marker and an empty ooze.toml, mirroring
+    /// `cargo_project` for the csharp preset.
+    fn csharp_project() -> tempfile::TempDir {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(
+            tmp.path().join("Sample.Tests.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>\n",
+        )
+        .unwrap();
+        std::fs::write(tmp.path().join("ooze.toml"), "").unwrap();
+        tmp
+    }
+
+    #[test]
+    fn csharp_preset_errors_without_sln_or_csproj() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("ooze.toml"), "").unwrap();
+        let Err(err) = resolve_in(tmp.path(), &["--preset", "csharp"]) else {
+            panic!("csharp preset outside a .NET project must fail");
+        };
+        assert!(
+            err.to_string()
+                .contains("csharp preset requires a .sln or .csproj at the project path"),
+            "error should name the missing markers: {err}"
+        );
+    }
+
+    #[test]
+    fn csharp_preset_accepts_sln_marker() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("Sample.sln"), "\n").unwrap();
+        std::fs::write(tmp.path().join("ooze.toml"), "").unwrap();
+        let r = resolve_in(tmp.path(), &["--preset", "csharp"]).unwrap();
+        assert_eq!(r.probe, ["dotnet", "test"]);
+    }
+
+    #[test]
+    fn csharp_preset_fills_list_matches_resolution() {
+        // Same drift guard as the rust variant: every fill doctor advertises
+        // for csharp must be observable in actual resolution.
+        let dir = csharp_project();
+        let r = resolve_in(dir.path(), &["--preset", "csharp"]).unwrap();
+        for fill in Preset::CSharp.fills(dir.path()) {
+            match *fill {
+                "probe=`dotnet test`" => assert_eq!(r.probe, ["dotnet", "test"]),
+                "workspace_backend=worktree" => {
+                    assert_eq!(r.workspace_backend, WorkspaceBackendArg::Worktree);
+                }
+                "warmup=true" => assert!(r.warmup),
+                "probe_env += DOTNET_CLI_TELEMETRY_OPTOUT=1" => {
+                    assert_eq!(
+                        env_values(&r.probe_env, "DOTNET_CLI_TELEMETRY_OPTOUT"),
+                        ["1"]
+                    );
+                }
+                "probe_env += NUGET_PACKAGES={build_cache}/nuget" => {
+                    assert_eq!(env_values(&r.probe_env, "NUGET_PACKAGES"), ["/bc/nuget"]);
+                }
+                other => panic!(
+                    "Preset::CSharp.fills() advertises {other:?} but this test knows no \
                      matching fill in resolve; update fills() or extend this test"
                 ),
             }

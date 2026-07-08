@@ -28,6 +28,7 @@ pub enum ProjectType {
     Go,
     Node,
     Python,
+    CSharp,
     /// More than one project type detected; `DoctorReport.detected` lists them.
     Mixed,
     Unknown,
@@ -40,6 +41,7 @@ impl ProjectType {
             ProjectType::Go => "Go",
             ProjectType::Node => "Node",
             ProjectType::Python => "Python",
+            ProjectType::CSharp => "C#/.NET",
             ProjectType::Mixed => "mixed",
             ProjectType::Unknown => "unknown",
         }
@@ -52,6 +54,7 @@ impl ProjectType {
             ProjectType::Go => Some(Preset::Go),
             ProjectType::Node => Some(Preset::Node),
             ProjectType::Python => Some(Preset::Python),
+            ProjectType::CSharp => Some(Preset::CSharp),
             ProjectType::Mixed | ProjectType::Unknown => None,
         }
     }
@@ -64,6 +67,7 @@ impl ProjectType {
             ProjectType::Go => &[Language::Go],
             ProjectType::Node => &[Language::JavaScript, Language::TypeScript],
             ProjectType::Python => &[Language::Python],
+            ProjectType::CSharp => &[Language::CSharp],
             ProjectType::Mixed | ProjectType::Unknown => &[],
         }
     }
@@ -273,6 +277,9 @@ fn detect_project_types(path: &Path) -> Vec<ProjectType> {
         .any(|m| path.join(m).is_file())
     {
         types.push(ProjectType::Python);
+    }
+    if Preset::CSharp.markers_present(path) {
+        types.push(ProjectType::CSharp);
     }
     types
 }
@@ -675,6 +682,7 @@ fn language_human(lang: Language) -> &'static str {
         Language::Python => "Python",
         Language::JavaScript => "JavaScript",
         Language::TypeScript => "TypeScript",
+        Language::CSharp => "C#",
         other => other.as_str(),
     }
 }
@@ -710,6 +718,10 @@ fn operator_sections(
 
 fn print_operator_groups(o: &LanguageOperators, indent: usize) {
     let pad = " ".repeat(indent);
+    if o.enabled_by_default.is_empty() && o.disabled_by_default.is_empty() {
+        println!("{pad}no mutation operators registered for this language yet");
+        return;
+    }
     println!("{pad}enabled by default:");
     for op in &o.enabled_by_default {
         println!("{pad}  {op}");
@@ -827,6 +839,9 @@ pub fn print_human(report: &DoctorReport) {
     }
     if report.detected.contains(&ProjectType::Python) {
         println!("  recommended Python cache: shared PYTHONPYCACHEPREFIX={{build_cache}}/pycache");
+    }
+    if report.detected.contains(&ProjectType::CSharp) {
+        println!("  recommended C# cache: shared NUGET_PACKAGES={{build_cache}}/nuget");
     }
     println!();
     println!("Recommendation");
@@ -1029,6 +1044,62 @@ mod tests {
     }
 
     #[test]
+    fn csproj_dir_detects_csharp_and_recommends_preset() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("Sample.Tests.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>\n",
+        )
+        .expect("write csproj");
+
+        let report = run(dir.path(), false);
+        assert_eq!(report.project_type, ProjectType::CSharp);
+        assert!(
+            report
+                .recommendation
+                .command
+                .as_deref()
+                .is_some_and(|c| c.starts_with("ooze test-mutants --preset csharp")),
+            "expected a csharp preset recommendation: {:?}",
+            report.recommendation.command
+        );
+        let fills: Vec<&str> = report
+            .recommendation
+            .preset_fills
+            .iter()
+            .map(|f| f.fill.as_str())
+            .collect();
+        assert!(fills.contains(&"probe=`dotnet test`"), "fills: {fills:?}");
+        assert!(
+            fills.contains(&"probe_env += NUGET_PACKAGES={build_cache}/nuget"),
+            "fills: {fills:?}"
+        );
+    }
+
+    #[test]
+    fn mixed_detection_includes_csharp() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write_cargo_toml(dir.path());
+        std::fs::write(dir.path().join("Sample.sln"), "\n").expect("write sln");
+
+        let report = run(dir.path(), false);
+        assert_eq!(report.project_type, ProjectType::Mixed);
+        assert_eq!(
+            report.detected,
+            vec![ProjectType::Rust, ProjectType::CSharp]
+        );
+        assert!(
+            report
+                .recommendation
+                .mixed_commands
+                .iter()
+                .any(|c| c.starts_with("ooze test-mutants --preset csharp")),
+            "mixed commands should include csharp: {:?}",
+            report.recommendation.mixed_commands
+        );
+    }
+
+    #[test]
     fn unknown_dir_reports_unknown_type_and_no_recommendation() {
         let dir = tempfile::tempdir().expect("tempdir");
         let report = run(dir.path(), false);
@@ -1122,6 +1193,7 @@ mod tests {
             Language::JavaScript,
             Language::TypeScript,
             Language::Python,
+            Language::CSharp,
         ] {
             let ops = language_operators(lang);
             for m in crate::mutate::registry::implementations_for_language(lang) {
@@ -1157,6 +1229,21 @@ mod tests {
             ops.enabled_by_default.contains(&"swap_boolean"),
             "swap_boolean should be enabled by default for Rust: {:?}",
             ops.enabled_by_default
+        );
+    }
+
+    #[test]
+    fn csharp_operators_follow_the_global_default_convention() {
+        let ops = language_operators(Language::CSharp);
+        assert!(
+            ops.enabled_by_default.contains(&"swap_boolean"),
+            "swap_boolean should be enabled by default for C#: {:?}",
+            ops.enabled_by_default
+        );
+        assert!(
+            ops.disabled_by_default.contains(&"integer_zero_one"),
+            "integer_zero_one should be disabled by default for C#: {:?}",
+            ops.disabled_by_default
         );
     }
 
