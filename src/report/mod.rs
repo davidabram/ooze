@@ -12,6 +12,8 @@ pub struct AgentTask {
     pub file: PathBuf,
     pub function: String,
     pub line: usize,
+    /// 1-based column of the mutation site, matching editor/SARIF convention.
+    pub column: usize,
     pub operator: OperatorName,
     pub mutation: String,
     pub focus: String,
@@ -64,6 +66,7 @@ pub fn agent_tasks(report: &EnrichedRunReport) -> AgentTaskReport {
             file: o.outcome.candidate.file.clone(),
             function: o.outcome.candidate.function.clone(),
             line: o.outcome.candidate.line,
+            column: o.outcome.candidate.column + 1,
             operator: o.outcome.candidate.operator,
             mutation: format!(
                 "{} -> {}",
@@ -450,8 +453,12 @@ pub fn github_annotations(report: &EnrichedRunReport) -> String {
         let message = escape_github_annotation_value(&body);
         let _ = writeln!(
             out,
-            "::warning file={},line={},title={}::{}",
-            file, c.line, title, message
+            "::warning file={},line={},col={},title={}::{}",
+            file,
+            c.line,
+            c.column + 1,
+            title,
+            message
         );
     }
     out
@@ -461,8 +468,8 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
     use std::collections::{BTreeMap, BTreeSet};
     use std::fmt::Write;
 
-    // Deduplicate by (file, line, operator, mutation) — keep highest priority_score per site
-    type DedupeKey = (String, usize, String, String);
+    // Deduplicate by (file, line, column, operator, mutation) — keep highest priority_score per site
+    type DedupeKey = (String, usize, usize, String, String);
 
     let mut out = String::new();
     let _ = writeln!(out, "# Mutation Testing Tasks\n");
@@ -479,6 +486,7 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
         let key: DedupeKey = (
             t.file.to_string_lossy().into_owned(),
             t.line,
+            t.column,
             t.operator.as_str().to_string(),
             t.mutation.clone(),
         );
@@ -635,9 +643,9 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
                         .iter()
                         .map(|(t, dup)| {
                             if *dup > 1 {
-                                format!("`{}` (+{})", t.mutation, dup - 1)
+                                format!("`{}` (col {}) (+{})", t.mutation, t.column, dup - 1)
                             } else {
-                                format!("`{}`", t.mutation)
+                                format!("`{}` (col {})", t.mutation, t.column)
                             }
                         })
                         .collect();
@@ -677,9 +685,9 @@ pub fn agent_tasks_markdown(report: &AgentTaskReport) -> String {
                     .iter()
                     .find_map(|(t, _)| t.source_context.as_ref())
                 {
-                    let mutations: Vec<&str> = line_tasks
+                    let mutations: Vec<String> = line_tasks
                         .iter()
-                        .map(|(t, _)| t.mutation.as_str())
+                        .map(|(t, _)| format!("{} (col {})", t.mutation, t.column))
                         .collect();
                     let _ = writeln!(out, "**Line {}** — {}\n", line, mutations.join(", "));
                     out.push_str("```text\n");
@@ -819,7 +827,9 @@ pub fn suggest(candidate: &MutationCandidate) -> TestSuggestion {
     let info = candidate.operator.info();
     let file = candidate.file.display();
     let func = &candidate.function;
-    let line = candidate.line;
+    // Rendered as "<line>, column <col>" so every "at line {line}" prompt below
+    // pinpoints the mutation site, not just the line.
+    let line = format!("{}, column {}", candidate.line, candidate.column + 1);
     let original = &candidate.original;
     let replacement = &candidate.replacement;
 
@@ -1242,9 +1252,10 @@ pub fn human(report: &EnrichedRunReport) -> String {
             for s in &f.survived_mutants {
                 let _ = writeln!(
                     out,
-                    "   - {} at line {}: {:?} -> {:?}",
+                    "   - {} at line {}, column {}: {:?} -> {:?}",
                     s.candidate.operator,
                     s.candidate.line,
+                    s.candidate.column + 1,
                     s.candidate.original,
                     s.candidate.replacement
                 );
@@ -1281,6 +1292,7 @@ mod tests {
             file: PathBuf::from(file),
             function: "test_fn".to_string(),
             line,
+            column: 1,
             operator,
             mutation: mutation.to_string(),
             focus: String::new(),
