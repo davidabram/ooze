@@ -6,7 +6,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::cli::{PackageManager, Preset, TestMutantsArgs, WorkspaceBackendArg};
+use crate::cli::{TestMutantsArgs, WorkspaceBackendArg};
+use crate::preset::Preset;
 use crate::{config, mutate, report, runner, scheduler};
 
 /// Everything `test-mutants` needs to run, with every CLI/config/default decision
@@ -89,6 +90,8 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         progress,
         probe,
     } = args;
+
+    let preset = preset.map(Preset::from);
 
     let (cfg, cfg_loaded_from) = config::load_config(config_path.as_deref(), &path)?;
     if let Some(p) = &cfg_loaded_from {
@@ -204,16 +207,8 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
             .into_iter()
             .map(|(k, v)| runner::ProbeEnvTemplate::parse(k, &v))
             .collect();
-    match preset {
-        Some(Preset::Rust) => preset_fills.extend(rust_preset_probe_env_fills(&mut probe_env)),
-        Some(Preset::Go) => preset_fills.extend(go_preset_probe_env_fills(&mut probe_env)),
-        Some(Preset::Node) => preset_fills.extend(node_preset_probe_env_fills(
-            &mut probe_env,
-            PackageManager::detect(&path),
-        )),
-        Some(Preset::Python) => preset_fills.extend(python_preset_probe_env_fills(&mut probe_env)),
-        Some(Preset::CSharp) => preset_fills.extend(csharp_preset_probe_env_fills(&mut probe_env)),
-        None => {}
+    if let Some(p) = preset {
+        preset_fills.extend(preset_probe_env_fills(&mut probe_env, p, &path));
     }
 
     let operators = resolve_operators(
@@ -237,7 +232,11 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         if let Some(cmd) = cfg.probe.command.as_ref() {
             probe.clone_from(cmd);
         } else if let Some(p) = preset {
-            let cmd = default_probe(p, &path);
+            let cmd = p
+                .test_command(&path)
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>();
             preset_fills.push(format!("probe=`{}`", cmd.join(" ")));
             probe = cmd;
         } else {
@@ -292,19 +291,6 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
     })
 }
 
-/// The probe each preset falls back to when neither `--` args nor
-/// `[probe].command` supply one. Node's depends on the lockfile at `path`.
-fn default_probe(preset: Preset, path: &std::path::Path) -> Vec<String> {
-    let cmd: &[&str] = match preset {
-        Preset::Rust => &["cargo", "test"],
-        Preset::Go => &["go", "test", "./..."],
-        Preset::Node => PackageManager::detect(path).test_command(),
-        Preset::Python => &["pytest"],
-        Preset::CSharp => &["dotnet", "test"],
-    };
-    cmd.iter().map(ToString::to_string).collect()
-}
-
 fn probe_env_has_key(probe_env: &[runner::ProbeEnvTemplate], key: &str) -> bool {
     probe_env.iter().any(|t| t.key() == key)
 }
@@ -323,96 +309,24 @@ fn fill_probe_env(
     Some(format!("probe_env += {key}={value}"))
 }
 
-/// Append the rust preset's probe-env defaults to `probe_env` when the user
-/// hasn't set the same key themselves. Returns a description of each fill for
-/// the preset debug line.
-///
-/// Deliberately does NOT inject `RUSTC_WRAPPER=sccache` when sccache happens
-/// to be on PATH: the preset must expand to the same run on every machine.
-/// sccache stays opt-in via `--probe-env RUSTC_WRAPPER=sccache` (doctor
-/// suggests this when it detects sccache).
-fn rust_preset_probe_env_fills(probe_env: &mut Vec<runner::ProbeEnvTemplate>) -> Vec<String> {
-    fill_probe_env(probe_env, "CARGO_TARGET_DIR", "{build_cache}")
-        .into_iter()
-        .collect()
-}
-
-/// Append the go preset's probe-env defaults to `probe_env` when the user
-/// hasn't set the same keys themselves. Returns a description of each fill
-/// for the preset debug line.
-///
-/// Both point into the shared build-cache dir (the runner creates it): the Go
-/// build cache is concurrency-safe so workers share GOCACHE, and GOTMPDIR only
-/// hosts per-invocation work dirs the `go` command creates itself — this keeps
-/// probe temp writes out of the system /tmp without per-worker dirs.
-fn go_preset_probe_env_fills(probe_env: &mut Vec<runner::ProbeEnvTemplate>) -> Vec<String> {
-    let mut fills = Vec::new();
-    fills.extend(fill_probe_env(
-        probe_env,
-        "GOCACHE",
-        "{build_cache}/go-build",
-    ));
-    fills.extend(fill_probe_env(probe_env, "GOTMPDIR", "{build_cache}"));
-    fills
-}
-
-/// Append the node preset's probe-env defaults — the detected package
-/// manager's cache dirs pointed into the shared build-cache dir — when the
-/// user hasn't set the same keys themselves. Package-manager caches are safe
-/// to share across workers (the workspace itself is isolated by the backend),
-/// so no per-worker split.
-fn node_preset_probe_env_fills(
+/// Append preset probe-env defaults when the user hasn't set the same keys
+/// themselves. Returns a description of each fill for the preset debug line.
+fn preset_probe_env_fills(
     probe_env: &mut Vec<runner::ProbeEnvTemplate>,
-    pm: PackageManager,
+    preset: Preset,
+    path: &std::path::Path,
 ) -> Vec<String> {
-    pm.cache_env_fills()
+    preset
+        .probe_env_fills(path)
         .iter()
         .filter_map(|(key, value)| fill_probe_env(probe_env, key, value))
         .collect()
 }
 
-/// Append the python preset's probe-env defaults when the user hasn't set the
-/// same keys themselves. All three point into the shared build-cache dir:
-/// PYTHONPYCACHEPREFIX redirects `.pyc` writes out of the workspace so
-/// mutants never see stale bytecode from the checkout, PYTEST_ADDOPTS clears
-/// pytest's own cache per run so `--lf`-style state can't leak between
-/// mutants, and TMPDIR keeps probe temp files out of the system /tmp.
-fn python_preset_probe_env_fills(probe_env: &mut Vec<runner::ProbeEnvTemplate>) -> Vec<String> {
-    let mut fills = Vec::new();
-    fills.extend(fill_probe_env(
-        probe_env,
-        "PYTHONPYCACHEPREFIX",
-        "{build_cache}/pycache",
-    ));
-    fills.extend(fill_probe_env(probe_env, "PYTEST_ADDOPTS", "--cache-clear"));
-    fills.extend(fill_probe_env(probe_env, "TMPDIR", "{build_cache}/tmp"));
-    fills
-}
-
-/// Append the csharp preset's probe-env defaults when the user hasn't set the
-/// same keys themselves. `NUGET_PACKAGES` points the `NuGet` global packages
-/// folder (concurrency-safe, so shared across workers) into the build-cache
-/// dir; build outputs stay inside each isolated workspace.
-/// `DOTNET_CLI_TELEMETRY_OPTOUT` keeps probe runs quiet and network-free.
-fn csharp_preset_probe_env_fills(probe_env: &mut Vec<runner::ProbeEnvTemplate>) -> Vec<String> {
-    let mut fills = Vec::new();
-    fills.extend(fill_probe_env(
-        probe_env,
-        "DOTNET_CLI_TELEMETRY_OPTOUT",
-        "1",
-    ));
-    fills.extend(fill_probe_env(
-        probe_env,
-        "NUGET_PACKAGES",
-        "{build_cache}/nuget",
-    ));
-    fills
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cli::{Cli, Commands};
+    use crate::cli::{Cli, Commands, PresetArg};
     use clap::Parser as _;
     use std::path::Path;
 
@@ -462,7 +376,7 @@ mod tests {
     #[test]
     fn preset_rust_parses() {
         let args = parse_args(&["--preset", "rust"]);
-        assert_eq!(args.preset, Some(Preset::Rust));
+        assert_eq!(args.preset, Some(PresetArg::Rust));
     }
 
     #[test]
@@ -680,7 +594,7 @@ mod tests {
     #[test]
     fn probe_env_fills_only_cargo_target_dir() {
         let mut env = Vec::new();
-        let fills = rust_preset_probe_env_fills(&mut env);
+        let fills = preset_probe_env_fills(&mut env, Preset::Rust, Path::new("."));
         assert_eq!(env_values(&env, "CARGO_TARGET_DIR"), ["/bc"]);
         assert_eq!(fills.len(), 1);
     }
@@ -690,7 +604,7 @@ mod tests {
         // sccache is opt-in: the preset must expand identically whether or
         // not sccache is installed, so RUSTC_WRAPPER is never injected.
         let mut env = Vec::new();
-        rust_preset_probe_env_fills(&mut env);
+        preset_probe_env_fills(&mut env, Preset::Rust, Path::new("."));
         assert!(env_values(&env, "RUSTC_WRAPPER").is_empty());
     }
 
@@ -700,7 +614,7 @@ mod tests {
             "RUSTC_WRAPPER".to_string(),
             "mine",
         )];
-        rust_preset_probe_env_fills(&mut env);
+        preset_probe_env_fills(&mut env, Preset::Rust, Path::new("."));
         assert_eq!(env_values(&env, "RUSTC_WRAPPER"), ["mine"]);
     }
 }

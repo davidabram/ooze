@@ -7,6 +7,7 @@ mod doctor;
 mod lang;
 mod mutate;
 mod planning;
+mod preset;
 mod report;
 mod runner;
 mod scheduler;

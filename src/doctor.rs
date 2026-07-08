@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use crate::cli::Preset;
 use crate::config::{self, OozeConfig};
 use crate::core::{Language, OperatorName};
+use crate::preset::{PackageManager, Preset};
 use crate::runner::{overlay, worktree};
 
 #[derive(Debug, Clone, Copy, serde::Serialize)]
@@ -829,7 +829,7 @@ pub fn print_human(report: &DoctorReport) {
         println!("  recommended Go cache: shared GOCACHE={{build_cache}}/go-build");
     }
     if report.detected.contains(&ProjectType::Node) {
-        let pm = crate::cli::PackageManager::detect(&report.path);
+        let pm = PackageManager::detect(&report.path);
         let envs: Vec<String> = pm
             .cache_env_fills()
             .iter()
@@ -853,7 +853,7 @@ pub fn print_human(report: &DoctorReport) {
                 match &f.overridden_by {
                     None => println!("    {}", f.fill),
                     Some(winner) => {
-                        println!("    {} (inactive: ooze.toml wins with {winner})", f.fill)
+                        println!("    {} (inactive: ooze.toml wins with {winner})", f.fill);
                     }
                 }
             }

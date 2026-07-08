@@ -2,7 +2,7 @@
 //! small CLI-only enums. Resolution of these into runnable settings lives in
 //! `crate::app`.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
@@ -70,11 +70,11 @@ impl OutputFormat {
     }
 }
 
-/// A language preset: fills runner options the user left unset with good
-/// defaults for that ecosystem. Explicit CLI flags and `ooze.toml` values
-/// always win over preset defaults.
+/// The `--preset` flag value. Purely the CLI spelling of a preset; what a
+/// preset actually does at runtime lives in [`crate::preset::Preset`], which
+/// this converts into via `From`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub(crate) enum Preset {
+pub(crate) enum PresetArg {
     Rust,
     Go,
     Node,
@@ -84,225 +84,14 @@ pub(crate) enum Preset {
     CSharp,
 }
 
-impl Preset {
-    /// The preset's CLI value, for `--preset <name>` suggestions and the
-    /// "ooze: preset <name>: ..." expansion line.
-    pub(crate) fn name(self) -> &'static str {
-        match self {
-            Preset::Rust => "rust",
-            Preset::Go => "go",
-            Preset::Node => "node",
-            Preset::Python => "python",
-            Preset::CSharp => "csharp",
-        }
-    }
-
-    /// The fixed-name project marker files, at least one of which must exist
-    /// at the project path for this preset to apply. Python is the only preset
-    /// with alternatives: any of the common packaging files marks a project.
-    /// C# has no fixed-name marker; see `marker_extensions`.
-    pub(crate) fn marker_files(self) -> &'static [&'static str] {
-        match self {
-            Preset::Rust => &["Cargo.toml"],
-            Preset::Go => &["go.mod"],
-            Preset::Node => &["package.json"],
-            Preset::Python => &[
-                "pyproject.toml",
-                "setup.py",
-                "setup.cfg",
-                "requirements.txt",
-            ],
-            Preset::CSharp => &[],
-        }
-    }
-
-    /// Marker file extensions for presets whose project files have no fixed
-    /// name (C#: any `*.sln` or `*.csproj`). Checked non-recursively at the
-    /// project path.
-    pub(crate) fn marker_extensions(self) -> &'static [&'static str] {
-        match self {
-            Preset::CSharp => &["sln", "csproj"],
-            _ => &[],
-        }
-    }
-
-    /// Whether the project path holds at least one of this preset's markers:
-    /// a fixed-name file from `marker_files`, or (non-recursively) a file with
-    /// one of `marker_extensions`.
-    pub(crate) fn markers_present(self, path: &Path) -> bool {
-        if self.marker_files().iter().any(|m| path.join(m).is_file()) {
-            return true;
-        }
-        let extensions = self.marker_extensions();
-        if extensions.is_empty() {
-            return false;
-        }
-        std::fs::read_dir(path).is_ok_and(|entries| {
-            entries.flatten().any(|e| {
-                let p = e.path();
-                p.is_file()
-                    && p.extension()
-                        .and_then(|x| x.to_str())
-                        .is_some_and(|x| extensions.contains(&x))
-            })
-        })
-    }
-
-    /// Human phrasing of the marker requirement for the "preset requires ..."
-    /// error, e.g. "a Cargo.toml" or "one of pyproject.toml, ..., or
-    /// requirements.txt".
-    pub(crate) fn marker_requirement(self) -> String {
-        match self {
-            Preset::CSharp => "a .sln or .csproj".to_string(),
-            _ => match self.marker_files() {
-                [single] => format!("a {single}"),
-                many => {
-                    let (last, rest) = many.split_last().expect("presets have markers");
-                    format!("one of {}, or {last}", rest.join(", "))
-                }
-            },
-        }
-    }
-
-    /// Every default this preset fills when neither a CLI flag nor `ooze.toml`
-    /// sets the option, in the same `option=value` form `app::resolve` prints
-    /// on its "ooze: preset <name>: ..." line. `doctor` shows this list so the
-    /// recommended command is not a black box; keep the strings in sync with
-    /// the fills in `app::resolve::test_mutants`.
-    ///
-    /// Go keeps the default shared build cache (`per_worker_cache=false`):
-    /// Go's build cache is concurrency-safe by design, so workers share one
-    /// GOCACHE. GOTMPDIR points at the same shared dir — the `go` command
-    /// creates a unique work dir per invocation inside it — which keeps temp
-    /// writes out of the system /tmp.
-    ///
-    /// Node also shares one cache: package-manager caches (npm/pnpm/yarn/bun)
-    /// are safe to share across workers, while the workspace itself stays
-    /// isolated by the worktree backend. Its probe and cache envs depend on
-    /// the lockfile found at `path`, hence the parameter (the other presets
-    /// ignore it).
-    ///
-    /// Python shares one cache root too: PYTHONPYCACHEPREFIX keeps `.pyc`
-    /// writes out of the workspace, PYTEST_ADDOPTS=--cache-clear stops
-    /// pytest's own cache from carrying state across mutants, and TMPDIR
-    /// keeps probe temp files out of the system /tmp.
-    ///
-    /// C# shares one cache as well: the `NuGet` global packages folder is
-    /// concurrency-safe, so `NUGET_PACKAGES` points every worker at
-    /// `{build_cache}/nuget` while build outputs stay inside each isolated
-    /// workspace. `DOTNET_CLI_TELEMETRY_OPTOUT` keeps probe runs quiet and
-    /// network-free.
-    pub(crate) fn fills(self, path: &Path) -> &'static [&'static str] {
-        match self {
-            Preset::Rust => &[
-                "probe=`cargo test`",
-                "workspace_backend=worktree",
-                "per_worker_cache=true",
-                "warmup=true",
-                "probe_env += CARGO_TARGET_DIR={build_cache}",
-            ],
-            Preset::Go => &[
-                "probe=`go test ./...`",
-                "workspace_backend=worktree",
-                "warmup=true",
-                "probe_env += GOCACHE={build_cache}/go-build",
-                "probe_env += GOTMPDIR={build_cache}",
-            ],
-            Preset::Python => &[
-                "probe=`pytest`",
-                "workspace_backend=worktree",
-                "warmup=true",
-                "probe_env += PYTHONPYCACHEPREFIX={build_cache}/pycache",
-                "probe_env += PYTEST_ADDOPTS=--cache-clear",
-                "probe_env += TMPDIR={build_cache}/tmp",
-            ],
-            Preset::CSharp => &[
-                "probe=`dotnet test`",
-                "workspace_backend=worktree",
-                "warmup=true",
-                "probe_env += DOTNET_CLI_TELEMETRY_OPTOUT=1",
-                "probe_env += NUGET_PACKAGES={build_cache}/nuget",
-            ],
-            Preset::Node => match PackageManager::detect(path) {
-                PackageManager::Bun => &[
-                    "probe=`bun test`",
-                    "workspace_backend=worktree",
-                    "warmup=true",
-                    "probe_env += BUN_INSTALL_CACHE_DIR={build_cache}/bun",
-                ],
-                PackageManager::Pnpm => &[
-                    "probe=`pnpm test`",
-                    "workspace_backend=worktree",
-                    "warmup=true",
-                    "probe_env += npm_config_cache={build_cache}/npm",
-                    "probe_env += PNPM_HOME={build_cache}/pnpm-home",
-                ],
-                PackageManager::Yarn => &[
-                    "probe=`yarn test`",
-                    "workspace_backend=worktree",
-                    "warmup=true",
-                    "probe_env += YARN_CACHE_FOLDER={build_cache}/yarn",
-                ],
-                PackageManager::Npm => &[
-                    "probe=`npm test`",
-                    "workspace_backend=worktree",
-                    "warmup=true",
-                    "probe_env += npm_config_cache={build_cache}/npm",
-                ],
-            },
-        }
-    }
-}
-
-/// The Node package manager the `node` preset targets, picked by lockfile.
-/// Everything the preset fills for Node — probe and cache envs — hangs off
-/// this choice, so detection lives in one place.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PackageManager {
-    Bun,
-    Pnpm,
-    Yarn,
-    Npm,
-}
-
-impl PackageManager {
-    /// Deterministic lockfile detection at the project path. When several
-    /// lockfiles coexist the priority is bun > pnpm > yarn > npm; a bare
-    /// `package.json` with no lockfile falls back to npm.
-    pub(crate) fn detect(path: &Path) -> PackageManager {
-        if path.join("bun.lockb").is_file() || path.join("bun.lock").is_file() {
-            PackageManager::Bun
-        } else if path.join("pnpm-lock.yaml").is_file() {
-            PackageManager::Pnpm
-        } else if path.join("yarn.lock").is_file() {
-            PackageManager::Yarn
-        } else {
-            PackageManager::Npm
-        }
-    }
-
-    /// The default probe when the node preset has to supply one.
-    pub(crate) fn test_command(self) -> &'static [&'static str] {
-        match self {
-            PackageManager::Bun => &["bun", "test"],
-            PackageManager::Pnpm => &["pnpm", "test"],
-            PackageManager::Yarn => &["yarn", "test"],
-            PackageManager::Npm => &["npm", "test"],
-        }
-    }
-
-    /// Probe-env defaults pointing this package manager's cache into the
-    /// shared build-cache dir. pnpm also gets `npm_config_cache` because it
-    /// shells out to npm for some operations.
-    pub(crate) fn cache_env_fills(self) -> &'static [(&'static str, &'static str)] {
-        match self {
-            PackageManager::Bun => &[("BUN_INSTALL_CACHE_DIR", "{build_cache}/bun")],
-            PackageManager::Pnpm => &[
-                ("npm_config_cache", "{build_cache}/npm"),
-                ("PNPM_HOME", "{build_cache}/pnpm-home"),
-            ],
-            PackageManager::Yarn => &[("YARN_CACHE_FOLDER", "{build_cache}/yarn")],
-            PackageManager::Npm => &[("npm_config_cache", "{build_cache}/npm")],
+impl From<PresetArg> for crate::preset::Preset {
+    fn from(value: PresetArg) -> Self {
+        match value {
+            PresetArg::Rust => crate::preset::Preset::Rust,
+            PresetArg::Go => crate::preset::Preset::Go,
+            PresetArg::Node => crate::preset::Preset::Node,
+            PresetArg::Python => crate::preset::Preset::Python,
+            PresetArg::CSharp => crate::preset::Preset::CSharp,
         }
     }
 }
@@ -566,7 +355,7 @@ pub(crate) struct TestMutantsArgs {
         value_enum,
         help = "Language preset that fills unset options with ecosystem defaults. `rust`: worktree backend, per-worker cache, warmup, CARGO_TARGET_DIR={build_cache}, probe `cargo test`. `go`: worktree backend, warmup, shared GOCACHE={build_cache}/go-build, GOTMPDIR={build_cache}, probe `go test ./...`. `node`: worktree backend, warmup, package-manager cache envs under {build_cache}, probe from lockfile detection (bun/pnpm/yarn/npm test). `python`: worktree backend, warmup, PYTHONPYCACHEPREFIX={build_cache}/pycache, PYTEST_ADDOPTS=--cache-clear, TMPDIR={build_cache}/tmp, probe `pytest`. `csharp`: worktree backend, warmup, DOTNET_CLI_TELEMETRY_OPTOUT=1, NUGET_PACKAGES={build_cache}/nuget, probe `dotnet test`. Explicit flags and ooze.toml win."
     )]
-    pub(crate) preset: Option<Preset>,
+    pub(crate) preset: Option<PresetArg>,
 
     #[arg(long)]
     pub(crate) cache_dir: Option<PathBuf>,
