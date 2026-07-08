@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::cli::{TestMutantsArgs, WorkspaceBackendArg};
-use crate::preset::Preset;
+use crate::preset::{CachePolicy, Preset, ProbeEnvFill};
 use crate::{config, mutate, report, runner, scheduler};
 
 /// Everything `test-mutants` needs to run, with every CLI/config/default decision
@@ -108,6 +108,9 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
             path.display()
         );
     }
+    // Everything the preset recommends, resolved once; each field below is
+    // applied only when neither a CLI flag nor ooze.toml set the option.
+    let preset_policy = preset.map(|p| p.runtime_policy(&path));
     // Human-readable record of every default the preset filled, printed once
     // below so preset expansion stays debuggable.
     let mut preset_fills: Vec<String> = Vec::new();
@@ -125,9 +128,9 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         .or(cfg.runner.timeout_seconds)
         .map(Duration::from_secs);
     let build_cache_dir = build_cache_dir.or(cfg.runner.build_cache_dir.clone());
-    // Only the rust preset turns on per-worker caches: Cargo target dirs fight
-    // over locks when shared, while Go's build cache is designed to be shared.
-    let preset_per_worker_cache = preset == Some(Preset::Rust);
+    let preset_per_worker_cache = preset_policy
+        .as_ref()
+        .is_some_and(|p| p.cache_policy == CachePolicy::PerWorker);
     let per_worker_cache =
         if !per_worker_cache && cfg.runner.per_worker_cache.is_none() && preset_per_worker_cache {
             preset_fills.push("per_worker_cache=true".into());
@@ -135,21 +138,25 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         } else {
             resolve_bool_flag(per_worker_cache, cfg.runner.per_worker_cache)
         };
-    let warmup = if !warmup && cfg.runner.warmup.is_none() && preset.is_some() {
-        preset_fills.push("warmup=true".into());
-        true
-    } else {
-        resolve_bool_flag(warmup, cfg.runner.warmup)
+    let preset_warmup = preset_policy.as_ref().and_then(|p| p.warmup);
+    let warmup = match preset_warmup {
+        Some(w) if !warmup && cfg.runner.warmup.is_none() => {
+            preset_fills.push(format!("warmup={w}"));
+            w
+        }
+        _ => resolve_bool_flag(warmup, cfg.runner.warmup),
     };
     let workspace_backend = match workspace_backend {
         Some(w) => w,
         None => match cfg.runner.workspace_backend.as_deref() {
             Some(s) => parse_workspace_backend_str(s)?,
-            None if preset.is_some() => {
-                preset_fills.push("workspace_backend=worktree".into());
-                WorkspaceBackendArg::Worktree
-            }
-            None => WorkspaceBackendArg::Auto,
+            None => match preset_policy.as_ref().and_then(|p| p.workspace_backend) {
+                Some(b) => {
+                    preset_fills.push(format!("workspace_backend={}", b.cli_name()));
+                    b
+                }
+                None => WorkspaceBackendArg::Auto,
+            },
         },
     };
     let cache_dir = cache_dir
@@ -207,8 +214,8 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
             .into_iter()
             .map(|(k, v)| runner::ProbeEnvTemplate::parse(k, &v))
             .collect();
-    if let Some(p) = preset {
-        preset_fills.extend(preset_probe_env_fills(&mut probe_env, p, &path));
+    if let Some(policy) = &preset_policy {
+        preset_fills.extend(preset_probe_env_fills(&mut probe_env, &policy.probe_env));
     }
 
     let operators = resolve_operators(
@@ -231,14 +238,9 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
     if probe.is_empty() {
         if let Some(cmd) = cfg.probe.command.as_ref() {
             probe.clone_from(cmd);
-        } else if let Some(p) = preset {
-            let cmd = p
-                .test_command(&path)
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>();
-            preset_fills.push(format!("probe=`{}`", cmd.join(" ")));
-            probe = cmd;
+        } else if let Some(policy) = &preset_policy {
+            preset_fills.push(format!("probe=`{}`", policy.default_probe.join(" ")));
+            probe.clone_from(&policy.default_probe);
         } else {
             anyhow::bail!(
                 "missing probe command; pass one after `--` or set [probe].command in ooze.toml"
@@ -309,17 +311,16 @@ fn fill_probe_env(
     Some(format!("probe_env += {key}={value}"))
 }
 
-/// Append preset probe-env defaults when the user hasn't set the same keys
-/// themselves. Returns a description of each fill for the preset debug line.
+/// Append the policy's probe-env defaults when the user hasn't set the same
+/// keys themselves. Returns a description of each fill for the preset debug
+/// line.
 fn preset_probe_env_fills(
     probe_env: &mut Vec<runner::ProbeEnvTemplate>,
-    preset: Preset,
-    path: &std::path::Path,
+    fills: &[ProbeEnvFill],
 ) -> Vec<String> {
-    preset
-        .probe_env_fills(path)
+    fills
         .iter()
-        .filter_map(|(key, value)| fill_probe_env(probe_env, key, value))
+        .filter_map(|f| fill_probe_env(probe_env, f.key, f.value))
         .collect()
 }
 
@@ -501,25 +502,25 @@ mod tests {
 
     #[test]
     fn preset_fills_list_matches_resolution() {
-        // `Preset::fills()` is what doctor advertises the preset will do;
+        // `fill_descriptions()` is what doctor advertises the preset will do;
         // verify every advertised fill against actual resolution in a bare
         // cargo project so the list can't drift from this module.
         let dir = cargo_project();
         let r = resolve_in(dir.path(), &["--preset", "rust"]).unwrap();
-        for fill in Preset::Rust.fills(dir.path()) {
-            match *fill {
+        for fill in Preset::Rust.runtime_policy(dir.path()).fill_descriptions() {
+            match fill.as_str() {
                 "probe=`cargo test`" => assert_eq!(r.probe, ["cargo", "test"]),
                 "workspace_backend=worktree" => {
-                    assert_eq!(r.workspace_backend, WorkspaceBackendArg::Worktree)
+                    assert_eq!(r.workspace_backend, WorkspaceBackendArg::Worktree);
                 }
                 "per_worker_cache=true" => assert!(r.per_worker_cache),
                 "warmup=true" => assert!(r.warmup),
                 "probe_env += CARGO_TARGET_DIR={build_cache}" => {
-                    assert_eq!(env_values(&r.probe_env, "CARGO_TARGET_DIR"), ["/bc"])
+                    assert_eq!(env_values(&r.probe_env, "CARGO_TARGET_DIR"), ["/bc"]);
                 }
                 other => panic!(
-                    "Preset::Rust.fills() advertises {other:?} but this test knows no \
-                     matching fill in resolve; update fills() or extend this test"
+                    "the rust policy advertises {other:?} but this test knows no \
+                     matching fill in resolve; update fill_descriptions() or extend this test"
                 ),
             }
         }
@@ -567,8 +568,11 @@ mod tests {
         // for csharp must be observable in actual resolution.
         let dir = csharp_project();
         let r = resolve_in(dir.path(), &["--preset", "csharp"]).unwrap();
-        for fill in Preset::CSharp.fills(dir.path()) {
-            match *fill {
+        for fill in Preset::CSharp
+            .runtime_policy(dir.path())
+            .fill_descriptions()
+        {
+            match fill.as_str() {
                 "probe=`dotnet test`" => assert_eq!(r.probe, ["dotnet", "test"]),
                 "workspace_backend=worktree" => {
                     assert_eq!(r.workspace_backend, WorkspaceBackendArg::Worktree);
@@ -584,17 +588,21 @@ mod tests {
                     assert_eq!(env_values(&r.probe_env, "NUGET_PACKAGES"), ["/bc/nuget"]);
                 }
                 other => panic!(
-                    "Preset::CSharp.fills() advertises {other:?} but this test knows no \
-                     matching fill in resolve; update fills() or extend this test"
+                    "the csharp policy advertises {other:?} but this test knows no \
+                     matching fill in resolve; update fill_descriptions() or extend this test"
                 ),
             }
         }
     }
 
+    fn rust_env_fills() -> Vec<ProbeEnvFill> {
+        Preset::Rust.runtime_policy(Path::new(".")).probe_env
+    }
+
     #[test]
     fn probe_env_fills_only_cargo_target_dir() {
         let mut env = Vec::new();
-        let fills = preset_probe_env_fills(&mut env, Preset::Rust, Path::new("."));
+        let fills = preset_probe_env_fills(&mut env, &rust_env_fills());
         assert_eq!(env_values(&env, "CARGO_TARGET_DIR"), ["/bc"]);
         assert_eq!(fills.len(), 1);
     }
@@ -604,7 +612,7 @@ mod tests {
         // sccache is opt-in: the preset must expand identically whether or
         // not sccache is installed, so RUSTC_WRAPPER is never injected.
         let mut env = Vec::new();
-        preset_probe_env_fills(&mut env, Preset::Rust, Path::new("."));
+        preset_probe_env_fills(&mut env, &rust_env_fills());
         assert!(env_values(&env, "RUSTC_WRAPPER").is_empty());
     }
 
@@ -614,7 +622,7 @@ mod tests {
             "RUSTC_WRAPPER".to_string(),
             "mine",
         )];
-        preset_probe_env_fills(&mut env, Preset::Rust, Path::new("."));
+        preset_probe_env_fills(&mut env, &rust_env_fills());
         assert_eq!(env_values(&env, "RUSTC_WRAPPER"), ["mine"]);
     }
 }

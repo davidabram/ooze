@@ -105,6 +105,17 @@ pub(crate) enum WorkspaceBackendArg {
 }
 
 impl WorkspaceBackendArg {
+    /// The backend's CLI value, e.g. for `workspace_backend=worktree` in
+    /// preset fill descriptions.
+    pub(crate) fn cli_name(self) -> &'static str {
+        match self {
+            WorkspaceBackendArg::Copy => "copy",
+            WorkspaceBackendArg::Overlay => "overlay",
+            WorkspaceBackendArg::Worktree => "worktree",
+            WorkspaceBackendArg::Auto => "auto",
+        }
+    }
+
     /// `auto` prefers the rootless worktree backend when `repo_root` is inside
     /// a Git repository and falls back to copy otherwise. Overlay stays
     /// explicit: its mount needs root, so it should never win by default.

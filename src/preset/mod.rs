@@ -4,10 +4,12 @@
 //! package-manager handling — lives here.
 
 mod node;
+mod policy;
 
 use std::path::Path;
 
 pub(crate) use node::PackageManager;
+pub(crate) use policy::{CachePolicy, ProbeEnvFill};
 
 /// A language preset: fills runner options the user left unset with good
 /// defaults for that ecosystem. Explicit CLI flags and `ooze.toml` values
@@ -100,129 +102,6 @@ impl Preset {
             },
         }
     }
-
-    /// The probe each preset falls back to when neither `--` args nor
-    /// `[probe].command` supply one. Node's depends on the lockfile at `path`.
-    pub(crate) fn test_command(self, path: &Path) -> &'static [&'static str] {
-        match self {
-            Preset::Rust => &["cargo", "test"],
-            Preset::Go => &["go", "test", "./..."],
-            Preset::Node => PackageManager::detect(path).test_command(),
-            Preset::Python => &["pytest"],
-            Preset::CSharp => &["dotnet", "test"],
-        }
-    }
-
-    /// Probe-env defaults this preset fills when the user has not set the same
-    /// key explicitly. Values are templates evaluated by the runner.
-    pub(crate) fn probe_env_fills(self, path: &Path) -> &'static [(&'static str, &'static str)] {
-        match self {
-            Preset::Rust => &[("CARGO_TARGET_DIR", "{build_cache}")],
-            Preset::Go => &[
-                ("GOCACHE", "{build_cache}/go-build"),
-                ("GOTMPDIR", "{build_cache}"),
-            ],
-            Preset::Node => PackageManager::detect(path).cache_env_fills(),
-            Preset::Python => &[
-                ("PYTHONPYCACHEPREFIX", "{build_cache}/pycache"),
-                ("PYTEST_ADDOPTS", "--cache-clear"),
-                ("TMPDIR", "{build_cache}/tmp"),
-            ],
-            Preset::CSharp => &[
-                ("DOTNET_CLI_TELEMETRY_OPTOUT", "1"),
-                ("NUGET_PACKAGES", "{build_cache}/nuget"),
-            ],
-        }
-    }
-
-    /// Every default this preset fills when neither a CLI flag nor `ooze.toml`
-    /// sets the option, in the same `option=value` form `app::resolve` prints
-    /// on its "ooze: preset <name>: ..." line. `doctor` shows this list so the
-    /// recommended command is not a black box; keep the strings in sync with
-    /// the fills in `app::resolve::test_mutants`.
-    ///
-    /// Go keeps the default shared build cache (`per_worker_cache=false`):
-    /// Go's build cache is concurrency-safe by design, so workers share one
-    /// GOCACHE. GOTMPDIR points at the same shared dir — the `go` command
-    /// creates a unique work dir per invocation inside it — which keeps temp
-    /// writes out of the system /tmp.
-    ///
-    /// Node also shares one cache: package-manager caches (npm/pnpm/yarn/bun)
-    /// are safe to share across workers, while the workspace itself stays
-    /// isolated by the worktree backend. Its probe and cache envs depend on
-    /// the lockfile found at `path`, hence the parameter (the other presets
-    /// ignore it).
-    ///
-    /// Python shares one cache root too: PYTHONPYCACHEPREFIX keeps `.pyc`
-    /// writes out of the workspace, PYTEST_ADDOPTS=--cache-clear stops
-    /// pytest's own cache from carrying state across mutants, and TMPDIR
-    /// keeps probe temp files out of the system /tmp.
-    ///
-    /// C# shares one cache as well: the `NuGet` global packages folder is
-    /// concurrency-safe, so `NUGET_PACKAGES` points every worker at
-    /// `{build_cache}/nuget` while build outputs stay inside each isolated
-    /// workspace. `DOTNET_CLI_TELEMETRY_OPTOUT` keeps probe runs quiet and
-    /// network-free.
-    pub(crate) fn fills(self, path: &Path) -> &'static [&'static str] {
-        match self {
-            Preset::Rust => &[
-                "probe=`cargo test`",
-                "workspace_backend=worktree",
-                "per_worker_cache=true",
-                "warmup=true",
-                "probe_env += CARGO_TARGET_DIR={build_cache}",
-            ],
-            Preset::Go => &[
-                "probe=`go test ./...`",
-                "workspace_backend=worktree",
-                "warmup=true",
-                "probe_env += GOCACHE={build_cache}/go-build",
-                "probe_env += GOTMPDIR={build_cache}",
-            ],
-            Preset::Python => &[
-                "probe=`pytest`",
-                "workspace_backend=worktree",
-                "warmup=true",
-                "probe_env += PYTHONPYCACHEPREFIX={build_cache}/pycache",
-                "probe_env += PYTEST_ADDOPTS=--cache-clear",
-                "probe_env += TMPDIR={build_cache}/tmp",
-            ],
-            Preset::CSharp => &[
-                "probe=`dotnet test`",
-                "workspace_backend=worktree",
-                "warmup=true",
-                "probe_env += DOTNET_CLI_TELEMETRY_OPTOUT=1",
-                "probe_env += NUGET_PACKAGES={build_cache}/nuget",
-            ],
-            Preset::Node => match PackageManager::detect(path) {
-                PackageManager::Bun => &[
-                    "probe=`bun test`",
-                    "workspace_backend=worktree",
-                    "warmup=true",
-                    "probe_env += BUN_INSTALL_CACHE_DIR={build_cache}/bun",
-                ],
-                PackageManager::Pnpm => &[
-                    "probe=`pnpm test`",
-                    "workspace_backend=worktree",
-                    "warmup=true",
-                    "probe_env += npm_config_cache={build_cache}/npm",
-                    "probe_env += PNPM_HOME={build_cache}/pnpm-home",
-                ],
-                PackageManager::Yarn => &[
-                    "probe=`yarn test`",
-                    "workspace_backend=worktree",
-                    "warmup=true",
-                    "probe_env += YARN_CACHE_FOLDER={build_cache}/yarn",
-                ],
-                PackageManager::Npm => &[
-                    "probe=`npm test`",
-                    "workspace_backend=worktree",
-                    "warmup=true",
-                    "probe_env += npm_config_cache={build_cache}/npm",
-                ],
-            },
-        }
-    }
 }
 
 #[cfg(test)]
@@ -254,22 +133,5 @@ mod tests {
             "one of pyproject.toml, setup.py, setup.cfg, or requirements.txt"
         );
         assert_eq!(Preset::CSharp.marker_requirement(), "a .sln or .csproj");
-    }
-
-    #[test]
-    fn node_fills_follow_detected_lockfile() {
-        let tmp = tempfile::tempdir().unwrap();
-        assert!(
-            Preset::Node.fills(tmp.path()).contains(&"probe=`npm test`"),
-            "no lockfile falls back to npm"
-        );
-        std::fs::write(tmp.path().join("yarn.lock"), "").unwrap();
-        assert!(
-            Preset::Node
-                .fills(tmp.path())
-                .contains(&"probe=`yarn test`")
-        );
-        std::fs::write(tmp.path().join("bun.lock"), "").unwrap();
-        assert!(Preset::Node.fills(tmp.path()).contains(&"probe=`bun test`"));
     }
 }

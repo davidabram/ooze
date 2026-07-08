@@ -373,10 +373,14 @@ fn preset_recommendation(
     cfg: &OozeConfig,
 ) -> (String, Vec<PresetFill>) {
     let fills = || {
-        preset.fills(path).iter().map(|f| PresetFill {
-            fill: f.to_string(),
-            overridden_by: preset_fill_override(f, cfg),
-        })
+        preset
+            .runtime_policy(path)
+            .fill_descriptions()
+            .into_iter()
+            .map(|f| PresetFill {
+                overridden_by: preset_fill_override(&f, cfg),
+                fill: f,
+            })
     };
     if worktree.available {
         (
@@ -942,13 +946,16 @@ mod tests {
             report.recommendation.command.as_deref(),
             Some("ooze test-mutants --preset rust")
         );
-        let fills: Vec<&str> = report
+        let fills: Vec<String> = report
             .recommendation
             .preset_fills
             .iter()
-            .map(|f| f.fill.as_str())
+            .map(|f| f.fill.clone())
             .collect();
-        assert_eq!(fills, Preset::Rust.fills(dir.path()));
+        assert_eq!(
+            fills,
+            Preset::Rust.runtime_policy(dir.path()).fill_descriptions()
+        );
         assert!(
             report
                 .recommendation
