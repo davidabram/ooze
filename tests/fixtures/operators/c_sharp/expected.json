@@ -367,5 +367,149 @@
     "original": "\"x == y && true\"",
     "replacement": "\"\"",
     "line": 95
+  },
+  {
+    "language": "c_sharp",
+    "operator": "null_forgiving_removal",
+    "implementation": "c_sharp.null_forgiving_removal",
+    "function": "NullForgiving",
+    "original": "value!",
+    "replacement": "value",
+    "line": 100
+  },
+  {
+    "language": "c_sharp",
+    "operator": "nullable_access_to_member_access",
+    "implementation": "c_sharp.nullable_access_to_member_access",
+    "function": "NullableAccess",
+    "original": "user?.Name",
+    "replacement": "user.Name",
+    "line": 105
+  },
+  {
+    "language": "c_sharp",
+    "operator": "nullable_access_to_member_access",
+    "implementation": "c_sharp.nullable_access_to_member_access",
+    "function": "NullableCall",
+    "original": "user?.GetName",
+    "replacement": "user.GetName",
+    "line": 110
+  },
+  {
+    "language": "c_sharp",
+    "operator": "is_pattern_negation",
+    "implementation": "c_sharp.is_pattern_negation",
+    "function": "IsString",
+    "original": "value is string",
+    "replacement": "value is not string",
+    "line": 115
+  },
+  {
+    "language": "c_sharp",
+    "operator": "is_pattern_negation",
+    "implementation": "c_sharp.is_pattern_negation",
+    "function": "IsNotString",
+    "original": "value is not string",
+    "replacement": "value is string",
+    "line": 120
+  },
+  {
+    "language": "c_sharp",
+    "operator": "is_pattern_negation",
+    "implementation": "c_sharp.is_pattern_negation",
+    "function": "IsNull",
+    "original": "value is null",
+    "replacement": "value is not null",
+    "line": 125
+  },
+  {
+    "language": "c_sharp",
+    "operator": "is_pattern_negation",
+    "implementation": "c_sharp.is_pattern_negation",
+    "function": "IsPositivePattern",
+    "original": "value is > 0",
+    "replacement": "value is not > 0",
+    "line": 130
+  },
+  {
+    "language": "c_sharp",
+    "operator": "integer_zero_one",
+    "implementation": "c_sharp.integer_zero_one",
+    "function": "IsPositivePattern",
+    "original": "0",
+    "replacement": "1",
+    "line": 130
+  },
+  {
+    "language": "c_sharp",
+    "operator": "as_expression_to_direct_cast",
+    "implementation": "c_sharp.as_expression_to_direct_cast",
+    "function": "AsExpression",
+    "original": "value as string",
+    "replacement": "(string)value",
+    "line": 135
+  },
+  {
+    "language": "c_sharp",
+    "operator": "checked_unchecked_swap",
+    "implementation": "c_sharp.checked_unchecked_swap",
+    "function": "CheckedAdd",
+    "original": "checked",
+    "replacement": "unchecked",
+    "line": 140
+  },
+  {
+    "language": "c_sharp",
+    "operator": "swap_arithmetic",
+    "implementation": "c_sharp.swap_arithmetic",
+    "function": "CheckedAdd",
+    "original": "+",
+    "replacement": "-",
+    "line": 140
+  },
+  {
+    "language": "c_sharp",
+    "operator": "checked_unchecked_swap",
+    "implementation": "c_sharp.checked_unchecked_swap",
+    "function": "UncheckedAdd",
+    "original": "unchecked",
+    "replacement": "checked",
+    "line": 145
+  },
+  {
+    "language": "c_sharp",
+    "operator": "swap_arithmetic",
+    "implementation": "c_sharp.swap_arithmetic",
+    "function": "UncheckedAdd",
+    "original": "+",
+    "replacement": "-",
+    "line": 145
+  },
+  {
+    "language": "c_sharp",
+    "operator": "nullish_coalescing_removal",
+    "implementation": "c_sharp.nullish_coalescing_removal",
+    "function": "ThrowExpression",
+    "original": "value ?? throw new ArgumentNullException(nameof(value))",
+    "replacement": "value",
+    "line": 150
+  },
+  {
+    "language": "c_sharp",
+    "operator": "throw_expression_to_null",
+    "implementation": "c_sharp.throw_expression_to_null",
+    "function": "ThrowExpression",
+    "original": "throw new ArgumentNullException(nameof(value))",
+    "replacement": "null",
+    "line": 150
+  },
+  {
+    "language": "c_sharp",
+    "operator": "default_literal_to_null",
+    "implementation": "c_sharp.default_literal_to_null",
+    "function": "DefaultLiteral",
+    "original": "default",
+    "replacement": "null",
+    "line": 155
   }
 ]

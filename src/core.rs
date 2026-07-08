@@ -318,6 +318,14 @@ pub enum OperatorName {
     SwapAssignment,
     RemoveUnaryMinus,
     PlusToMinus,
+    // C#-specific operators.
+    NullForgivingRemoval,
+    NullableAccessToMemberAccess,
+    IsPatternNegation,
+    AsExpressionToDirectCast,
+    CheckedUncheckedSwap,
+    ThrowExpressionToNull,
+    DefaultLiteralToNull,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -484,6 +492,13 @@ impl OperatorName {
         OperatorName::SwapAssignment,
         OperatorName::RemoveUnaryMinus,
         OperatorName::PlusToMinus,
+        OperatorName::NullForgivingRemoval,
+        OperatorName::NullableAccessToMemberAccess,
+        OperatorName::IsPatternNegation,
+        OperatorName::AsExpressionToDirectCast,
+        OperatorName::CheckedUncheckedSwap,
+        OperatorName::ThrowExpressionToNull,
+        OperatorName::DefaultLiteralToNull,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -535,6 +550,13 @@ impl OperatorName {
             OperatorName::SwapAssignment => "swap_assignment",
             OperatorName::RemoveUnaryMinus => "remove_unary_minus",
             OperatorName::PlusToMinus => "plus_to_minus",
+            OperatorName::NullForgivingRemoval => "null_forgiving_removal",
+            OperatorName::NullableAccessToMemberAccess => "nullable_access_to_member_access",
+            OperatorName::IsPatternNegation => "is_pattern_negation",
+            OperatorName::AsExpressionToDirectCast => "as_expression_to_direct_cast",
+            OperatorName::CheckedUncheckedSwap => "checked_unchecked_swap",
+            OperatorName::ThrowExpressionToNull => "throw_expression_to_null",
+            OperatorName::DefaultLiteralToNull => "default_literal_to_null",
         }
     }
 
@@ -889,6 +911,55 @@ impl OperatorName {
                 default_enabled: true,
                 description: "Replace unary plus with unary minus (+x -> -x).",
                 test_hint: "Add a test with a nonzero input so the sign flip is visible.",
+            },
+            OperatorName::NullForgivingRemoval => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Nullability,
+                default_enabled: true,
+                description: "Remove the postfix null-forgiving operator (value! -> value).",
+                test_hint: "Add tests that cover values suppressed with the null-forgiving operator.",
+            },
+            OperatorName::NullableAccessToMemberAccess => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Nullability,
+                default_enabled: false,
+                description: "Remove null-propagating member access (user?.Name -> user.Name).",
+                test_hint: "Add tests that cover null input paths for nullable member access.",
+            },
+            OperatorName::IsPatternNegation => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::PatternMatching,
+                default_enabled: true,
+                description: "Toggle an is-pattern test (x is P <-> x is not P).",
+                test_hint: "Add tests that cover both matching and non-matching pattern cases.",
+            },
+            OperatorName::AsExpressionToDirectCast => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Nullability,
+                default_enabled: false,
+                description: "Replace a safe cast with a direct cast (value as T -> (T)value).",
+                test_hint: "Add tests that cover failed casts and null results from `as` expressions.",
+            },
+            OperatorName::CheckedUncheckedSwap => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Arithmetic,
+                default_enabled: true,
+                description: "Swap overflow-checking context (checked <-> unchecked).",
+                test_hint: "Add tests that cover overflow behavior in checked and unchecked contexts.",
+            },
+            OperatorName::ThrowExpressionToNull => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::ErrorHandling,
+                default_enabled: false,
+                description: "Replace a throw expression with null (x ?? throw ... -> x ?? null).",
+                test_hint: "Add tests that cover exception paths from throw expressions.",
+            },
+            OperatorName::DefaultLiteralToNull => OperatorInfo {
+                name: self.as_str(),
+                category: OperatorCategory::Nullability,
+                default_enabled: false,
+                description: "Replace the default literal with null (default -> null).",
+                test_hint: "Add tests that cover default-value behavior separately from null behavior.",
             },
         }
     }

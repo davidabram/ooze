@@ -972,6 +972,27 @@ pub fn suggest(candidate: &MutationCandidate) -> TestSuggestion {
         OperatorName::PlusToMinus => format!(
             "Add a test for `{func}` in `{file}` with a nonzero input so the sign flip at line {line} is visible. The test should fail if `{original}` is changed to `{replacement}`."
         ),
+        OperatorName::NullForgivingRemoval => format!(
+            "Add a test for `{func}` in `{file}` that covers the value suppressed with the null-forgiving operator at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::NullableAccessToMemberAccess => format!(
+            "Add a test for `{func}` in `{file}` where the receiver of the `?.` at line {line} is null. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::IsPatternNegation => format!(
+            "Add a test for `{func}` in `{file}` that covers both matching and non-matching cases of the pattern at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::AsExpressionToDirectCast => format!(
+            "Add a test for `{func}` in `{file}` that covers a failed cast so the null result of the `as` at line {line} matters. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::CheckedUncheckedSwap => format!(
+            "Add a test for `{func}` in `{file}` that covers overflow behavior at line {line} so checked and unchecked contexts differ. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::ThrowExpressionToNull => format!(
+            "Add a test for `{func}` in `{file}` that exercises the exception path of the throw expression at line {line}. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
+        OperatorName::DefaultLiteralToNull => format!(
+            "Add a test for `{func}` in `{file}` that asserts the default value at line {line}, distinguishing it from null. The test should fail if `{original}` is changed to `{replacement}`."
+        ),
     };
 
     TestSuggestion {

@@ -183,11 +183,18 @@ equality negation (`==`/`!=`), comparison boundary and comparison negation
 swaps (`<`, `<=`, `>`, `>=`), logical `&&`/`||` swaps, binary arithmetic
 swaps (`+`/`-`, `*`/`/`, `%` → `*`), compound assignment swaps (`+=`/`-=`,
 `*=`/`/=`), and unary mutations (`!x` → `x`, `-x` → `x`, `+x` → `-x`).
+C#-specific operators cover null-forgiving removal (`value!` → `value`),
+is-pattern negation (`x is P` ↔ `x is not P`, including `is null` and
+relational patterns like `is > 0`), and checked/unchecked swaps
+(`checked(a + b)` ↔ `unchecked(a + b)`, block forms too).
 Null checks mutate via equality negation (`x == null` → `x != null`); 0/1
 integer swaps, string-emptying (`"hello"` → `""`), null-coalescing fallback
-removal (`a ?? b` → `a`), ternary arm swaps (`c ? a : b` → `c ? b : a`), and
-ternary condition negation (`c ? a : b` → `!(c) ? a : b`) are available but
-disabled by default (enable with `--operators`, e.g. `--operators
+removal (`a ?? b` → `a`), ternary arm swaps (`c ? a : b` → `c ? b : a`),
+ternary condition negation (`c ? a : b` → `!(c) ? a : b`), nullable member
+access removal (`user?.Name` → `user.Name`), safe-to-direct cast
+(`value as T` → `(T)value`), throw-expression-to-null (`x ?? throw ...` →
+`x ?? null`), and default-literal-to-null (`default` → `null`) are available
+but disabled by default (enable with `--operators`, e.g. `--operators
 ternary_arm_swap`). Operators only match real syntax nodes, so `==` in a
 comment or string never mutates.
 As with every preset, explicit CLI flags and `ooze.toml` values win over the

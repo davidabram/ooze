@@ -94,4 +94,70 @@ public static class Sample
         // true == false
         return "x == y && true";
     }
+
+    public static string NullForgiving(string? value)
+    {
+        return value!;
+    }
+
+    public static string? NullableAccess(User? user)
+    {
+        return user?.Name;
+    }
+
+    public static string? NullableCall(User? user)
+    {
+        return user?.GetName();
+    }
+
+    public static bool IsString(object value)
+    {
+        return value is string;
+    }
+
+    public static bool IsNotString(object value)
+    {
+        return value is not string;
+    }
+
+    public static bool IsNull(object? value)
+    {
+        return value is null;
+    }
+
+    public static bool IsPositivePattern(int value)
+    {
+        return value is > 0;
+    }
+
+    public static string? AsExpression(object value)
+    {
+        return value as string;
+    }
+
+    public static int CheckedAdd(int a, int b)
+    {
+        return checked(a + b);
+    }
+
+    public static int UncheckedAdd(int a, int b)
+    {
+        return unchecked(a + b);
+    }
+
+    public static string ThrowExpression(string? value)
+    {
+        return value ?? throw new ArgumentNullException(nameof(value));
+    }
+
+    public static string? DefaultLiteral()
+    {
+        return default;
+    }
+}
+
+public sealed class User
+{
+    public string Name { get; set; } = "";
+    public string GetName() => Name;
 }

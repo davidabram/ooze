@@ -131,16 +131,36 @@ unary `+x`/`-x` are not matched), compound assignment swaps
 and unary mutations (`remove_not`: `!x` → `x`, `remove_unary_minus`: `-x` →
 `x`, `plus_to_minus`: `+x` → `-x`). Null checks are covered by
 `negate_equality` (`x == null` → `x != null`); there is no separate
-null-check operator, since it would only duplicate those mutants. 0/1
-integer swaps (`integer_zero_one`), string-emptying (`string_empty_literal`:
-`"hello"` → `""`, regular string literals only — verbatim, raw, and
-interpolated strings are never matched), null-coalescing fallback removal
-(`nullish_coalescing_removal`: `a ?? b` → `a`), ternary arm swaps
-(`ternary_arm_swap`: `c ? a : b` → `c ? b : a`), and ternary condition
+null-check operator, since it would only duplicate those mutants.
+
+C#-specific operators, enabled by default: postfix null-forgiving removal
+(`null_forgiving_removal`: `value!` → `value`; the postfix `!` is never
+confused with prefix logical not), is-pattern negation
+(`is_pattern_negation`: `x is P` ↔ `x is not P`, covering type checks,
+`is null`/`is not null`, and relational patterns like `is > 0`; `x == null`
+stays `negate_equality`'s job), and checked/unchecked swaps
+(`checked_unchecked_swap`: `checked(a + b)` ↔ `unchecked(a + b)`, plus the
+`checked { ... }`/`unchecked { ... }` block statement forms).
+
+0/1 integer swaps (`integer_zero_one`), string-emptying
+(`string_empty_literal`: `"hello"` → `""`, regular string literals only —
+verbatim, raw, and interpolated strings are never matched), null-coalescing
+fallback removal (`nullish_coalescing_removal`: `a ?? b` → `a`), ternary arm
+swaps (`ternary_arm_swap`: `c ? a : b` → `c ? b : a`), and ternary condition
 negation (`ternary_condition_negation`: `c ? a : b` → `!(c) ? a : b`;
 `if` statements are never matched) are registered but disabled by default,
 matching the other languages; enable them with `--operators` or
-`[mutation].operators`. Operators only match syntax nodes, so `==` in a
+`[mutation].operators`. Four C#-specific operators are also disabled by
+default: nullable member access removal
+(`nullable_access_to_member_access`: `user?.Name` → `user.Name`, `?[` too —
+it can create many runtime null-reference mutants), safe-to-direct cast
+(`as_expression_to_direct_cast`: `value as T` → `(T)value` — direct casts
+may throw), throw-expression-to-null (`throw_expression_to_null`:
+`x ?? throw new ArgumentNullException(...)` → `x ?? null`; throw
+*statements* are never matched), and default-literal-to-null
+(`default_literal_to_null`: `default` → `null`, bare literal only —
+`default(T)` is never matched, and the mutant is invalid in non-nullable
+value-type contexts). Operators only match syntax nodes, so `==` in a
 comment or string literal never mutates.
 
 ## Preset and operator coverage
@@ -155,7 +175,7 @@ levels):
 | Go                    | yes    | yes     | 5 (baseline)  | yes          |
 | JavaScript/TypeScript | yes    | yes     | 18            | yes          |
 | Python                | yes    | yes     | 20            | yes          |
-| C#                    | yes    | yes     | 16            | no           |
+| C#                    | yes    | yes     | 23            | no           |
 
 The baseline operator set every mutating language covers: boolean literal swap,
 equality negation, comparison boundary, logical and/or swap, and integer 0/1

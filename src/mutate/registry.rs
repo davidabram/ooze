@@ -46,6 +46,12 @@ mod tests {
     }
 
     #[test]
+    fn csharp_registers_every_current_operator() {
+        let count = implementations_for_language(Language::CSharp).count();
+        assert_eq!(count, 23, "expected all twenty-three c_sharp operators");
+    }
+
+    #[test]
     fn support_level_agrees_with_mutators() {
         for spec in crate::lang::LANGUAGES {
             assert_eq!(
