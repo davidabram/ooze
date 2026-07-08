@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use crate::cli::{TestMutantsArgs, WorkspaceBackendArg};
 use crate::preset::{CachePolicy, Preset, ProbeEnvFill};
+use crate::probe::ProbeCommand;
 use crate::{config, mutate, report, runner, scheduler};
 
 /// Everything `test-mutants` needs to run, with every CLI/config/default decision
@@ -38,7 +39,7 @@ pub(crate) struct ResolvedTestMutants {
     pub(crate) excludes: Vec<String>,
     pub(crate) filter: mutate::OperatorFilter,
     pub(crate) probe_env: Vec<runner::ProbeEnvTemplate>,
-    pub(crate) probe: Vec<String>,
+    pub(crate) probe: ProbeCommand,
     pub(crate) changed_only: Option<String>,
     pub(crate) progress_enabled: bool,
     pub(crate) pre_run: Option<Vec<String>>,
@@ -234,19 +235,19 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
 
     let progress_enabled = progress_enabled(quiet, progress.resolve());
 
-    let mut probe = probe;
-    if probe.is_empty() {
-        if let Some(cmd) = cfg.probe.command.as_ref() {
-            probe.clone_from(cmd);
-        } else if let Some(policy) = &preset_policy {
-            preset_fills.push(format!("probe=`{}`", policy.default_probe.join(" ")));
-            probe.clone_from(&policy.default_probe);
-        } else {
-            anyhow::bail!(
-                "missing probe command; pass one after `--` or set [probe].command in ooze.toml"
-            );
-        }
-    }
+    let probe = if !probe.is_empty() {
+        ProbeCommand::new(probe)?
+    } else if let Some(cmd) = cfg.probe.command.as_ref() {
+        ProbeCommand::new(cmd.clone())
+            .map_err(|_| anyhow::anyhow!("[probe].command in ooze.toml must not be empty"))?
+    } else if let Some(policy) = &preset_policy {
+        preset_fills.push(format!("probe=`{}`", policy.default_probe.display()));
+        policy.default_probe.clone()
+    } else {
+        anyhow::bail!(
+            "missing probe command; pass one after `--` or set [probe].command in ooze.toml"
+        );
+    };
 
     if let Some(p) = preset
         && !preset_fills.is_empty()
@@ -464,7 +465,7 @@ mod tests {
     fn rust_preset_defaults_probe_to_cargo_test() {
         let dir = cargo_project();
         let r = resolve_in(dir.path(), &["--preset", "rust"]).unwrap();
-        assert_eq!(r.probe, ["cargo", "test"]);
+        assert_eq!(r.probe, ProbeCommand::from_static(&["cargo", "test"]));
     }
 
     #[test]
@@ -475,7 +476,33 @@ mod tests {
             &["--preset", "rust", "--", "cargo", "test", "--lib"],
         )
         .unwrap();
-        assert_eq!(r.probe, ["cargo", "test", "--lib"]);
+        assert_eq!(r.probe.as_vec(), ["cargo", "test", "--lib"]);
+    }
+
+    #[test]
+    fn config_probe_resolves_to_probe_command() {
+        let dir = cargo_project();
+        std::fs::write(
+            dir.path().join("ooze.toml"),
+            "[probe]\ncommand = [\"cargo\", \"nextest\", \"run\"]\n",
+        )
+        .unwrap();
+        let r = resolve_in(dir.path(), &[]).unwrap();
+        assert_eq!(r.probe.as_vec(), ["cargo", "nextest", "run"]);
+    }
+
+    #[test]
+    fn empty_config_probe_errors_clearly() {
+        let dir = cargo_project();
+        std::fs::write(dir.path().join("ooze.toml"), "[probe]\ncommand = []\n").unwrap();
+        let Err(err) = resolve_in(dir.path(), &[]) else {
+            panic!("empty [probe].command must fail resolution");
+        };
+        assert!(
+            err.to_string()
+                .contains("[probe].command in ooze.toml must not be empty"),
+            "error should point at the config: {err}"
+        );
     }
 
     #[test]
@@ -509,7 +536,9 @@ mod tests {
         let r = resolve_in(dir.path(), &["--preset", "rust"]).unwrap();
         for fill in Preset::Rust.runtime_policy(dir.path()).fill_descriptions() {
             match fill.as_str() {
-                "probe=`cargo test`" => assert_eq!(r.probe, ["cargo", "test"]),
+                "probe=`cargo test`" => {
+                    assert_eq!(r.probe, ProbeCommand::from_static(&["cargo", "test"]));
+                }
                 "workspace_backend=worktree" => {
                     assert_eq!(r.workspace_backend, WorkspaceBackendArg::Worktree);
                 }
@@ -559,7 +588,7 @@ mod tests {
         std::fs::write(tmp.path().join("Sample.sln"), "\n").unwrap();
         std::fs::write(tmp.path().join("ooze.toml"), "").unwrap();
         let r = resolve_in(tmp.path(), &["--preset", "csharp"]).unwrap();
-        assert_eq!(r.probe, ["dotnet", "test"]);
+        assert_eq!(r.probe, ProbeCommand::from_static(&["dotnet", "test"]));
     }
 
     #[test]
@@ -573,7 +602,9 @@ mod tests {
             .fill_descriptions()
         {
             match fill.as_str() {
-                "probe=`dotnet test`" => assert_eq!(r.probe, ["dotnet", "test"]),
+                "probe=`dotnet test`" => {
+                    assert_eq!(r.probe, ProbeCommand::from_static(&["dotnet", "test"]));
+                }
                 "workspace_backend=worktree" => {
                     assert_eq!(r.workspace_backend, WorkspaceBackendArg::Worktree);
                 }

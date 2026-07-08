@@ -4,7 +4,7 @@
 mod resolve;
 
 use crate::cli::{Cli, Commands, WorkspaceBackendArg, parse_key_val};
-use crate::{config, core, doctor, lang, mutate, planning, report, runner, scheduler, skip};
+use crate::{config, core, doctor, lang, mutate, planning, probe, report, runner, scheduler, skip};
 
 use std::path::PathBuf;
 
@@ -692,7 +692,7 @@ pub fn run() -> anyhow::Result<()> {
                     if matches!(format, report::ReportFormat::Human) {
                         eprintln!("Preflight failed.\n");
                         eprintln!("{msg}\n");
-                        eprintln!("Command: {}", probe.join(" "));
+                        eprintln!("Command: {}", probe.display());
                         if let Some(code) = payload.exit_code {
                             eprintln!("Exit code: {code}");
                         }
@@ -803,6 +803,7 @@ pub fn run() -> anyhow::Result<()> {
             cache_dir,
             probe,
         } => {
+            let probe = probe::ProbeCommand::new(probe)?;
             let repo_root = std::fs::canonicalize(&path)
                 .with_context(|| format!("canonicalizing {}", path.display()))?;
             let cache_dir = if cache_dir.is_absolute() {
@@ -815,6 +816,7 @@ pub fn run() -> anyhow::Result<()> {
             warmup_status_to_result(status)?;
         }
         Commands::TestMutant { path, id, probe } => {
+            let probe = probe::ProbeCommand::new(probe)?;
             let registry = lang::CompiledRegistry::compile(
                 lang::supported_languages(),
                 &mutate::OperatorFilter::allow_all(),

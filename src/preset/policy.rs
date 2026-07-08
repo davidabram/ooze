@@ -7,6 +7,7 @@
 use std::path::Path;
 
 use crate::cli::WorkspaceBackendArg;
+use crate::probe::ProbeCommand;
 
 use super::{PackageManager, Preset};
 
@@ -15,8 +16,8 @@ use super::{PackageManager, Preset};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PresetRuntimePolicy {
     /// The probe to fall back to when neither `--` args nor `[probe].command`
-    /// supply one.
-    pub(crate) default_probe: Vec<String>,
+    /// supply one. Typed, so a preset can never recommend an empty probe.
+    pub(crate) default_probe: ProbeCommand,
     /// The workspace backend to fill when none is chosen; `None` leaves the
     /// built-in `auto` default alone.
     pub(crate) workspace_backend: Option<WorkspaceBackendArg>,
@@ -111,7 +112,7 @@ impl Preset {
             ),
         };
         PresetRuntimePolicy {
-            default_probe: probe.iter().map(ToString::to_string).collect(),
+            default_probe: ProbeCommand::from_static(probe),
             workspace_backend: Some(WorkspaceBackendArg::Worktree),
             warmup: Some(true),
             cache_policy,
@@ -129,7 +130,7 @@ impl PresetRuntimePolicy {
     /// shows this list so the recommended command is not a black box; resolve
     /// builds the same strings per applied fill, so the two cannot drift.
     pub(crate) fn fill_descriptions(&self) -> Vec<String> {
-        let mut fills = vec![format!("probe=`{}`", self.default_probe.join(" "))];
+        let mut fills = vec![format!("probe=`{}`", self.default_probe.display())];
         if let Some(backend) = self.workspace_backend {
             fills.push(format!("workspace_backend={}", backend.cli_name()));
         }
@@ -175,7 +176,7 @@ mod tests {
 
     #[test]
     fn default_probes_are_stable() {
-        let probe = |p: Preset| p.runtime_policy(Path::new(".")).default_probe;
+        let probe = |p: Preset| p.runtime_policy(Path::new(".")).default_probe.as_vec();
         assert_eq!(probe(Preset::Rust), ["cargo", "test"]);
         assert_eq!(probe(Preset::Go), ["go", "test", "./..."]);
         assert_eq!(probe(Preset::Python), ["pytest"]);
@@ -188,7 +189,10 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("yarn.lock"), "").unwrap();
         let policy = Preset::Node.runtime_policy(tmp.path());
-        assert_eq!(policy.default_probe, ["yarn", "test"]);
+        assert_eq!(
+            policy.default_probe,
+            ProbeCommand::from_static(&["yarn", "test"])
+        );
         assert_eq!(
             policy.probe_env,
             [ProbeEnvFill {
@@ -199,7 +203,7 @@ mod tests {
         std::fs::write(tmp.path().join("bun.lock"), "").unwrap();
         assert_eq!(
             Preset::Node.runtime_policy(tmp.path()).default_probe,
-            ["bun", "test"]
+            ProbeCommand::from_static(&["bun", "test"])
         );
     }
 

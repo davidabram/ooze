@@ -1,6 +1,7 @@
 use crate::core::{
     AppliedMutation, MutantOutcome, MutantStatus, MutationCandidate, MutationRunReport,
 };
+use crate::probe::ProbeCommand;
 use anyhow::{Context, Result, bail};
 use rayon::prelude::*;
 use similar::{ChangeTag, TextDiff};
@@ -65,7 +66,7 @@ impl CowWorkspace {
     pub fn run_probe(
         &self,
         applied: AppliedMutation,
-        probe: &[String],
+        probe: &ProbeCommand,
         timeout: Option<Duration>,
     ) -> Result<MutantOutcome> {
         run_probe(self.path(), applied, probe, timeout, &[])
@@ -199,18 +200,14 @@ fn wait_with_drained_output(
 pub fn run_probe(
     workspace_path: &Path,
     applied: AppliedMutation,
-    probe: &[String],
+    probe: &ProbeCommand,
     timeout: Option<Duration>,
     extra_envs: &[(String, String)],
 ) -> Result<MutantOutcome> {
-    if probe.is_empty() {
-        bail!("probe command is empty");
-    }
-
     let started = Instant::now();
 
-    let mut cmd = Command::new(&probe[0]);
-    cmd.args(&probe[1..])
+    let mut cmd = Command::new(probe.program());
+    cmd.args(probe.args())
         .current_dir(workspace_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -296,7 +293,7 @@ fn create_workspace(
 fn run_one(
     repo_root: &Path,
     candidate: MutationCandidate,
-    probe: &[String],
+    probe: &ProbeCommand,
     cfg: &BatchConfig<'_>,
     run_id: &str,
 ) -> MutantOutcome {
@@ -317,7 +314,7 @@ fn run_one(
 fn try_run_one(
     repo_root: &Path,
     candidate: &MutationCandidate,
-    probe: &[String],
+    probe: &ProbeCommand,
     cfg: &BatchConfig<'_>,
     run_id: &str,
 ) -> Result<MutantOutcome> {
@@ -385,7 +382,7 @@ fn run_id_for(idx: usize, candidate: &MutationCandidate) -> String {
 pub fn run_mutants_sequential(
     repo_root: &Path,
     candidates: Vec<MutationCandidate>,
-    probe: &[String],
+    probe: &ProbeCommand,
     cfg: &BatchConfig<'_>,
 ) -> MutationRunReport {
     let total = candidates.len();
@@ -412,7 +409,7 @@ pub fn run_mutants_sequential(
 pub fn run_mutants_parallel(
     repo_root: &Path,
     candidates: Vec<MutationCandidate>,
-    probe: &[String],
+    probe: &ProbeCommand,
     jobs: usize,
     cfg: &BatchConfig<'_>,
 ) -> Result<MutationRunReport> {
@@ -463,18 +460,14 @@ pub struct PreflightOutcome {
 
 pub fn preflight(
     repo_root: &Path,
-    probe: &[String],
+    probe: &ProbeCommand,
     timeout: Option<Duration>,
     extra_envs: &[(String, String)],
 ) -> Result<PreflightOutcome> {
-    if probe.is_empty() {
-        bail!("preflight probe command is empty");
-    }
-
     let started = Instant::now();
 
-    let mut cmd = Command::new(&probe[0]);
-    cmd.args(&probe[1..])
+    let mut cmd = Command::new(probe.program());
+    cmd.args(probe.args())
         .current_dir(repo_root)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -514,16 +507,12 @@ pub fn preflight(
 
 pub fn warmup(
     workspace_path: &Path,
-    probe: &[String],
+    probe: &ProbeCommand,
     build_cache_dir: Option<&Path>,
     extra_envs: &[(String, String)],
 ) -> Result<std::process::ExitStatus> {
-    if probe.is_empty() {
-        bail!("warmup command is empty");
-    }
-
-    let mut cmd = Command::new(&probe[0]);
-    cmd.args(&probe[1..]).current_dir(workspace_path);
+    let mut cmd = Command::new(probe.program());
+    cmd.args(probe.args()).current_dir(workspace_path);
 
     if let Some(dir) = build_cache_dir {
         std::fs::create_dir_all(dir)
@@ -546,7 +535,7 @@ pub fn default_build_cache_dir(cache_dir: &Path) -> PathBuf {
 /// that worker's worktree); indices past the slice clamp to the last entry.
 pub fn warmup_workers(
     workspaces: &[PathBuf],
-    probe: &[String],
+    probe: &ProbeCommand,
     target_dirs: &[PathBuf],
     jobs: usize,
     probe_env_templates: &[ProbeEnvTemplate],
@@ -772,11 +761,7 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn large_probe_output_is_drained_without_false_timeout() {
-        let probe = [
-            "sh".to_string(),
-            "-c".to_string(),
-            "yes | head -c 200000".to_string(),
-        ];
+        let probe = ProbeCommand::from_static(&["sh", "-c", "yes | head -c 200000"]);
         let outcome = preflight(Path::new("."), &probe, Some(Duration::from_secs(30)), &[])
             .expect("preflight should run");
 

@@ -8,6 +8,7 @@ mod lang;
 mod mutate;
 mod planning;
 mod preset;
+mod probe;
 mod report;
 mod runner;
 mod scheduler;
