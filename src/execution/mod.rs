@@ -6,12 +6,14 @@
 //! check, and build-cache warmup.
 
 mod batch;
+mod events;
 mod preflight;
 mod process;
 pub mod template;
 mod warmup;
 
 pub use batch::{BatchConfig, ProgressEvent, run_mutants_parallel};
+pub use events::{EventSink, ExecutionEvent};
 pub use preflight::preflight;
 pub use process::run_probe;
 pub use template::{ProbeEnvCtx, ProbeEnvTemplate};

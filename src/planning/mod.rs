@@ -29,6 +29,8 @@ pub(crate) struct PlanOptions {
     pub filter: mutate::OperatorFilter,
     pub strategy: scheduler::MutationStrategy,
     pub limit: Option<usize>,
+    /// Deterministic ordering seed; `None` keeps today's unseeded ordering.
+    pub seed: Option<String>,
     pub changed_only: Option<String>,
     pub no_static_skips: bool,
     pub coverage: Vec<String>,
@@ -53,6 +55,8 @@ pub(crate) struct BuiltPlan {
     /// Candidate count after `--changed-only` but before static skips.
     pub total_candidates_before_static_skips: usize,
     pub strategy: scheduler::MutationStrategy,
+    /// The seed the plan was ordered with, echoed back for plan output.
+    pub seed: Option<String>,
     pub excludes: Vec<String>,
     pub operator_filter: mutate::OperatorFilterReport,
     pub changed_only: Option<ChangedOnlyStats>,
@@ -67,6 +71,7 @@ pub(crate) fn build_plan(options: PlanOptions) -> anyhow::Result<BuiltPlan> {
         filter,
         strategy,
         limit,
+        seed,
         changed_only,
         no_static_skips,
         coverage,
@@ -97,7 +102,7 @@ pub(crate) fn build_plan(options: PlanOptions) -> anyhow::Result<BuiltPlan> {
     let coverage = resolve_coverage(&coverage, lcov.as_deref())?;
     let (crap_entries, coverage_diagnostics) = score_with_optional_coverage(functions, coverage);
 
-    let candidates = order_and_limit(strategy, kept, &crap_entries, limit);
+    let candidates = order_and_limit(strategy, kept, &crap_entries, limit, seed.as_deref());
 
     Ok(BuiltPlan {
         crap_entries,
@@ -105,6 +110,7 @@ pub(crate) fn build_plan(options: PlanOptions) -> anyhow::Result<BuiltPlan> {
         skipped_candidates: skipped,
         total_candidates_before_static_skips,
         strategy,
+        seed,
         excludes,
         operator_filter: (&filter).into(),
         changed_only: changed_stats,
@@ -112,15 +118,17 @@ pub(crate) fn build_plan(options: PlanOptions) -> anyhow::Result<BuiltPlan> {
     })
 }
 
-/// Order candidates by strategy, then truncate to the limit. The limit is
-/// applied after ordering so it selects the top-ranked candidates.
+/// Order candidates by strategy (seeded when a seed is given), then truncate
+/// to the limit. The limit is applied after ordering so it selects the
+/// top-ranked candidates.
 fn order_and_limit(
     strategy: scheduler::MutationStrategy,
     candidates: Vec<core::MutationCandidate>,
     crap_entries: &[core::CrapEntry],
     limit: Option<usize>,
+    seed: Option<&str>,
 ) -> Vec<core::MutationCandidate> {
-    let mut ordered = scheduler::order(strategy, candidates, crap_entries);
+    let mut ordered = scheduler::order(strategy, candidates, crap_entries, seed);
     if let Some(limit) = limit {
         ordered.truncate(limit);
     }
@@ -396,6 +404,7 @@ mod tests {
             candidates,
             &entries,
             Some(1),
+            None,
         );
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].id, "m-high");
@@ -413,9 +422,43 @@ mod tests {
             candidates,
             &[],
             None,
+            None,
         );
         assert_eq!(out.len(), 2);
         assert_eq!(out[0].id, "a"); // discovery preserves input order
+    }
+
+    #[test]
+    fn seeded_limit_selects_head_of_seeded_ordering() {
+        let file = std::path::Path::new("x.rs");
+        let list = || -> Vec<MutationCandidate> {
+            (0..6)
+                .map(|i| candidate(&format!("m{i}"), file.to_path_buf()))
+                .collect()
+        };
+        let full = order_and_limit(
+            scheduler::MutationStrategy::Discovery,
+            list(),
+            &[],
+            None,
+            Some("abc"),
+        );
+        let limited = order_and_limit(
+            scheduler::MutationStrategy::Discovery,
+            list(),
+            &[],
+            Some(2),
+            Some("abc"),
+        );
+        // The limit truncates the seeded ordering, not the discovery ordering.
+        assert_eq!(limited.len(), 2);
+        assert_eq!(limited[0].id, full[0].id);
+        assert_eq!(limited[1].id, full[1].id);
+        assert_ne!(
+            (limited[0].id.as_str(), limited[1].id.as_str()),
+            ("m0", "m1"),
+            "seed \"abc\" should not happen to preserve discovery order for this list"
+        );
     }
 
     // --- apply_changed_filter -----------------------------------------------

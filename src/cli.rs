@@ -206,6 +206,12 @@ pub(crate) enum Commands {
         #[arg(long)]
         limit: Option<usize>,
 
+        #[arg(
+            long,
+            help = "Deterministic ordering seed: same seed + same tree reproduces the same candidate selection and order"
+        )]
+        seed: Option<String>,
+
         #[arg(long, value_enum, default_value = "json")]
         format: OutputFormat,
 
@@ -334,6 +340,12 @@ pub(crate) struct TestMutantsArgs {
     #[arg(long)]
     pub(crate) limit: Option<usize>,
 
+    #[arg(
+        long,
+        help = "Deterministic ordering seed: same seed + same tree reproduces the same candidate selection and order"
+    )]
+    pub(crate) seed: Option<String>,
+
     #[arg(long)]
     pub(crate) jobs: Option<usize>,
 
@@ -377,7 +389,7 @@ pub(crate) struct TestMutantsArgs {
     #[arg(
         long,
         value_enum,
-        help = "Report format: json, human, agent-tasks-json, agent-tasks-markdown, github-annotations, sarif"
+        help = "Report format: json, human, jsonl (streamed execution events), agent-tasks-json, agent-tasks-markdown, github-annotations, sarif"
     )]
     pub(crate) format: Option<report::ReportFormat>,
 

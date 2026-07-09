@@ -47,15 +47,59 @@ pub enum MutationStrategy {
     HighestCrap,
 }
 
+/// Order candidates by strategy. A seed adds deterministic reordering without
+/// destroying strategy intent: seeded Discovery is a deterministic shuffle;
+/// seeded score strategies keep their score ordering and use the seed only to
+/// break ties among equal-score candidates. Without a seed, behavior is
+/// unchanged (discovery order / id tie-breaks).
 pub fn order(
     strategy: MutationStrategy,
     candidates: Vec<MutationCandidate>,
     crap_entries: &[CrapEntry],
+    seed: Option<&str>,
 ) -> Vec<MutationCandidate> {
     match strategy {
-        MutationStrategy::Discovery => candidates,
-        MutationStrategy::Actionable => rank_actionable(candidates, crap_entries),
-        MutationStrategy::HighestCrap => rank_highest_crap(candidates, crap_entries),
+        MutationStrategy::Discovery => match seed {
+            Some(seed) => shuffle_seeded(candidates, seed),
+            None => candidates,
+        },
+        MutationStrategy::Actionable => rank_actionable(candidates, crap_entries, seed),
+        MutationStrategy::HighestCrap => rank_highest_crap(candidates, crap_entries, seed),
+    }
+}
+
+/// FNV-1a 64-bit. Implemented here so seeded ordering never depends on the
+/// standard library's unspecified/randomized hashers.
+fn stable_hash64(input: &str) -> u64 {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in input.bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
+}
+
+fn seeded_key(seed: &str, candidate_id: &str) -> u64 {
+    stable_hash64(&format!("{seed}\0{candidate_id}"))
+}
+
+fn shuffle_seeded(mut candidates: Vec<MutationCandidate>, seed: &str) -> Vec<MutationCandidate> {
+    candidates.sort_by(|a, b| {
+        seeded_key(seed, &a.id)
+            .cmp(&seeded_key(seed, &b.id))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    candidates
+}
+
+// Tie-break for equal-score candidates: seeded hash when a seed is present
+// (id as a final guard against hash collisions), plain id otherwise.
+fn tie_break(seed: Option<&str>, a: &MutationCandidate, b: &MutationCandidate) -> std::cmp::Ordering {
+    match seed {
+        Some(seed) => seeded_key(seed, &a.id)
+            .cmp(&seeded_key(seed, &b.id))
+            .then_with(|| a.id.cmp(&b.id)),
+        None => a.id.cmp(&b.id),
     }
 }
 
@@ -180,13 +224,14 @@ pub fn explain(
 fn rank_actionable(
     mut candidates: Vec<MutationCandidate>,
     crap_entries: &[CrapEntry],
+    seed: Option<&str>,
 ) -> Vec<MutationCandidate> {
     let index = index_crap(crap_entries);
 
     candidates.sort_by(|a, b| {
         let sa = actionable_score(lookup(&index, a), &DEFAULT_ACTIONABLE_POLICY);
         let sb = actionable_score(lookup(&index, b), &DEFAULT_ACTIONABLE_POLICY);
-        sb.cmp(&sa).then_with(|| a.id.cmp(&b.id))
+        sb.cmp(&sa).then_with(|| tie_break(seed, a, b))
     });
 
     candidates
@@ -195,6 +240,7 @@ fn rank_actionable(
 fn rank_highest_crap(
     mut candidates: Vec<MutationCandidate>,
     crap_entries: &[CrapEntry],
+    seed: Option<&str>,
 ) -> Vec<MutationCandidate> {
     let index = index_crap(crap_entries);
 
@@ -203,7 +249,7 @@ fn rank_highest_crap(
         let cb = lookup(&index, b).map_or(f64::NEG_INFINITY, |e| e.crap);
         cb.partial_cmp(&ca)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.id.cmp(&b.id))
+            .then_with(|| tie_break(seed, a, b))
     });
 
     candidates
@@ -212,7 +258,105 @@ fn rank_highest_crap(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::Language;
+    use crate::core::{Language, OperatorCategory, OperatorName};
+
+    fn candidate(id: &str, file: &str) -> MutationCandidate {
+        MutationCandidate {
+            id: id.to_string(),
+            file: PathBuf::from(file),
+            language: Language::Rust,
+            function: "f".to_string(),
+            operator: OperatorName::SwapBoolean,
+            operator_category: OperatorCategory::BooleanLiteral,
+            implementation: "rust.swap_boolean".to_string(),
+            line: 1,
+            column: 1,
+            start_byte: 0,
+            end_byte: 1,
+            original: "true".to_string(),
+            replacement: "false".to_string(),
+            description: String::new(),
+        }
+    }
+
+    fn ids(candidates: &[MutationCandidate]) -> Vec<&str> {
+        candidates.iter().map(|c| c.id.as_str()).collect()
+    }
+
+    fn discovery_list() -> Vec<MutationCandidate> {
+        (0..8)
+            .map(|i| candidate(&format!("m{i}"), "x.rs"))
+            .collect()
+    }
+
+    #[test]
+    fn stable_hash64_matches_fnv1a_vectors() {
+        // Drift guards: FNV-1a 64 offset basis and a published test vector.
+        assert_eq!(stable_hash64(""), 0xcbf2_9ce4_8422_2325);
+        assert_eq!(stable_hash64("abc"), 0xe71f_a219_0541_574b);
+    }
+
+    #[test]
+    fn seeded_discovery_is_reproducible_and_seed_sensitive() {
+        let a = order(MutationStrategy::Discovery, discovery_list(), &[], Some("s1"));
+        let b = order(MutationStrategy::Discovery, discovery_list(), &[], Some("s1"));
+        assert_eq!(ids(&a), ids(&b), "same seed gives same ordering");
+
+        let c = order(MutationStrategy::Discovery, discovery_list(), &[], Some("s2"));
+        assert_ne!(ids(&a), ids(&c), "different seed gives different ordering");
+    }
+
+    #[test]
+    fn unseeded_discovery_preserves_input_order() {
+        let out = order(MutationStrategy::Discovery, discovery_list(), &[], None);
+        assert_eq!(ids(&out), ["m0", "m1", "m2", "m3", "m4", "m5", "m6", "m7"]);
+    }
+
+    #[test]
+    fn seeded_score_strategy_keeps_score_buckets() {
+        // high.rs outranks low.rs on CRAP; the seed may only reorder within
+        // each equal-score bucket, never across buckets.
+        let candidates = vec![
+            candidate("low-1", "low.rs"),
+            candidate("low-2", "low.rs"),
+            candidate("high-1", "high.rs"),
+            candidate("high-2", "high.rs"),
+        ];
+        let entries = vec![
+            CrapEntry {
+                file: PathBuf::from("low.rs"),
+                language: Language::Rust,
+                function: "f".to_string(),
+                line: 1,
+                cyclomatic: 1,
+                coverage: 0.0,
+                crap: 2.0,
+            },
+            CrapEntry {
+                file: PathBuf::from("high.rs"),
+                language: Language::Rust,
+                function: "f".to_string(),
+                line: 1,
+                cyclomatic: 1,
+                coverage: 0.0,
+                crap: 50.0,
+            },
+        ];
+
+        for seed in ["s1", "s2", "s3"] {
+            let out = order(
+                MutationStrategy::HighestCrap,
+                candidates.clone(),
+                &entries,
+                Some(seed),
+            );
+            assert!(
+                ids(&out)[..2].iter().all(|id| id.starts_with("high-")),
+                "seed {seed} leaked a low-CRAP candidate into the top bucket: {:?}",
+                ids(&out)
+            );
+        }
+    }
 
     fn entry(cyclomatic: usize, coverage: f64, crap: f64) -> CrapEntry {
         CrapEntry {

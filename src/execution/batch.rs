@@ -1,6 +1,7 @@
 //! Batch drivers: run a set of mutation candidates sequentially or across a
 //! rayon worker pool, materializing each mutant in a workspace and probing it.
 
+use super::events::{EventSink, ExecutionEvent};
 use super::process::run_probe;
 use super::template::{self, ProbeEnvCtx, ProbeEnvTemplate};
 use crate::core::{MutantOutcome, MutantStatus, MutationCandidate, MutationRunReport};
@@ -21,6 +22,9 @@ pub struct BatchConfig<'a> {
     pub probe_env_templates: &'a [ProbeEnvTemplate],
     pub runs_dir: &'a Path,
     pub progress: Option<fn(ProgressEvent<'_>)>,
+    /// Structured execution events (run started/finished, each mutant
+    /// finished), emitted by both the sequential and parallel drivers.
+    pub events: Option<EventSink<'a>>,
     /// Per-worker worktrees, required when `backend` is `Worktree`. Unlike the
     /// other backends these are created once up front and reused across
     /// mutants, so the pool lives outside the per-mutant run.
@@ -114,6 +118,12 @@ fn try_run_one(
     Ok(outcome)
 }
 
+fn emit(cfg: &BatchConfig<'_>, event: ExecutionEvent) {
+    if let Some(sink) = cfg.events {
+        sink(event);
+    }
+}
+
 fn run_id_for(idx: usize, candidate_id: &str) -> String {
     let safe: String = candidate_id
         .chars()
@@ -129,6 +139,7 @@ pub fn run_mutants_sequential(
     cfg: &BatchConfig<'_>,
 ) -> MutationRunReport {
     let total = candidates.len();
+    emit(cfg, ExecutionEvent::RunStarted { total, jobs: 1 });
     let outcomes: Vec<MutantOutcome> = candidates
         .into_iter()
         .enumerate()
@@ -142,11 +153,14 @@ pub fn run_mutants_sequential(
                     outcome: &outcome,
                 });
             }
+            emit(cfg, ExecutionEvent::mutant_finished(i + 1, total, &outcome));
             outcome
         })
         .collect();
 
-    MutationRunReport::from_outcomes(outcomes)
+    let report = MutationRunReport::from_outcomes(outcomes);
+    emit(cfg, ExecutionEvent::run_finished(&report));
+    report
 }
 
 pub fn run_mutants_parallel(
@@ -166,6 +180,7 @@ pub fn run_mutants_parallel(
         .context("building mutation worker pool")?;
 
     let total = candidates.len();
+    emit(cfg, ExecutionEvent::RunStarted { total, jobs });
     let indexed: Vec<(usize, MutationCandidate)> = candidates.into_iter().enumerate().collect();
     let completed = std::sync::atomic::AtomicUsize::new(0);
 
@@ -175,20 +190,25 @@ pub fn run_mutants_parallel(
             .map(|(i, candidate)| {
                 let id = run_id_for(i, &candidate.id);
                 let outcome = run_one(repo_root, candidate, probe, cfg, &id);
+                // Completion order, not candidate order: workers finish
+                // whenever they finish.
+                let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
                 if let Some(cb) = cfg.progress {
-                    let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
                     cb(ProgressEvent {
                         completed: done,
                         total,
                         outcome: &outcome,
                     });
                 }
+                emit(cfg, ExecutionEvent::mutant_finished(done, total, &outcome));
                 outcome
             })
             .collect()
     });
 
-    Ok(MutationRunReport::from_outcomes(outcomes))
+    let report = MutationRunReport::from_outcomes(outcomes);
+    emit(cfg, ExecutionEvent::run_finished(&report));
+    Ok(report)
 }
 
 #[cfg(test)]

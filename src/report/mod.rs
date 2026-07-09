@@ -145,6 +145,9 @@ impl ReportOptions {
 pub enum ReportFormat {
     Json,
     Human,
+    /// Newline-delimited JSON execution events streamed to stdout while the
+    /// run is in progress; the summary is the final `run_finished` event.
+    Jsonl,
     AgentTasksJson,
     AgentTasksMarkdown,
     GithubAnnotations,
@@ -157,7 +160,9 @@ impl ReportFormat {
     /// compact; the full JSON report defaults to normal.
     pub fn default_detail(self) -> ReportDetail {
         match self {
-            ReportFormat::Json => ReportDetail::Normal,
+            // Jsonl matches Json: its rendered form (only written with
+            // `--output`) is the full JSON report.
+            ReportFormat::Json | ReportFormat::Jsonl => ReportDetail::Normal,
             _ => ReportDetail::Compact,
         }
     }
@@ -184,7 +189,10 @@ impl ReportFormat {
                 s.push('\n');
                 s
             }
-            ReportFormat::Json => {
+            // For jsonl the stdout stream is produced during execution; this
+            // rendered form is only used when `--output` asks for a report
+            // file, and that file gets the full JSON report.
+            ReportFormat::Json | ReportFormat::Jsonl => {
                 let mut s = serde_json::to_string_pretty(report)?;
                 s.push('\n');
                 s
@@ -1733,6 +1741,7 @@ mod tests {
             ReportDetail::Compact
         );
         assert_eq!(ReportFormat::Json.default_detail(), ReportDetail::Normal);
+        assert_eq!(ReportFormat::Jsonl.default_detail(), ReportDetail::Normal);
     }
 
     #[test]

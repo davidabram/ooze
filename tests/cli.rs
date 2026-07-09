@@ -499,6 +499,277 @@ fn test_mutants_preflight_failure_human_prints_to_stderr() {
     );
 }
 
+// ── test-mutants jsonl event stream ───────────────────────────────────────────
+
+/// Run `test-mutants` over a copy of the mutate fixture with probe `true`
+/// (all mutants survive) and the given format, returning the completed output.
+fn run_test_mutants_with_format(tmp: &tempfile::TempDir, format: &str) -> std::process::Output {
+    let project = fixture_project(tmp);
+    ooze()
+        .args([
+            "test-mutants",
+            "--path",
+            project.to_str().unwrap(),
+            "--format",
+            format,
+            "--limit",
+            "2",
+            "--jobs",
+            "1",
+            "--workspace-backend",
+            "copy",
+            "--cache-dir",
+            tmp.path().join("cache").to_str().unwrap(),
+            "--runs-dir",
+            tmp.path().join("runs").to_str().unwrap(),
+            "--",
+            "true",
+        ])
+        .output()
+        .expect("failed to run ooze")
+}
+
+/// Locate the single `run-*` ledger directory created under the runs dir and
+/// assert it holds all four artifacts.
+fn assert_ledger_artifacts(tmp: &tempfile::TempDir) -> std::path::PathBuf {
+    let ledgers: Vec<_> = std::fs::read_dir(tmp.path().join("runs"))
+        .expect("runs dir exists")
+        .map(|e| e.unwrap().path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("run-"))
+        })
+        .collect();
+    assert_eq!(ledgers.len(), 1, "expected one run ledger: {ledgers:?}");
+    let dir = ledgers.into_iter().next().unwrap();
+    for file in ["metadata.json", "plan.json", "events.jsonl", "report.json"] {
+        assert!(dir.join(file).exists(), "missing ledger file {file}");
+    }
+    dir
+}
+
+#[test]
+fn test_mutants_jsonl_streams_one_event_per_line() {
+    let tmp = tempdir();
+    let out = run_test_mutants_with_format(&tmp, "jsonl");
+    // Probe `true` kills nothing, so survivors drive a nonzero exit.
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let stdout = String::from_utf8(out.stdout).unwrap();
+    // Every stdout line must be a standalone JSON object; a pretty-printed
+    // final report appended after the events would fail this parse.
+    let events: Vec<serde_json::Value> = stdout
+        .lines()
+        .map(|line| {
+            serde_json::from_str(line)
+                .unwrap_or_else(|e| panic!("non-JSONL stdout line {line:?}: {e}"))
+        })
+        .collect();
+
+    assert_eq!(events.first().unwrap()["event"], "run_started");
+    assert_eq!(events.last().unwrap()["event"], "run_finished");
+    let finished = events
+        .iter()
+        .filter(|e| e["event"] == "mutant_finished")
+        .count();
+    assert_eq!(finished, 2, "events: {stdout}");
+    assert_eq!(events.len(), finished + 2, "only run_* and mutant_finished");
+    assert_eq!(events.last().unwrap()["survived"], 2);
+    for ev in events.iter().filter(|e| e["event"] == "mutant_finished") {
+        assert_eq!(ev["status"], "survived");
+        assert!(ev["id"].is_string());
+        assert!(ev["duration_ms"].is_number());
+    }
+
+    // The run ledger persists the same stream plus plan/metadata/report,
+    // without leaking anything extra onto stdout (checked above).
+    let ledger_dir = assert_ledger_artifacts(&tmp);
+    let ledger_events = std::fs::read_to_string(ledger_dir.join("events.jsonl")).unwrap();
+    assert_eq!(
+        ledger_events.lines().count(),
+        events.len(),
+        "ledger event stream mirrors stdout"
+    );
+}
+
+#[test]
+fn test_mutants_json_report_is_unchanged_by_jsonl_support() {
+    let tmp = tempdir();
+    let out = run_test_mutants_with_format(&tmp, "json");
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // Single JSON report document, not an event stream.
+    let report: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("--format json emits one JSON report");
+    assert!(report.get("event").is_none());
+    assert_eq!(report["total"], 2);
+    assert_eq!(report["survived"], 2);
+    assert_eq!(report["outcomes"].as_array().unwrap().len(), 2);
+
+    // The ledger is written for non-jsonl formats too.
+    let ledger_dir = assert_ledger_artifacts(&tmp);
+    let meta: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(ledger_dir.join("metadata.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(meta["format"], "json");
+    assert_eq!(meta["probe"], serde_json::json!(["true"]));
+    let plan: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(ledger_dir.join("plan.json")).unwrap())
+            .unwrap();
+    assert_eq!(plan["selected"], 2);
+    assert_eq!(plan["candidates"].as_array().unwrap().len(), 2);
+}
+
+// ── seeded runs ───────────────────────────────────────────────────────────────
+
+/// Copy the mutate fixture into `<tmp>/project` and return that path.
+fn fixture_project(tmp: &tempfile::TempDir) -> std::path::PathBuf {
+    let project = tmp.path().join("project");
+    std::fs::create_dir(&project).unwrap();
+    std::fs::copy(
+        "tests/fixtures/mutate/mutation_sample.rs",
+        project.join("mutation_sample.rs"),
+    )
+    .unwrap();
+    project
+}
+
+fn plan_candidate_ids(plan: &serde_json::Value) -> Vec<String> {
+    plan["candidates"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap().to_string())
+        .collect()
+}
+
+fn run_plan_mutants(project: &std::path::Path, extra: &[&str]) -> serde_json::Value {
+    let out = ooze()
+        .args(["plan-mutants", "--path", project.to_str().unwrap()])
+        .args(extra)
+        .output()
+        .expect("failed to run ooze");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    serde_json::from_slice(&out.stdout).expect("plan-mutants emits JSON")
+}
+
+#[test]
+fn plan_mutants_seed_reproduces_selection_and_is_reported() {
+    let tmp = tempdir();
+    let project = fixture_project(&tmp);
+
+    let first = run_plan_mutants(&project, &["--seed", "abc", "--limit", "4"]);
+    let second = run_plan_mutants(&project, &["--seed", "abc", "--limit", "4"]);
+    assert_eq!(first["seed"], "abc");
+    assert_eq!(
+        plan_candidate_ids(&first),
+        plan_candidate_ids(&second),
+        "same seed selects the same candidates in the same order"
+    );
+
+    let other = run_plan_mutants(&project, &["--seed", "xyz"]);
+    assert_ne!(
+        plan_candidate_ids(&first),
+        plan_candidate_ids(&other)[..4].to_vec(),
+        "a different seed reorders the selection"
+    );
+
+    let unseeded = run_plan_mutants(&project, &["--limit", "4"]);
+    assert!(
+        unseeded.get("seed").is_none(),
+        "unseeded plan output has no seed field"
+    );
+}
+
+#[test]
+fn test_mutants_seed_agrees_with_plan_and_config_precedence() {
+    let tmp = tempdir();
+    let project = fixture_project(&tmp);
+    std::fs::write(
+        project.join("ooze.toml"),
+        "[mutation]\nseed = \"cfg-seed\"\n",
+    )
+    .unwrap();
+
+    let run = |label: &str, seed_args: &[&str]| -> std::path::PathBuf {
+        let runs_dir = tmp.path().join(label);
+        let out = ooze()
+            .args([
+                "test-mutants",
+                "--path",
+                project.to_str().unwrap(),
+                "--format",
+                "json",
+                "--limit",
+                "3",
+                "--jobs",
+                "1",
+                "--workspace-backend",
+                "copy",
+                "--cache-dir",
+                tmp.path().join("cache").to_str().unwrap(),
+                "--runs-dir",
+                runs_dir.to_str().unwrap(),
+            ])
+            .args(seed_args)
+            .args(["--", "true"])
+            .output()
+            .expect("failed to run ooze");
+        assert_eq!(
+            out.status.code(),
+            Some(1),
+            "stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let ledgers: Vec<_> = std::fs::read_dir(&runs_dir)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .collect();
+        assert_eq!(ledgers.len(), 1);
+        ledgers.into_iter().next().unwrap()
+    };
+
+    // CLI --seed overrides [mutation].seed, and execution uses the exact
+    // selection plan-mutants produces for the same seed.
+    let ledger = run("runs-cli-seed", &["--seed", "cli-seed"]);
+    let meta: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(ledger.join("metadata.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(meta["seed"], "cli-seed");
+    let ledger_plan: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(ledger.join("plan.json")).unwrap()).unwrap();
+    let planned = run_plan_mutants(&project, &["--seed", "cli-seed", "--limit", "3"]);
+    assert_eq!(
+        plan_candidate_ids(&ledger_plan),
+        plan_candidate_ids(&planned),
+        "test-mutants and plan-mutants agree on the seeded selection"
+    );
+
+    // Without --seed, [mutation].seed from ooze.toml applies.
+    let ledger = run("runs-cfg-seed", &[]);
+    let meta: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(ledger.join("metadata.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(meta["seed"], "cfg-seed");
+}
+
 // ── apply-mutant ──────────────────────────────────────────────────────────────
 
 #[test]

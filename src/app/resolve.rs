@@ -18,6 +18,7 @@ pub(crate) struct ResolvedTestMutants {
     pub(crate) path: PathBuf,
     pub(crate) strategy: scheduler::MutationStrategy,
     pub(crate) limit: Option<usize>,
+    pub(crate) seed: Option<String>,
     pub(crate) jobs: usize,
     pub(crate) timeout: Option<Duration>,
     pub(crate) build_cache_dir: Option<PathBuf>,
@@ -61,6 +62,7 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         coverage,
         strategy,
         limit,
+        seed,
         jobs,
         timeout_seconds,
         build_cache_dir,
@@ -124,6 +126,8 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         },
     };
     let limit = limit.or(cfg.mutation.limit);
+    // CLI --seed wins over [mutation].seed; no seed keeps unseeded ordering.
+    let seed = seed.or(cfg.mutation.seed.clone());
     let jobs = jobs.or(cfg.runner.jobs).unwrap_or(1);
     let timeout = timeout_seconds
         .or(cfg.runner.timeout_seconds)
@@ -266,6 +270,7 @@ pub(crate) fn test_mutants(args: TestMutantsArgs) -> anyhow::Result<ResolvedTest
         path,
         strategy,
         limit,
+        seed,
         jobs,
         timeout,
         build_cache_dir,

@@ -5,8 +5,8 @@ mod resolve;
 
 use crate::cli::{Cli, Commands, WorkspaceBackendArg, parse_key_val};
 use crate::{
-    config, core, doctor, execution, lang, mutate, planning, probe, report, scheduler, skip,
-    workspace,
+    config, core, doctor, execution, lang, ledger, mutate, planning, probe, report, scheduler,
+    skip, workspace,
 };
 
 use std::path::PathBuf;
@@ -327,11 +327,29 @@ struct Plan {
     skipped: usize,
     selected: usize,
     strategy: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed: Option<String>,
     excluded_patterns: Vec<String>,
     operator_filter: mutate::OperatorFilterReport,
     candidates: Vec<PlannedCandidate>,
     #[serde(skip_serializing_if = "Option::is_none")]
     skipped_candidates: Option<Vec<skip::SkippedCandidate>>,
+}
+
+/// Serializable projection of the selected plan, persisted to the run ledger
+/// as `plan.json`. Mirrors the `plan-mutants` output shape minus per-candidate
+/// selection explanations.
+#[derive(serde::Serialize)]
+struct RunPlanSnapshot<'a> {
+    total_candidates: usize,
+    skipped: usize,
+    selected: usize,
+    strategy: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    seed: Option<&'a str>,
+    excluded_patterns: &'a [String],
+    operator_filter: &'a mutate::OperatorFilterReport,
+    candidates: &'a [core::MutationCandidate],
 }
 
 /// Parse the command line and execute the selected command.
@@ -450,6 +468,7 @@ pub fn run() -> anyhow::Result<()> {
             coverage,
             strategy,
             limit,
+            seed,
             format,
             exclude,
             changed_only,
@@ -466,6 +485,7 @@ pub fn run() -> anyhow::Result<()> {
                 filter,
                 strategy,
                 limit,
+                seed,
                 changed_only,
                 no_static_skips,
                 coverage,
@@ -492,6 +512,7 @@ pub fn run() -> anyhow::Result<()> {
                 skipped: built.skipped_candidates.len(),
                 selected: planned.len(),
                 strategy: format!("{:?}", built.strategy).to_lowercase(),
+                seed: built.seed,
                 excluded_patterns: built.excludes,
                 operator_filter: built.operator_filter,
                 candidates: planned,
@@ -530,6 +551,7 @@ pub fn run() -> anyhow::Result<()> {
                 path,
                 strategy,
                 limit,
+                seed,
                 jobs,
                 timeout,
                 build_cache_dir,
@@ -567,6 +589,7 @@ pub fn run() -> anyhow::Result<()> {
                 filter,
                 strategy,
                 limit,
+                seed,
                 changed_only,
                 no_static_skips,
                 coverage,
@@ -626,6 +649,42 @@ pub fn run() -> anyhow::Result<()> {
             }
 
             let backend = workspace_backend.resolve(&repo_root);
+
+            // Persistent run ledger, written for every report format so the
+            // run stays inspectable after exit. A ledger failure fails the
+            // run: agents relying on it are worse off with a silent skip.
+            let run_ledger = ledger::RunLedger::create(
+                &runs_dir,
+                ledger::RunMetadata {
+                    run_id: ledger::new_run_id(),
+                    started_at: ledger::utc_timestamp(),
+                    repo_root: repo_root.clone(),
+                    jobs,
+                    format: format
+                        .to_possible_value()
+                        .expect("report format has a CLI name")
+                        .get_name()
+                        .to_string(),
+                    probe: probe.as_vec(),
+                    strategy: format!("{:?}", built.strategy).to_lowercase(),
+                    limit,
+                    seed: built.seed.clone(),
+                    workspace_backend: format!("{backend:?}").to_lowercase(),
+                },
+            )?;
+            run_ledger.write_plan(&RunPlanSnapshot {
+                total_candidates: built.total_candidates_before_static_skips,
+                skipped: built.skipped_candidates.len(),
+                selected: candidates.len(),
+                strategy: format!("{:?}", built.strategy).to_lowercase(),
+                seed: built.seed.as_deref(),
+                excluded_patterns: &built.excludes,
+                operator_filter: &built.operator_filter,
+                candidates: &candidates,
+            })?;
+            if matches!(format, report::ReportFormat::Human) {
+                eprintln!("ooze: run ledger: {}", run_ledger.dir().display());
+            }
 
             // One worktree per worker, created up front and reused across
             // mutants (cleaned up explicitly below: process::exit skips Drop).
@@ -699,6 +758,9 @@ pub fn run() -> anyhow::Result<()> {
                         if let Some(code) = payload.exit_code {
                             eprintln!("Exit code: {code}");
                         }
+                    } else if matches!(format, report::ReportFormat::Jsonl) {
+                        // Keep jsonl stdout newline-delimited: one compact line.
+                        println!("{}", serde_json::to_string(&payload)?);
                     } else {
                         println!("{}", serde_json::to_string_pretty(&payload)?);
                     }
@@ -767,6 +829,32 @@ pub fn run() -> anyhow::Result<()> {
                 None
             };
 
+            // Event sink: every event is appended to the ledger; for jsonl it
+            // is also streamed to stdout, one JSON object per line. Parallel
+            // workers emit concurrently, so writes go through mutexes. The
+            // sink is a plain `Fn`, so ledger write errors are parked in a
+            // slot and checked after execution.
+            let jsonl_stdout = matches!(format, report::ReportFormat::Jsonl);
+            let jsonl_out = std::sync::Mutex::new(std::io::stdout());
+            let event_error: std::sync::Mutex<Option<anyhow::Error>> = std::sync::Mutex::new(None);
+            let event_sink = |event: execution::ExecutionEvent| {
+                if jsonl_stdout {
+                    use std::io::Write;
+                    let line = serde_json::to_string(&event).expect("serialize execution event");
+                    let mut out = jsonl_out.lock().expect("lock stdout for jsonl event");
+                    writeln!(out, "{line}").expect("write jsonl event");
+                }
+                if let Err(err) = run_ledger.append_event(&event) {
+                    let mut slot = event_error
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if slot.is_none() {
+                        *slot = Some(err);
+                    }
+                }
+            };
+            let events: Option<execution::EventSink<'_>> = Some(&event_sink);
+
             let cfg = execution::BatchConfig {
                 backend,
                 timeout,
@@ -775,6 +863,7 @@ pub fn run() -> anyhow::Result<()> {
                 probe_env_templates: &probe_env,
                 runs_dir: &runs_dir,
                 progress: progress_cb,
+                events,
                 worktree_pool: worktree_pool.as_ref(),
             };
 
@@ -787,14 +876,30 @@ pub fn run() -> anyhow::Result<()> {
                 eprintln!("warning: failed to clean up git worktrees: {e:#}");
             }
 
+            if let Some(err) = event_error
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take()
+            {
+                return Err(err.context("writing run ledger events"));
+            }
+
             let mut enriched = report::enrich(raw_report, &crap_entries, &repo_root, context_lines);
+            // The ledger keeps the full diagnostic report; user report
+            // options (compact/only-survivors/…) only shape stdout output.
+            run_ledger.write_report(&enriched)?;
             report::apply_options(&mut enriched, report_opts);
 
-            let text = format.render(&enriched)?;
             match output.as_deref() {
-                Some(path) => std::fs::write(path, &text)
-                    .with_context(|| format!("writing report to {}", path.display()))?,
-                None => print!("{text}"),
+                Some(path) => {
+                    let text = format.render(&enriched)?;
+                    std::fs::write(path, &text)
+                        .with_context(|| format!("writing report to {}", path.display()))?;
+                }
+                // For jsonl the event stream already on stdout *is* the
+                // output; the summary was emitted as `run_finished`.
+                None if format == report::ReportFormat::Jsonl => {}
+                None => print!("{}", format.render(&enriched)?),
             }
 
             let exit =

@@ -6,6 +6,7 @@ mod crap;
 mod doctor;
 mod execution;
 mod lang;
+mod ledger;
 mod mutate;
 mod planning;
 mod preset;

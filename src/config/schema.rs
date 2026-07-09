@@ -39,6 +39,7 @@ pub struct MutationConfigToml {
     #[serde(default)]
     pub coverage: Vec<String>,
     pub limit: Option<usize>,
+    pub seed: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, Default)]
