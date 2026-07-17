@@ -14,8 +14,9 @@ the verdict:
 | ---------------------- | -------------------------------------------------------------------- |
 | `--path`               | Repo root to scan and mutate.                                        |
 | `--jobs`               | Parallel worker count.                                               |
-| `--limit`              | Cap candidates for a quick smoke run.                                |
+| `--limit`              | Cap candidates for a quick smoke run. Applied *after* ranking, so it selects the top-ranked mutants. |
 | `--strategy`           | Ordering: `discovery`, `actionable`, etc.                            |
+| `--seed`               | Deterministically rank candidates for reproducible selection (see below). |
 | `--timeout-seconds`    | Per-mutant probe timeout.                                            |
 | `--preset`             | Language preset that fills unset options with ecosystem defaults (see below). `rust`, `go`, `node`, and `python` for now. |
 | `--workspace-backend`  | `worktree` (Git, rootless), `copy` (portable), `overlay` (Linux; needs root), `auto` (worktree in a Git repo, else copy). |
@@ -243,6 +244,76 @@ running inside a Git repository (you'll get a clear error otherwise; pass
   --probe-env CARGO_TARGET_DIR={build_cache} \
   -- cargo test
 ```
+
+## Deterministic selection with `--seed`
+
+A seed deterministically ranks the mutation candidates for the current commit.
+Reusing the same commit, source state, configuration, operators, seed, and
+limit selects the same mutations.
+
+```text
+same commit + same config + same operators + same seed + same limit
+= same selected mutants
+```
+
+How it works: ooze first discovers the **complete** candidate set — the seed
+never changes which mutants exist, only their order. It then gives every
+candidate a stable identity (repo-relative file path, operator, source byte
+range, and the exact original/replacement text) and hashes
+
+```text
+BLAKE3("ooze-seeded-selection-v1", commit_hash, seed, stable_candidate_id)
+```
+
+into a 256-bit ranking key. Candidates are sorted ascending by that key (the
+stable id breaks ties), and `--limit` is applied last. Because ranking is
+independent per candidate, **increasing the limit preserves the previous
+selection as a prefix**:
+
+```bash
+ooze test-mutants --seed 42 --limit 3  -- cargo test   # C, F, A
+ooze test-mutants --seed 42 --limit 5  -- cargo test   # C, F, A, E, B
+```
+
+Different seeds usually produce a different order:
+
+```bash
+ooze test-mutants --seed 42 --limit 20 -- cargo test
+ooze test-mutants --seed 43 --limit 20 -- cargo test
+```
+
+Seeds are **not** a partition: two different seeds may select overlapping
+mutants, and there is no guarantee that they carve the candidate set into
+disjoint slices.
+
+Notes and guarantees:
+
+- Arbitrary seed values are accepted, including any `u64` (`--seed 42`).
+- The order is independent of discovery order, worker/job count, filesystem
+  iteration order, and `HashMap` iteration order.
+- The seed affects **only** ordering and selection. It never changes mutation
+  discovery, mutation contents, test execution, timeouts, or how a probe result
+  is classified.
+- The current Git commit hash is mixed into the ranking, so the same seed
+  selects differently across commits. Outside a Git repository (or a repo with
+  no commits), the commit component is empty and the seed still works — it just
+  is not pinned to a revision. ooze never substitutes the current time or random
+  entropy.
+- A dirty working tree still uses the committed `HEAD` hash. Reproducibility is
+  defined against the **source state**: a seed reproduces a selection only when
+  the tree and every other selection input are unchanged.
+- Parallel execution may *finish* mutants in a different order than the plan.
+  The deterministic plan order is recorded as `plan_index` in `plan.json`; do
+  not confuse completion order with plan order.
+- The plan and run metadata record `seed`, `selection_algorithm`
+  (`hash-rank-v1`), `candidate_count`, and `selected_count`; each planned
+  mutant also carries its `plan_index`, `stable_id`, and `ranking_key`.
+- The `ooze-seeded-selection-v1` prefix versions the algorithm: if the ranking
+  ever changes, the prefix is bumped so old seeds keep a well-defined meaning
+  rather than silently selecting different mutants.
+
+Set a seed permanently in `ooze.toml` under `[mutation]`; a CLI `--seed`
+overrides it (see [configuration](config.md)).
 
 ## Rust (cargo)
 

@@ -315,10 +315,22 @@ fn parse_report_detail_str(s: &str) -> anyhow::Result<report::ReportDetail> {
 
 #[derive(serde::Serialize)]
 struct PlannedCandidate {
+    /// Position in the deterministic selection order (0-based). This is the plan
+    /// order, not the eventual completion order — parallel execution may finish
+    /// mutants in any order.
+    plan_index: usize,
     #[serde(flatten)]
     candidate: core::MutationCandidate,
     #[serde(flatten)]
     selection: scheduler::SelectionExplanation,
+    /// Stable, discovery-independent identity used for seeded ranking. Present
+    /// only for seeded runs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stable_id: Option<String>,
+    /// Hex of the BLAKE3 ranking key, for debugging seeded order. Present only
+    /// for seeded runs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ranking_key: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -326,9 +338,17 @@ struct Plan {
     total_candidates: usize,
     skipped: usize,
     selected: usize,
+    /// Candidate universe the selection ranked over (before `--limit`).
+    candidate_count: usize,
+    /// Selected mutant count after `--limit`. Mirrors `selected`; named to match
+    /// the documented selection-metadata contract.
+    selected_count: usize,
     strategy: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     seed: Option<String>,
+    /// Selection algorithm name, present only when a seed was used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selection_algorithm: Option<&'static str>,
     excluded_patterns: Vec<String>,
     operator_filter: mutate::OperatorFilterReport,
     candidates: Vec<PlannedCandidate>,
@@ -344,9 +364,13 @@ struct RunPlanSnapshot<'a> {
     total_candidates: usize,
     skipped: usize,
     selected: usize,
+    candidate_count: usize,
+    selected_count: usize,
     strategy: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     seed: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    selection_algorithm: Option<&'static str>,
     excluded_patterns: &'a [String],
     operator_filter: &'a mutate::OperatorFilterReport,
     candidates: &'a [core::MutationCandidate],
@@ -495,14 +519,25 @@ pub fn run() -> anyhow::Result<()> {
                 print_coverage_diagnostics(diagnostics);
             }
 
+            let selection_ctx = built.selection.as_ref();
             let planned: Vec<PlannedCandidate> = built
                 .candidates
                 .into_iter()
-                .map(|c| {
+                .enumerate()
+                .map(|(plan_index, c)| {
                     let selection = scheduler::explain(built.strategy, &c, &built.crap_entries);
+                    let (stable_id, ranking_key) = selection_ctx.map_or((None, None), |ctx| {
+                        (
+                            Some(crate::selection::stable_candidate_id(&c)),
+                            Some(ctx.ranking_key_hex(&c)),
+                        )
+                    });
                     PlannedCandidate {
+                        plan_index,
                         candidate: c,
                         selection,
+                        stable_id,
+                        ranking_key,
                     }
                 })
                 .collect();
@@ -511,8 +546,11 @@ pub fn run() -> anyhow::Result<()> {
                 total_candidates: built.total_candidates_before_static_skips,
                 skipped: built.skipped_candidates.len(),
                 selected: planned.len(),
+                candidate_count: built.candidate_count,
+                selected_count: planned.len(),
                 strategy: format!("{:?}", built.strategy).to_lowercase(),
                 seed: built.seed,
+                selection_algorithm: selection_ctx.map(|_| crate::selection::ALGORITHM_NAME),
                 excluded_patterns: built.excludes,
                 operator_filter: built.operator_filter,
                 candidates: planned,
@@ -669,6 +707,10 @@ pub fn run() -> anyhow::Result<()> {
                     strategy: format!("{:?}", built.strategy).to_lowercase(),
                     limit,
                     seed: built.seed.clone(),
+                    selection_algorithm: built
+                        .selection
+                        .as_ref()
+                        .map(|_| crate::selection::ALGORITHM_NAME.to_string()),
                     workspace_backend: format!("{backend:?}").to_lowercase(),
                 },
             )?;
@@ -676,8 +718,14 @@ pub fn run() -> anyhow::Result<()> {
                 total_candidates: built.total_candidates_before_static_skips,
                 skipped: built.skipped_candidates.len(),
                 selected: candidates.len(),
+                candidate_count: built.candidate_count,
+                selected_count: candidates.len(),
                 strategy: format!("{:?}", built.strategy).to_lowercase(),
                 seed: built.seed.as_deref(),
+                selection_algorithm: built
+                    .selection
+                    .as_ref()
+                    .map(|_| crate::selection::ALGORITHM_NAME),
                 excluded_patterns: &built.excludes,
                 operator_filter: &built.operator_filter,
                 candidates: &candidates,
@@ -721,7 +769,8 @@ pub fn run() -> anyhow::Result<()> {
                         build_cache: preflight_build_cache,
                     },
                 );
-                let outcome = execution::preflight(&baseline_root, &probe, timeout, &preflight_envs)?;
+                let outcome =
+                    execution::preflight(&baseline_root, &probe, timeout, &preflight_envs)?;
                 if !outcome.success {
                     #[derive(serde::Serialize)]
                     struct PreflightFailure {

@@ -618,10 +618,9 @@ fn test_mutants_json_report_is_unchanged_by_jsonl_support() {
 
     // The ledger is written for non-jsonl formats too.
     let ledger_dir = assert_ledger_artifacts(&tmp);
-    let meta: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(ledger_dir.join("metadata.json")).unwrap(),
-    )
-    .unwrap();
+    let meta: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(ledger_dir.join("metadata.json")).unwrap())
+            .unwrap();
     assert_eq!(meta["format"], "json");
     assert_eq!(meta["probe"], serde_json::json!(["true"]));
     let plan: serde_json::Value =
@@ -747,10 +746,9 @@ fn test_mutants_seed_agrees_with_plan_and_config_precedence() {
     // CLI --seed overrides [mutation].seed, and execution uses the exact
     // selection plan-mutants produces for the same seed.
     let ledger = run("runs-cli-seed", &["--seed", "cli-seed"]);
-    let meta: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(ledger.join("metadata.json")).unwrap(),
-    )
-    .unwrap();
+    let meta: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(ledger.join("metadata.json")).unwrap())
+            .unwrap();
     assert_eq!(meta["seed"], "cli-seed");
     let ledger_plan: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(ledger.join("plan.json")).unwrap()).unwrap();
@@ -763,11 +761,113 @@ fn test_mutants_seed_agrees_with_plan_and_config_precedence() {
 
     // Without --seed, [mutation].seed from ooze.toml applies.
     let ledger = run("runs-cfg-seed", &[]);
-    let meta: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(ledger.join("metadata.json")).unwrap(),
-    )
-    .unwrap();
+    let meta: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(ledger.join("metadata.json")).unwrap())
+            .unwrap();
     assert_eq!(meta["seed"], "cfg-seed");
+}
+
+// Case 3: increasing the limit with the same seed preserves the existing prefix.
+#[test]
+fn plan_mutants_larger_limit_extends_seeded_prefix() {
+    let tmp = tempdir();
+    let project = fixture_project(&tmp);
+
+    let short = run_plan_mutants(&project, &["--seed", "42", "--limit", "3"]);
+    let long = run_plan_mutants(&project, &["--seed", "42", "--limit", "6"]);
+    let short_ids = plan_candidate_ids(&short);
+    let long_ids = plan_candidate_ids(&long);
+
+    assert_eq!(short_ids.len(), 3);
+    assert!(long_ids.len() >= short_ids.len());
+    assert_eq!(
+        short_ids,
+        long_ids[..short_ids.len()],
+        "a smaller limit must be a strict prefix of a larger one for the same seed"
+    );
+}
+
+// Case 2 (end-to-end): arbitrary u64 seeds are accepted and different seeds
+// usually reorder a sufficiently large candidate set.
+#[test]
+fn plan_mutants_accepts_u64_seed_and_differs_by_seed() {
+    let tmp = tempdir();
+    let project = fixture_project(&tmp);
+
+    let a = run_plan_mutants(&project, &["--seed", "42"]);
+    let b = run_plan_mutants(&project, &["--seed", "43"]);
+    assert_eq!(a["seed"], "42");
+    assert_eq!(b["seed"], "43");
+    assert_ne!(
+        plan_candidate_ids(&a),
+        plan_candidate_ids(&b),
+        "seed 42 and 43 should order the candidate set differently"
+    );
+}
+
+// Case 8: plan serialization records the seed, algorithm, and counts, and each
+// selected mutant retains a plan index, stable id, and ranking key.
+#[test]
+fn plan_mutants_records_selection_metadata() {
+    let tmp = tempdir();
+    let project = fixture_project(&tmp);
+
+    let plan = run_plan_mutants(&project, &["--seed", "42", "--limit", "3"]);
+    assert_eq!(plan["seed"], "42");
+    assert_eq!(plan["selection_algorithm"], "hash-rank-v1");
+    assert_eq!(plan["selected_count"], 3);
+    assert!(
+        plan["candidate_count"].as_u64().unwrap() >= 3,
+        "candidate_count is the full ranked universe"
+    );
+
+    let candidates = plan["candidates"].as_array().unwrap();
+    for (i, c) in candidates.iter().enumerate() {
+        assert_eq!(c["plan_index"].as_u64().unwrap(), i as u64);
+        let key = c["ranking_key"].as_str().unwrap();
+        assert_eq!(key.len(), 64, "ranking key is 32 bytes of hex");
+        assert!(
+            c["stable_id"]
+                .as_str()
+                .unwrap()
+                .contains("mutation_sample.rs")
+        );
+    }
+
+    // Ranking keys are sorted ascending: that is what determines plan order.
+    let keys: Vec<&str> = candidates
+        .iter()
+        .map(|c| c["ranking_key"].as_str().unwrap())
+        .collect();
+    let mut sorted = keys.clone();
+    sorted.sort_unstable();
+    assert_eq!(
+        keys, sorted,
+        "candidates are ordered by ascending ranking key"
+    );
+}
+
+// Case 10: an unseeded plan carries no seed or selection metadata, i.e. existing
+// non-seeded behavior is unchanged.
+#[test]
+fn plan_mutants_unseeded_has_no_selection_metadata() {
+    let tmp = tempdir();
+    let project = fixture_project(&tmp);
+
+    let plan = run_plan_mutants(&project, &["--limit", "3"]);
+    assert!(plan.get("seed").is_none(), "no seed field when unseeded");
+    assert!(
+        plan.get("selection_algorithm").is_none(),
+        "no selection algorithm when unseeded"
+    );
+    let candidates = plan["candidates"].as_array().unwrap();
+    for c in candidates {
+        assert!(
+            c.get("ranking_key").is_none(),
+            "unseeded candidates carry no ranking key"
+        );
+        assert!(c.get("stable_id").is_none());
+    }
 }
 
 // ── apply-mutant ──────────────────────────────────────────────────────────────

@@ -25,7 +25,8 @@ typo will surface as a load error rather than being silently ignored.
 | `exclude_operators` | `[string]` | `[]` | Operators to drop from the active set. |
 | `static_skips` | `bool` | `true` | Skip mutants that the static analyzer flags as equivalent. |
 | `context_lines` | `int` | `3` | Diff context lines shown around each mutant. |
-| `limit` | `int` | unlimited | Cap on the number of mutants to run. |
+| `limit` | `int` | unlimited | Cap on the number of mutants to run. Applied after ranking. |
+| `seed` | `string` | none | Deterministically ranks candidates for reproducible selection. Same commit, source state, config, operators, seed, and limit selects the same mutants; increasing the limit keeps the previous selection as a prefix. Different seeds may overlap and are not a partition. CLI `--seed` overrides this. See [Running mutants](running-mutants.md#deterministic-selection-with---seed). |
 | `coverage` | `[string]` | `[]` | Coverage reports used to prioritize by coverage. Each entry is `format:path` (`lcov`, `cobertura`, `jacoco`, `go-cover`) or a bare path to auto-detect; multiple entries are merged. |
 | `lcov` | `path` | none | Deprecated alias for `coverage = ["lcov:<path>"]`. |
 

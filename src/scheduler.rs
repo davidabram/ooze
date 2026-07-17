@@ -1,4 +1,5 @@
 use crate::core::{CrapEntry, MutationCandidate};
+use crate::selection::SelectionContext;
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
 use std::path::PathBuf;
@@ -48,57 +49,47 @@ pub enum MutationStrategy {
 }
 
 /// Order candidates by strategy. A seed adds deterministic reordering without
-/// destroying strategy intent: seeded Discovery is a deterministic shuffle;
-/// seeded score strategies keep their score ordering and use the seed only to
-/// break ties among equal-score candidates. Without a seed, behavior is
-/// unchanged (discovery order / id tie-breaks).
+/// destroying strategy intent: seeded Discovery is a full deterministic ranking
+/// (see [`crate::selection`]); seeded score strategies keep their score ordering
+/// and use the seed only to break ties among equal-score candidates. Without a
+/// seed, behavior is unchanged (discovery order / id tie-breaks).
+///
+/// The seed never changes which candidates exist — only their order — so
+/// selection stays a pure function of the discovered universe.
 pub fn order(
     strategy: MutationStrategy,
     candidates: Vec<MutationCandidate>,
     crap_entries: &[CrapEntry],
-    seed: Option<&str>,
+    selection: Option<&SelectionContext>,
 ) -> Vec<MutationCandidate> {
     match strategy {
-        MutationStrategy::Discovery => match seed {
-            Some(seed) => shuffle_seeded(candidates, seed),
+        MutationStrategy::Discovery => match selection {
+            Some(ctx) => rank_seeded(candidates, ctx),
             None => candidates,
         },
-        MutationStrategy::Actionable => rank_actionable(candidates, crap_entries, seed),
-        MutationStrategy::HighestCrap => rank_highest_crap(candidates, crap_entries, seed),
+        MutationStrategy::Actionable => rank_actionable(candidates, crap_entries, selection),
+        MutationStrategy::HighestCrap => rank_highest_crap(candidates, crap_entries, selection),
     }
 }
 
-/// FNV-1a 64-bit. Implemented here so seeded ordering never depends on the
-/// standard library's unspecified/randomized hashers.
-fn stable_hash64(input: &str) -> u64 {
-    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in input.bytes() {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    hash
-}
-
-fn seeded_key(seed: &str, candidate_id: &str) -> u64 {
-    stable_hash64(&format!("{seed}\0{candidate_id}"))
-}
-
-fn shuffle_seeded(mut candidates: Vec<MutationCandidate>, seed: &str) -> Vec<MutationCandidate> {
-    candidates.sort_by(|a, b| {
-        seeded_key(seed, &a.id)
-            .cmp(&seeded_key(seed, &b.id))
-            .then_with(|| a.id.cmp(&b.id))
-    });
+/// Rank the whole candidate set by the seeded ranking key (Discovery strategy).
+fn rank_seeded(
+    mut candidates: Vec<MutationCandidate>,
+    ctx: &SelectionContext,
+) -> Vec<MutationCandidate> {
+    candidates.sort_by(|a, b| ctx.compare(a, b));
     candidates
 }
 
-// Tie-break for equal-score candidates: seeded hash when a seed is present
-// (id as a final guard against hash collisions), plain id otherwise.
-fn tie_break(seed: Option<&str>, a: &MutationCandidate, b: &MutationCandidate) -> std::cmp::Ordering {
-    match seed {
-        Some(seed) => seeded_key(seed, &a.id)
-            .cmp(&seeded_key(seed, &b.id))
-            .then_with(|| a.id.cmp(&b.id)),
+// Tie-break for equal-score candidates: the seeded ranking key when a seed is
+// present (with the stable id as a final collision guard), plain id otherwise.
+fn tie_break(
+    selection: Option<&SelectionContext>,
+    a: &MutationCandidate,
+    b: &MutationCandidate,
+) -> std::cmp::Ordering {
+    match selection {
+        Some(ctx) => ctx.compare(a, b),
         None => a.id.cmp(&b.id),
     }
 }
@@ -224,14 +215,14 @@ pub fn explain(
 fn rank_actionable(
     mut candidates: Vec<MutationCandidate>,
     crap_entries: &[CrapEntry],
-    seed: Option<&str>,
+    selection: Option<&SelectionContext>,
 ) -> Vec<MutationCandidate> {
     let index = index_crap(crap_entries);
 
     candidates.sort_by(|a, b| {
         let sa = actionable_score(lookup(&index, a), &DEFAULT_ACTIONABLE_POLICY);
         let sb = actionable_score(lookup(&index, b), &DEFAULT_ACTIONABLE_POLICY);
-        sb.cmp(&sa).then_with(|| tie_break(seed, a, b))
+        sb.cmp(&sa).then_with(|| tie_break(selection, a, b))
     });
 
     candidates
@@ -240,7 +231,7 @@ fn rank_actionable(
 fn rank_highest_crap(
     mut candidates: Vec<MutationCandidate>,
     crap_entries: &[CrapEntry],
-    seed: Option<&str>,
+    selection: Option<&SelectionContext>,
 ) -> Vec<MutationCandidate> {
     let index = index_crap(crap_entries);
 
@@ -249,7 +240,7 @@ fn rank_highest_crap(
         let cb = lookup(&index, b).map_or(f64::NEG_INFINITY, |e| e.crap);
         cb.partial_cmp(&ca)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| tie_break(seed, a, b))
+            .then_with(|| tie_break(selection, a, b))
     });
 
     candidates
@@ -285,24 +276,44 @@ mod tests {
 
     fn discovery_list() -> Vec<MutationCandidate> {
         (0..8)
-            .map(|i| candidate(&format!("m{i}"), "x.rs"))
+            .map(|i| {
+                // Distinct byte ranges give each candidate a distinct stable
+                // identity, the way real discovery does (no two candidates share
+                // file + operator + byte range + text after dedupe).
+                let mut c = candidate(&format!("m{i}"), "x.rs");
+                c.start_byte = i;
+                c.end_byte = i + 1;
+                c
+            })
             .collect()
     }
 
-    #[test]
-    fn stable_hash64_matches_fnv1a_vectors() {
-        // Drift guards: FNV-1a 64 offset basis and a published test vector.
-        assert_eq!(stable_hash64(""), 0xcbf2_9ce4_8422_2325);
-        assert_eq!(stable_hash64("abc"), 0xe71f_a219_0541_574b);
+    fn ctx(seed: &str) -> SelectionContext {
+        SelectionContext::new(seed, "commitA")
     }
 
     #[test]
     fn seeded_discovery_is_reproducible_and_seed_sensitive() {
-        let a = order(MutationStrategy::Discovery, discovery_list(), &[], Some("s1"));
-        let b = order(MutationStrategy::Discovery, discovery_list(), &[], Some("s1"));
+        let a = order(
+            MutationStrategy::Discovery,
+            discovery_list(),
+            &[],
+            Some(&ctx("s1")),
+        );
+        let b = order(
+            MutationStrategy::Discovery,
+            discovery_list(),
+            &[],
+            Some(&ctx("s1")),
+        );
         assert_eq!(ids(&a), ids(&b), "same seed gives same ordering");
 
-        let c = order(MutationStrategy::Discovery, discovery_list(), &[], Some("s2"));
+        let c = order(
+            MutationStrategy::Discovery,
+            discovery_list(),
+            &[],
+            Some(&ctx("s2")),
+        );
         assert_ne!(ids(&a), ids(&c), "different seed gives different ordering");
     }
 
@@ -348,7 +359,7 @@ mod tests {
                 MutationStrategy::HighestCrap,
                 candidates.clone(),
                 &entries,
-                Some(seed),
+                Some(&ctx(seed)),
             );
             assert!(
                 ids(&out)[..2].iter().all(|id| id.starts_with("high-")),

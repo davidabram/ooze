@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use anyhow::Context;
 
-use crate::{core, crap, lang, mutate, scheduler, skip, source_path};
+use crate::{core, crap, lang, mutate, scheduler, selection, skip, source_path};
 
 pub(crate) const DEFAULT_EXCLUDES: &[&str] = &[
     "target/**",
@@ -54,9 +54,17 @@ pub(crate) struct BuiltPlan {
     pub skipped_candidates: Vec<skip::SkippedCandidate>,
     /// Candidate count after `--changed-only` but before static skips.
     pub total_candidates_before_static_skips: usize,
+    /// Size of the candidate universe the selection ranked over: kept candidates
+    /// after all filtering (static skips, `--changed-only`) but before `--limit`.
+    /// This is the denominator a seeded selection draws from.
+    pub candidate_count: usize,
     pub strategy: scheduler::MutationStrategy,
     /// The seed the plan was ordered with, echoed back for plan output.
     pub seed: Option<String>,
+    /// The resolved seeded-selection context (seed + commit) when a seed was
+    /// given. `None` for unseeded runs. Carries the commit the ranking used and
+    /// lets callers recompute per-candidate ranking keys for plan output.
+    pub selection: Option<selection::SelectionContext>,
     pub excludes: Vec<String>,
     pub operator_filter: mutate::OperatorFilterReport,
     pub changed_only: Option<ChangedOnlyStats>,
@@ -102,15 +110,24 @@ pub(crate) fn build_plan(options: PlanOptions) -> anyhow::Result<BuiltPlan> {
     let coverage = resolve_coverage(&coverage, lcov.as_deref())?;
     let (crap_entries, coverage_diagnostics) = score_with_optional_coverage(functions, coverage);
 
-    let candidates = order_and_limit(strategy, kept, &crap_entries, limit, seed.as_deref());
+    // A seed pins the ordering to the current commit. Discover first, then rank:
+    // the seed only orders the already-discovered universe, never grows it.
+    let selection = seed.as_deref().map(|seed| {
+        selection::SelectionContext::new(seed, current_commit(&path).unwrap_or_default())
+    });
+
+    let candidate_count = kept.len();
+    let candidates = order_and_limit(strategy, kept, &crap_entries, limit, selection.as_ref());
 
     Ok(BuiltPlan {
         crap_entries,
         candidates,
         skipped_candidates: skipped,
         total_candidates_before_static_skips,
+        candidate_count,
         strategy,
         seed,
+        selection,
         excludes,
         operator_filter: (&filter).into(),
         changed_only: changed_stats,
@@ -126,13 +143,38 @@ fn order_and_limit(
     candidates: Vec<core::MutationCandidate>,
     crap_entries: &[core::CrapEntry],
     limit: Option<usize>,
-    seed: Option<&str>,
+    selection: Option<&selection::SelectionContext>,
 ) -> Vec<core::MutationCandidate> {
-    let mut ordered = scheduler::order(strategy, candidates, crap_entries, seed);
+    let mut ordered = scheduler::order(strategy, candidates, crap_entries, selection);
     if let Some(limit) = limit {
         ordered.truncate(limit);
     }
     ordered
+}
+
+/// The current Git commit hash at `root`, or `None` when Git metadata is
+/// unavailable (not a repo, `git` missing, or a repo with no commits yet).
+///
+/// A dirty working tree still returns the committed `HEAD` hash: reproducibility
+/// is defined against the *source state*, so a seed only reproduces a selection
+/// when the tree — and every other selection input — is unchanged, regardless of
+/// whether those changes are committed. When this returns `None` the seeded
+/// ranking falls back to an empty commit component (see
+/// [`selection::SelectionContext`]); the seed still works, it just isn't pinned
+/// to a revision. This mirrors ooze's established behavior of seeding without
+/// requiring a Git repo, so it never hard-errors here.
+fn current_commit(root: &std::path::Path) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let hash = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if hash.is_empty() { None } else { Some(hash) }
 }
 
 // Narrows both kept and skipped candidates to changed files, recording how the
@@ -433,22 +475,29 @@ mod tests {
         let file = std::path::Path::new("x.rs");
         let list = || -> Vec<MutationCandidate> {
             (0..6)
-                .map(|i| candidate(&format!("m{i}"), file.to_path_buf()))
+                .map(|i| {
+                    // Distinct byte ranges give distinct stable identities.
+                    let mut c = candidate(&format!("m{i}"), file.to_path_buf());
+                    c.start_byte = i;
+                    c.end_byte = i + 1;
+                    c
+                })
                 .collect()
         };
+        let ctx = selection::SelectionContext::new("abc", "commitA");
         let full = order_and_limit(
             scheduler::MutationStrategy::Discovery,
             list(),
             &[],
             None,
-            Some("abc"),
+            Some(&ctx),
         );
         let limited = order_and_limit(
             scheduler::MutationStrategy::Discovery,
             list(),
             &[],
             Some(2),
-            Some("abc"),
+            Some(&ctx),
         );
         // The limit truncates the seeded ordering, not the discovery ordering.
         assert_eq!(limited.len(), 2);

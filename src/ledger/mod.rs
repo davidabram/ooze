@@ -24,6 +24,10 @@ pub(crate) struct RunMetadata {
     pub limit: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<String>,
+    /// Selection algorithm name (e.g. `hash-rank-v1`) when the run used a seed,
+    /// so a stored run records exactly how its selection was ordered.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selection_algorithm: Option<String>,
     pub workspace_backend: String,
 }
 
@@ -157,15 +161,17 @@ mod tests {
                 strategy: "discovery".into(),
                 limit: Some(5),
                 seed: None,
+                selection_algorithm: None,
                 workspace_backend: "copy".into(),
             },
         )
         .unwrap();
         assert_eq!(ledger.dir(), tmp.path().join("run-20260709-103012-42"));
 
-        let meta: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(ledger.dir().join("metadata.json")).unwrap())
-                .unwrap();
+        let meta: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(ledger.dir().join("metadata.json")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(meta["run_id"], "run-20260709-103012-42");
         assert_eq!(meta["probe"], serde_json::json!(["cargo", "test"]));
 
@@ -190,7 +196,9 @@ mod tests {
         assert_eq!(lines[0]["event"], "run_started");
         assert_eq!(lines[1]["event"], "run_finished");
 
-        ledger.write_plan(&serde_json::json!({"selected": 1})).unwrap();
+        ledger
+            .write_plan(&serde_json::json!({"selected": 1}))
+            .unwrap();
         ledger
             .write_report(&serde_json::json!({"total": 1}))
             .unwrap();

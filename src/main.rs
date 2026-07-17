@@ -13,6 +13,7 @@ mod preset;
 mod probe;
 mod report;
 mod scheduler;
+mod selection;
 mod skip;
 mod source_path;
 mod workspace;
